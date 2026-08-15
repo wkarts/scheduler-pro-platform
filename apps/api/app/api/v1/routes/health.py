@@ -81,13 +81,32 @@ async def _check_s3() -> tuple[str, str | None]:
     return "ok", None
 
 
+def resolve_request_hostname_from_value(value: str) -> str:
+    from app.api.deps import normalize_hostname
+
+    return normalize_hostname(value)
+
+
+def _tenant_probe_required(hostname: str) -> bool:
+    # Development intentionally resolves localhost to tenant_dev so the integration
+    # suite exercises a real tenant database. In production, readiness probes made
+    # from inside the container arrive as localhost/loopback and must validate the
+    # control plane only; treating the loopback Host as a tenant makes an otherwise
+    # healthy API permanently unhealthy and prevents the reverse proxy from starting.
+    if settings.app_env == "development":
+        return True
+    platform_hostname = resolve_request_hostname_from_value(settings.public_platform_domain)
+    return hostname not in {
+        platform_hostname,
+        "localhost",
+        "127.0.0.1",
+        "::1",
+    }
+
+
 async def _check_tenant(request: Request) -> tuple[str, str | None]:
     hostname = resolve_request_hostname(request)
-    if (
-        settings.app_env != "development"
-        and hostname
-        == resolve_request_hostname_from_value(settings.public_platform_domain)
-    ):
+    if not _tenant_probe_required(hostname):
         return "not_applicable", None
     async with PlatformSession() as platform:
         context = await TenantResolver(platform).resolve(hostname)
@@ -101,12 +120,6 @@ async def _check_tenant(request: Request) -> tuple[str, str | None]:
             return "failed", f"migration:{revision or 'missing'}"
         await session.execute(text("select 1"))
     return "ok", None
-
-
-def resolve_request_hostname_from_value(value: str) -> str:
-    from app.api.deps import normalize_hostname
-
-    return normalize_hostname(value)
 
 
 @router.get("/health/ready")

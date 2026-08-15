@@ -106,6 +106,12 @@ services:
       MINIO_REGION_NAME: ${S3_REGION:-sa-east-1}
     volumes:
       - ${SCHEDULER_PRO_DATA_ROOT:-./scheduler-pro-data}/minio:/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl --fail --silent http://127.0.0.1:9000/minio/health/live >/dev/null || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 20
+      start_period: 20s
     logging: *logging
 
   scheduler-migrate:
@@ -130,9 +136,11 @@ services:
         condition: service_healthy
       scheduler-rabbitmq:
         condition: service_healthy
+      scheduler-minio:
+        condition: service_healthy
     environment: *api-env
     healthcheck:
-      test: ["CMD-SHELL", "curl --fail --silent http://127.0.0.1:8000/api/v1/health/ready >/dev/null || exit 1"]
+      test: ["CMD-SHELL", "curl --fail --silent -H 'Host: ${PUBLIC_PLATFORM_DOMAIN}' http://127.0.0.1:8000/api/v1/health/ready >/dev/null || exit 1"]
       interval: 20s
       timeout: 5s
       retries: 20
