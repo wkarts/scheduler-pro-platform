@@ -1,3 +1,5 @@
+from typing import Any
+
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel, EmailStr
 from sqlalchemy import select
@@ -21,14 +23,14 @@ class CustomerCreate(BaseModel):
 async def list_customers(
     _: AuthPrincipal = Depends(require_permission("customers.read")),
     session: AsyncSession = Depends(get_tenant_session),
-):
+) -> dict[str, Any]:
     result = await session.execute(
         select(Customer).order_by(Customer.created_at.desc()).limit(100)
     )
     return success(
         [
-            {"id": c.id, "name": c.name, "phone": c.phone, "email": c.email}
-            for c in result.scalars()
+            {"id": customer.id, "name": customer.name, "phone": customer.phone, "email": customer.email}
+            for customer in result.scalars()
         ]
     )
 
@@ -38,7 +40,7 @@ async def create_customer(
     payload: CustomerCreate,
     _: AuthPrincipal = Depends(require_permission("customers.manage")),
     session: AsyncSession = Depends(get_tenant_session),
-):
+) -> dict[str, Any]:
     customer = Customer(
         name=payload.name,
         phone=payload.phone,

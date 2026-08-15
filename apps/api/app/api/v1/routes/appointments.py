@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Any
 
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
@@ -20,7 +21,10 @@ class AppointmentCreate(BaseModel):
 
 
 @router.post("")
-async def create_appointment(payload: AppointmentCreate, session: AsyncSession = Depends(get_tenant_session)):
+async def create_appointment(
+    payload: AppointmentCreate,
+    session: AsyncSession = Depends(get_tenant_session),
+) -> dict[str, Any]:
     service = AppointmentService(session)
     appointment = await service.create(payload.model_dump())
     return success({"id": appointment.id, "status": appointment.status})

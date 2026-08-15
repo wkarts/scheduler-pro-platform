@@ -1,3 +1,5 @@
+from typing import Any
+
 from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -43,12 +45,15 @@ async def login(
     request: Request,
     context: TenantContext = Depends(get_tenant_context),
     session: AsyncSession = Depends(get_tenant_session),
-):
+) -> dict[str, Any]:
     ip_address, user_agent, correlation_id = _request_meta(request)
     service = TenantAuthService(session, context)
     data = await service.login(
-        str(payload.email), payload.password,
-        user_agent=user_agent, ip_address=ip_address, correlation_id=correlation_id,
+        str(payload.email),
+        payload.password,
+        user_agent=user_agent,
+        ip_address=ip_address,
+        correlation_id=correlation_id,
     )
     return success(data)
 
@@ -58,7 +63,7 @@ async def refresh(
     payload: RefreshRequest,
     context: TenantContext = Depends(get_tenant_context),
     session: AsyncSession = Depends(get_tenant_session),
-):
+) -> dict[str, Any]:
     return success(await TenantAuthService(session, context).refresh(payload.refresh_token))
 
 
@@ -68,7 +73,7 @@ async def logout(
     _: AuthPrincipal = Depends(get_current_tenant_user),
     context: TenantContext = Depends(get_tenant_context),
     session: AsyncSession = Depends(get_tenant_session),
-):
+) -> dict[str, Any]:
     await TenantAuthService(session, context).logout(payload.refresh_token)
     return success({"logged_out": True})
 
@@ -78,7 +83,7 @@ async def logout_all(
     principal: AuthPrincipal = Depends(get_current_tenant_user),
     context: TenantContext = Depends(get_tenant_context),
     session: AsyncSession = Depends(get_tenant_session),
-):
+) -> dict[str, Any]:
     await TenantAuthService(session, context).logout_all(principal.user_id)
     return success({"logged_out": True, "all_sessions": True})
 
@@ -88,13 +93,20 @@ async def platform_login(
     payload: LoginRequest,
     request: Request,
     session: AsyncSession = Depends(get_platform_session),
-):
+) -> dict[str, Any]:
     if resolve_request_hostname(request) != normalize_hostname(settings.public_platform_domain):
-        raise APIError("PLATFORM_DOMAIN_REQUIRED", "Login do control plane indisponível neste domínio.", 404)
+        raise APIError(
+            "PLATFORM_DOMAIN_REQUIRED",
+            "Login do control plane indisponível neste domínio.",
+            404,
+        )
     ip_address, user_agent, correlation_id = _request_meta(request)
     data = await PlatformAuthService(session).login(
-        str(payload.email), payload.password,
-        user_agent=user_agent, ip_address=ip_address, correlation_id=correlation_id,
+        str(payload.email),
+        payload.password,
+        user_agent=user_agent,
+        ip_address=ip_address,
+        correlation_id=correlation_id,
     )
     return success(data)
 
@@ -103,7 +115,7 @@ async def platform_login(
 async def platform_refresh(
     payload: RefreshRequest,
     session: AsyncSession = Depends(get_platform_session),
-):
+) -> dict[str, Any]:
     return success(await PlatformAuthService(session).refresh(payload.refresh_token))
 
 
@@ -112,7 +124,7 @@ async def platform_logout(
     payload: RefreshRequest,
     _: AuthPrincipal = Depends(get_current_platform_user),
     session: AsyncSession = Depends(get_platform_session),
-):
+) -> dict[str, Any]:
     await PlatformAuthService(session).logout(payload.refresh_token)
     return success({"logged_out": True})
 
@@ -121,6 +133,6 @@ async def platform_logout(
 async def platform_logout_all(
     principal: AuthPrincipal = Depends(get_current_platform_user),
     session: AsyncSession = Depends(get_platform_session),
-):
+) -> dict[str, Any]:
     await PlatformAuthService(session).logout_all(principal.user_id)
     return success({"logged_out": True, "all_sessions": True})

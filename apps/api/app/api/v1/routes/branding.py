@@ -47,7 +47,7 @@ class BuildProfileRequest(BaseModel):
 async def get_manifest(
     context: TenantContext = Depends(get_tenant_context),
     session: AsyncSession = Depends(get_platform_session),
-):
+) -> dict[str, Any]:
     service = BrandingService(session)
     return success(await service.manifest_for_context(context))
 
@@ -58,10 +58,12 @@ async def save_profile(
     _: AuthPrincipal = Depends(require_permission("branding.manage")),
     context: TenantContext = Depends(get_tenant_context),
     session: AsyncSession = Depends(get_platform_session),
-):
+) -> dict[str, Any]:
     service = BrandingService(session)
     data = payload.model_dump(exclude_none=True)
-    return success(await service.save_profile(context.tenant_id, data, tenant_name=context.slug))
+    return success(
+        await service.save_profile(context.tenant_id, data, tenant_name=context.slug)
+    )
 
 
 @router.post("/publish")
@@ -69,7 +71,7 @@ async def publish_profile(
     _: AuthPrincipal = Depends(require_permission("branding.manage")),
     context: TenantContext = Depends(get_tenant_context),
     session: AsyncSession = Depends(get_platform_session),
-):
+) -> dict[str, Any]:
     service = BrandingService(session)
     return success(await service.publish(context.tenant_id, tenant_name=context.slug))
 
@@ -80,6 +82,8 @@ async def create_build_profile(
     _: AuthPrincipal = Depends(require_permission("branding.manage")),
     context: TenantContext = Depends(get_tenant_context),
     session: AsyncSession = Depends(get_platform_session),
-):
+) -> dict[str, Any]:
     service = BrandingService(session)
-    return success(await service.create_build_profile(context.tenant_id, payload.model_dump()))
+    return success(
+        await service.create_build_profile(context.tenant_id, payload.model_dump())
+    )
