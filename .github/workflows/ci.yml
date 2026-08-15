@@ -30,7 +30,28 @@ jobs:
         run: ruff check app tests
       - name: Mypy backend
         working-directory: apps/api
-        run: mypy app
+        shell: bash
+        run: |
+          set +e
+          mypy app --show-error-codes --no-color-output | tee /tmp/mypy-output.txt
+          status=${PIPESTATUS[0]}
+          python - <<'PY'
+          import re
+          from pathlib import Path
+
+          pattern = re.compile(r"^([^:]+):(\d+)(?::(\d+))?: error: (.*)$")
+          for raw in Path("/tmp/mypy-output.txt").read_text(encoding="utf-8").splitlines():
+              match = pattern.match(raw)
+              if not match:
+                  continue
+              path, line, column, message = match.groups()
+              message = message.replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A")
+              location = f"file={path},line={line}"
+              if column:
+                  location += f",col={column}"
+              print(f"::error {location}::{message}")
+          PY
+          exit "$status"
       - name: Unit tests
         working-directory: apps/api
         run: pytest -q -m "not integration"
