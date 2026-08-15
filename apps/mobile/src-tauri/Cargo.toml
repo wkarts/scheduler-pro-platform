@@ -1,16 +1,23 @@
 [package]
-name = "scheduler-pro-mobile"
+name = "scheduler_pro_mobile"
 version = "0.1.0-alpha.1"
-description = "Scheduler Pro Mobile"
+description = "Scheduler Pro Mobile baseado no template Tauri/Rust"
+authors = ["Wallace Kleiton <wkarts@gmail.com>"]
 edition = "2021"
+
+[lib]
+name = "scheduler_pro_mobile_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 
-[dependencies]
-tauri = { version = "2", features = [] }
-serde = { version = "1", features = ["derive"] }
-serde_json = "1"
-
 [features]
 default = []
+desktop = ["tauri/wry", "tauri/tray-icon", "tauri/image-png", "tauri/custom-protocol"]
+mobile = ["tauri/wry", "tauri/custom-protocol"]
+
+[dependencies]
+tauri = { version = "2", default-features = false }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
