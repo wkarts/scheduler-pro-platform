@@ -73,15 +73,8 @@ class BuildManagerService:
                 build_job_id=job.id,
                 sequence=1,
                 level="INFO",
-                message=(
-                    "Build request queued. Dispatch the matching GitHub Actions workflow "
-                    "or let release pipeline process it."
-                ),
-                context={
-                    "workflow_name": workflow_name,
-                    "target": target,
-                    "source_ref": payload.source_ref,
-                },
+                message="Build request queued. Dispatch the matching GitHub Actions workflow or let release pipeline process it.",
+                context={"workflow_name": workflow_name, "target": target, "source_ref": payload.source_ref},
             )
         )
         await self.session.commit()
@@ -95,24 +88,11 @@ class BuildManagerService:
         return [await self._job_dict(job) for job in jobs]
 
     async def get_job(self, job_id: str) -> dict:
-        job = (
-            await self.session.execute(select(BuildJob).where(BuildJob.id == job_id))
-        ).scalar_one()
+        job = (await self.session.execute(select(BuildJob).where(BuildJob.id == job_id))).scalar_one()
         return await self._job_dict(job)
 
-    async def register_artifact(
-        self,
-        job_id: str,
-        artifact_type: str,
-        name: str,
-        download_url: str | None = None,
-        checksum: str | None = None,
-        size_bytes: int = 0,
-        metadata: dict | None = None,
-    ) -> dict:
-        job = (
-            await self.session.execute(select(BuildJob).where(BuildJob.id == job_id))
-        ).scalar_one()
+    async def register_artifact(self, job_id: str, artifact_type: str, name: str, download_url: str | None = None, checksum: str | None = None, size_bytes: int = 0, metadata: dict | None = None) -> dict:
+        job = (await self.session.execute(select(BuildJob).where(BuildJob.id == job_id))).scalar_one()
         artifact = BuildArtifact(
             build_job_id=job.id,
             tenant_id=job.tenant_id,
@@ -126,33 +106,13 @@ class BuildManagerService:
         )
         self.session.add(artifact)
         await self.session.flush()
-        self.session.add(
-            BuildLog(
-                build_job_id=job.id,
-                sequence=await self._next_log_sequence(job.id),
-                level="INFO",
-                message=f"Artifact registered: {name}",
-                context={"artifact_type": artifact_type},
-            )
-        )
+        self.session.add(BuildLog(build_job_id=job.id, sequence=await self._next_log_sequence(job.id), level="INFO", message=f"Artifact registered: {name}", context={"artifact_type": artifact_type}))
         await self.session.commit()
         return self._artifact_dict(artifact)
 
     async def _job_dict(self, job: BuildJob) -> dict:
-        logs = (
-            await self.session.execute(
-                select(BuildLog)
-                .where(BuildLog.build_job_id == job.id)
-                .order_by(BuildLog.sequence)
-            )
-        ).scalars().all()
-        artifacts = (
-            await self.session.execute(
-                select(BuildArtifact)
-                .where(BuildArtifact.build_job_id == job.id)
-                .order_by(BuildArtifact.created_at)
-            )
-        ).scalars().all()
+        logs = (await self.session.execute(select(BuildLog).where(BuildLog.build_job_id == job.id).order_by(BuildLog.sequence))).scalars().all()
+        artifacts = (await self.session.execute(select(BuildArtifact).where(BuildArtifact.build_job_id == job.id).order_by(BuildArtifact.created_at))).scalars().all()
         return {
             "id": job.id,
             "build_request_id": job.build_request_id,
@@ -172,9 +132,7 @@ class BuildManagerService:
         }
 
     async def _next_log_sequence(self, job_id: str) -> int:
-        logs = (
-            await self.session.execute(select(BuildLog).where(BuildLog.build_job_id == job_id))
-        ).scalars().all()
+        logs = (await self.session.execute(select(BuildLog).where(BuildLog.build_job_id == job_id))).scalars().all()
         return len(logs) + 1
 
     def _profile_dict(self, profile: BuildProfile) -> dict:
@@ -192,13 +150,7 @@ class BuildManagerService:
         }
 
     def _log_dict(self, log: BuildLog) -> dict:
-        return {
-            "sequence": log.sequence,
-            "level": log.level,
-            "message": log.message,
-            "context": log.context,
-            "created_at": log.created_at.isoformat() if log.created_at else None,
-        }
+        return {"sequence": log.sequence, "level": log.level, "message": log.message, "context": log.context, "created_at": log.created_at.isoformat() if log.created_at else None}
 
     def _artifact_dict(self, artifact: BuildArtifact) -> dict:
         return {
@@ -213,28 +165,12 @@ class BuildManagerService:
         }
 
     def _runner_label(self, target: str) -> str:
-        return {
-            "ios": "macos-latest",
-            "desktop": "matrix",
-            "android": "ubuntu-latest",
-        }.get(target, "ubuntu-latest")
+        return {"ios": "macos-latest", "desktop": "matrix", "android": "ubuntu-latest"}.get(target, "ubuntu-latest")
 
     def _expected_artifacts(self, target: str, request_id: str) -> dict:
         suffix = str(request_id)[:8]
         if target == "desktop":
-            return {
-                "expected": [
-                    f"scheduler-pro-desktop-windows-{suffix}",
-                    f"scheduler-pro-desktop-linux-{suffix}",
-                    f"scheduler-pro-desktop-macos-{suffix}",
-                ]
-            }
+            return {"expected": [f"scheduler-pro-desktop-windows-{suffix}", f"scheduler-pro-desktop-linux-{suffix}", f"scheduler-pro-desktop-macos-{suffix}"]}
         if target in {"android", "ios"}:
             return {"expected": [f"scheduler-pro-mobile-{target}-{suffix}"]}
-        return {
-            "expected": [
-                f"scheduler-pro-web-{suffix}.tar.gz",
-                f"scheduler-pro-admin-{suffix}.tar.gz",
-                f"scheduler-pro-deploy-{suffix}.tar.gz",
-            ]
-        }
+        return {"expected": [f"scheduler-pro-web-{suffix}.tar.gz", f"scheduler-pro-admin-{suffix}.tar.gz", f"scheduler-pro-deploy-{suffix}.tar.gz"]}
