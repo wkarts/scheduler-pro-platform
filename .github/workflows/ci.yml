@@ -28,9 +28,9 @@ jobs:
       - name: Ruff
         working-directory: apps/api
         run: ruff check app tests
-      - name: Mypy foundation security core
+      - name: Mypy backend
         working-directory: apps/api
-        run: mypy app/core/security.py app/core/secrets.py app/core/tenant_context.py
+        run: mypy app
       - name: Unit tests
         working-directory: apps/api
         run: pytest -q -m "not integration"
