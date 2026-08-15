@@ -5,21 +5,105 @@ on:
     tags:
       - 'v*.*.*'
 
+permissions:
+  contents: write
+  packages: write
+
+env:
+  RELEASE_TAG: ${{ github.ref_name }}
+
 jobs:
-  api-image:
+  base:
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      packages: write
     steps:
       - uses: actions/checkout@v4
-      - name: Login GHCR
-        uses: docker/login-action@v3
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - name: Build and push
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: infrastructure/docker/base/python/Dockerfile
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository }}/python-base:${{ env.RELEASE_TAG }}
+            ghcr.io/${{ github.repository }}/python-base:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  images:
+    needs: base
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: api
+            file: infrastructure/docker/api/Dockerfile
+            tag: api
+            build_args: "PYTHON_BASE_IMAGE=ghcr.io/${{ github.repository }}/python-base:${{ env.RELEASE_TAG }}"
+          - name: worker
+            file: infrastructure/docker/worker/Dockerfile
+            tag: worker
+            build_args: "PYTHON_BASE_IMAGE=ghcr.io/${{ github.repository }}/python-base:${{ env.RELEASE_TAG }}"
+          - name: web
+            file: infrastructure/docker/web/Dockerfile
+            tag: web
+            build_args: "APP_DIR=apps/web"
+          - name: admin
+            file: infrastructure/docker/web/Dockerfile
+            tag: admin
+            build_args: "APP_DIR=apps/admin"
+          - name: proxy
+            file: infrastructure/docker/proxy/Dockerfile
+            tag: proxy
+            build_args: ""
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build and push ${{ matrix.name }}
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ${{ matrix.file }}
+          push: true
+          build-args: ${{ matrix.build_args }}
+          tags: |
+            ghcr.io/${{ github.repository }}/${{ matrix.tag }}:${{ env.RELEASE_TAG }}
+            ghcr.io/${{ github.repository }}/${{ matrix.tag }}:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  web-artifacts:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm install
+      - run: npm --workspace apps/web run build
+      - run: npm --workspace apps/admin run build
+      - name: Pack web/admin/deploy artifacts
         run: |
-          docker build -t ghcr.io/${{ github.repository }}/api:${{ github.ref_name }} .
-          docker push ghcr.io/${{ github.repository }}/api:${{ github.ref_name }}
+          mkdir -p artifacts
+          tar -C apps/web/dist -czf artifacts/scheduler-pro-web-${{ env.RELEASE_TAG }}.tar.gz .
+          tar -C apps/admin/dist -czf artifacts/scheduler-pro-admin-${{ env.RELEASE_TAG }}.tar.gz .
+          tar -C deployments/cloudpanel -czf artifacts/scheduler-pro-cloudpanel-deploy-${{ env.RELEASE_TAG }}.tar.gz .
+          tar -C deployments/dockge -czf artifacts/scheduler-pro-dockge-deploy-${{ env.RELEASE_TAG }}.tar.gz .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: scheduler-pro-web-admin-deploy-${{ env.RELEASE_TAG }}
+          path: artifacts/*
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts/*
+          generate_release_notes: true
