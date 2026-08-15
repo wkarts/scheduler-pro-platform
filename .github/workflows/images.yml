@@ -14,9 +14,6 @@ permissions:
   contents: read
   packages: write
 
-env:
-  IMAGE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.image_tag || 'latest' }}
-
 jobs:
   base:
     runs-on: ubuntu-latest
@@ -34,7 +31,7 @@ jobs:
           file: infrastructure/docker/base/python/Dockerfile
           push: true
           tags: |
-            ghcr.io/${{ github.repository }}/python-base:${{ env.IMAGE_TAG }}
+            ghcr.io/${{ github.repository }}/python-base:${{ github.event.inputs.image_tag || 'latest' }}
             ghcr.io/${{ github.repository }}/python-base:${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
@@ -49,11 +46,11 @@ jobs:
           - name: api
             file: infrastructure/docker/api/Dockerfile
             tag: api
-            build_args: "PYTHON_BASE_IMAGE=ghcr.io/${{ github.repository }}/python-base:${{ env.IMAGE_TAG }}"
+            build_args: "PYTHON_BASE_IMAGE=ghcr.io/${{ github.repository }}/python-base:${{ github.event.inputs.image_tag || 'latest' }}"
           - name: worker
             file: infrastructure/docker/worker/Dockerfile
             tag: worker
-            build_args: "PYTHON_BASE_IMAGE=ghcr.io/${{ github.repository }}/python-base:${{ env.IMAGE_TAG }}"
+            build_args: "PYTHON_BASE_IMAGE=ghcr.io/${{ github.repository }}/python-base:${{ github.event.inputs.image_tag || 'latest' }}"
           - name: web
             file: infrastructure/docker/web/Dockerfile
             tag: web
@@ -82,7 +79,7 @@ jobs:
           push: true
           build-args: ${{ matrix.build_args }}
           tags: |
-            ghcr.io/${{ github.repository }}/${{ matrix.tag }}:${{ env.IMAGE_TAG }}
+            ghcr.io/${{ github.repository }}/${{ matrix.tag }}:${{ github.event.inputs.image_tag || 'latest' }}
             ghcr.io/${{ github.repository }}/${{ matrix.tag }}:${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
