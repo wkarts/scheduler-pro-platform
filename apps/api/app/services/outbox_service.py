@@ -7,7 +7,12 @@ class OutboxService:
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
 
-    async def append(self, event_name: str, aggregate_id: str, payload: dict) -> OutboxEvent:
+    async def append(
+        self,
+        event_name: str,
+        aggregate_id: str,
+        payload: dict[str, object],
+    ) -> OutboxEvent:
         event = OutboxEvent(event_name=event_name, aggregate_id=aggregate_id, payload=payload)
         self.session.add(event)
         return event
