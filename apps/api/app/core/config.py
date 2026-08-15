@@ -1,7 +1,8 @@
 from functools import lru_cache
+from urllib.parse import quote_plus
 from uuid import uuid4
 
-from pydantic import Field
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -19,8 +20,28 @@ class Settings(BaseSettings):
     postgres_db: str = "platform"
     postgres_user: str = "scheduler"
     postgres_password: str = "scheduler_dev_password"
-    postgres_admin_user: str = "postgres"
-    postgres_admin_password: str = "postgres_dev_password"
+    postgres_admin_user: str = "scheduler"
+    postgres_admin_password: str = "scheduler_dev_password"
+
+    dev_tenant_database: str = "tenant_dev"
+    dev_tenant_database_user: str = "tenant_dev_user"
+    dev_tenant_database_password: str = "tenant_dev_password"
+    dev_tenant_database_password_ref: str = "secret://env/TENANT_DEV_DATABASE_PASSWORD"
+    dev_tenant_slug: str = "dev"
+    dev_tenant_name: str = "Scheduler Pro Development"
+    dev_tenant_bucket: str = "tenant-dev"
+    dev_tenant_admin_email: str = "admin@tenant.local"
+    dev_tenant_admin_password: str = "ChangeMe-Tenant-2026!"
+    dev_platform_admin_email: str = "admin@platform.local"
+    dev_platform_admin_password: str = "ChangeMe-Platform-2026!"
+
+    access_token_minutes: int = 15
+    refresh_token_days: int = 30
+    max_login_attempts: int = 5
+    login_lock_minutes: int = 15
+    tenant_engine_cache_max: int = 64
+    tenant_engine_cache_ttl_seconds: int = 900
+    trusted_proxy_hosts: list[str] = Field(default_factory=lambda: ["127.0.0.1", "::1"])
 
     redis_url: str = "redis://localhost:6379/0"
     rabbitmq_url: str = "amqp://scheduler:scheduler@localhost:5672//"
@@ -38,14 +59,51 @@ class Settings(BaseSettings):
     evolution_api_url: str | None = None
     evolution_api_token: str | None = None
 
-    cors_allowed_origins: list[str] = Field(default_factory=lambda: ["http://localhost:5173", "http://localhost:5174", "http://localhost:1420"])
+    cors_allowed_origins: list[str] = Field(
+        default_factory=lambda: [
+            "http://localhost:5173",
+            "http://localhost:5174",
+            "http://localhost:1420",
+        ]
+    )
+
+    @field_validator("cors_allowed_origins", "trusted_proxy_hosts", mode="before")
+    @classmethod
+    def split_csv_values(cls, value):
+        if isinstance(value, str) and not value.lstrip().startswith("["):
+            return [item.strip() for item in value.split(",") if item.strip()]
+        return value
+
+    @staticmethod
+    def _database_url(driver: str, user: str, password: str, host: str, port: int, database: str) -> str:
+        return (
+            f"postgresql+{driver}://{quote_plus(user)}:{quote_plus(password)}"
+            f"@{host}:{port}/{database}"
+        )
 
     @property
     def platform_database_url(self) -> str:
-        return f"postgresql+asyncpg://{self.postgres_user}:{self.postgres_password}@{self.postgres_host}:{self.postgres_port}/{self.postgres_db}"
+        return self._database_url(
+            "asyncpg", self.postgres_user, self.postgres_password,
+            self.postgres_host, self.postgres_port, self.postgres_db,
+        )
+
+    @property
+    def platform_database_url_sync(self) -> str:
+        return self._database_url(
+            "psycopg", self.postgres_user, self.postgres_password,
+            self.postgres_host, self.postgres_port, self.postgres_db,
+        )
 
     def tenant_database_url(self, database: str, user: str, password: str) -> str:
-        return f"postgresql+asyncpg://{user}:{password}@{self.postgres_host}:{self.postgres_port}/{database}"
+        return self._database_url(
+            "asyncpg", user, password, self.postgres_host, self.postgres_port, database
+        )
+
+    def tenant_database_url_sync(self, database: str, user: str, password: str) -> str:
+        return self._database_url(
+            "psycopg", user, password, self.postgres_host, self.postgres_port, database
+        )
 
     @staticmethod
     def new_id(prefix: str) -> str:
