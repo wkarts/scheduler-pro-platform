@@ -9,9 +9,6 @@ permissions:
   contents: write
   packages: write
 
-env:
-  RELEASE_TAG: ${{ github.ref_name }}
-
 jobs:
   base:
     runs-on: ubuntu-latest
@@ -29,7 +26,7 @@ jobs:
           file: infrastructure/docker/base/python/Dockerfile
           push: true
           tags: |
-            ghcr.io/${{ github.repository }}/python-base:${{ env.RELEASE_TAG }}
+            ghcr.io/${{ github.repository }}/python-base:${{ github.ref_name }}
             ghcr.io/${{ github.repository }}/python-base:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
@@ -44,11 +41,11 @@ jobs:
           - name: api
             file: infrastructure/docker/api/Dockerfile
             tag: api
-            build_args: "PYTHON_BASE_IMAGE=ghcr.io/${{ github.repository }}/python-base:${{ env.RELEASE_TAG }}"
+            build_args: "PYTHON_BASE_IMAGE=ghcr.io/${{ github.repository }}/python-base:${{ github.ref_name }}"
           - name: worker
             file: infrastructure/docker/worker/Dockerfile
             tag: worker
-            build_args: "PYTHON_BASE_IMAGE=ghcr.io/${{ github.repository }}/python-base:${{ env.RELEASE_TAG }}"
+            build_args: "PYTHON_BASE_IMAGE=ghcr.io/${{ github.repository }}/python-base:${{ github.ref_name }}"
           - name: web
             file: infrastructure/docker/web/Dockerfile
             tag: web
@@ -77,7 +74,7 @@ jobs:
           push: true
           build-args: ${{ matrix.build_args }}
           tags: |
-            ghcr.io/${{ github.repository }}/${{ matrix.tag }}:${{ env.RELEASE_TAG }}
+            ghcr.io/${{ github.repository }}/${{ matrix.tag }}:${{ github.ref_name }}
             ghcr.io/${{ github.repository }}/${{ matrix.tag }}:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
@@ -95,13 +92,13 @@ jobs:
       - name: Pack web/admin/deploy artifacts
         run: |
           mkdir -p artifacts
-          tar -C apps/web/dist -czf artifacts/scheduler-pro-web-${{ env.RELEASE_TAG }}.tar.gz .
-          tar -C apps/admin/dist -czf artifacts/scheduler-pro-admin-${{ env.RELEASE_TAG }}.tar.gz .
-          tar -C deployments/cloudpanel -czf artifacts/scheduler-pro-cloudpanel-deploy-${{ env.RELEASE_TAG }}.tar.gz .
-          tar -C deployments/dockge -czf artifacts/scheduler-pro-dockge-deploy-${{ env.RELEASE_TAG }}.tar.gz .
+          tar -C apps/web/dist -czf artifacts/scheduler-pro-web-${{ github.ref_name }}.tar.gz .
+          tar -C apps/admin/dist -czf artifacts/scheduler-pro-admin-${{ github.ref_name }}.tar.gz .
+          tar -C deployments/cloudpanel -czf artifacts/scheduler-pro-cloudpanel-deploy-${{ github.ref_name }}.tar.gz .
+          tar -C deployments/dockge -czf artifacts/scheduler-pro-dockge-deploy-${{ github.ref_name }}.tar.gz .
       - uses: actions/upload-artifact@v4
         with:
-          name: scheduler-pro-web-admin-deploy-${{ env.RELEASE_TAG }}
+          name: scheduler-pro-web-admin-deploy-${{ github.ref_name }}
           path: artifacts/*
       - uses: softprops/action-gh-release@v2
         with:
