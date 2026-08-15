@@ -2,7 +2,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from hashlib import sha256
 from secrets import token_urlsafe
-from typing import Any
+from typing import Any, cast
 
 from jose import JWTError, jwt
 from passlib.context import CryptContext
@@ -26,12 +26,12 @@ class AuthPrincipal:
 
 
 def hash_password(password: str) -> str:
-    return pwd_context.hash(password)
+    return cast(str, pwd_context.hash(password))
 
 
 def verify_password(password: str, password_hash: str) -> bool:
     try:
-        return pwd_context.verify(password, password_hash)
+        return bool(pwd_context.verify(password, password_hash))
     except (TypeError, ValueError):
         return False
 
@@ -68,12 +68,15 @@ def create_access_token(
         "iat": int(now.timestamp()),
         "exp": int(expiration.timestamp()),
     }
-    return jwt.encode(payload, settings.app_secret_key, algorithm="HS256")
+    return cast(str, jwt.encode(payload, settings.app_secret_key, algorithm="HS256"))
 
 
 def decode_access_token(token: str) -> dict[str, Any]:
     try:
-        payload = jwt.decode(token, settings.app_secret_key, algorithms=["HS256"])
+        payload = cast(
+            dict[str, Any],
+            jwt.decode(token, settings.app_secret_key, algorithms=["HS256"]),
+        )
     except JWTError as exc:
         raise APIError("AUTH_TOKEN_INVALID", "Token de acesso inválido ou expirado.", 401) from exc
     if payload.get("type") != "access" or not payload.get("sub") or not payload.get("sid"):
