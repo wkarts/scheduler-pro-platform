@@ -2,8 +2,17 @@
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Scheduler Pro Mobile",
   "version": "0.1.0-alpha.1",
-  "identifier": "br.com.schedulerpro.mobile",
-  "build": {"beforeDevCommand":"npm run dev","devUrl":"http://localhost:1421","beforeBuildCommand":"npm run build","frontendDist":"../dist"},
-  "app": {"windows":[{"label":"main","title":"Scheduler Pro Mobile","width":430,"height":900,"resizable":true}],"security":{"csp":"default-src 'self'; img-src 'self' data: https:; connect-src 'self' http://localhost:* https:; style-src 'self' 'unsafe-inline'; script-src 'self'"}},
+  "identifier": "br.com.argws.schedulerpro",
+  "build": {
+    "beforeDevCommand": "npm run dev",
+    "devUrl": "http://localhost:5175",
+    "beforeBuildCommand": "npm run build",
+    "features": ["mobile"],
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [{"label": "main", "title": "Scheduler Pro Mobile", "width": 430, "height": 860, "minWidth": 360, "minHeight": 640, "resizable": true, "visible": true, "center": true}],
+    "security": {"csp": null}
+  },
   "bundle": {"active": false, "targets": "all"}
 }
