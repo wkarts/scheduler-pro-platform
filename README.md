@@ -2,85 +2,44 @@
 
 Plataforma SaaS multitenant de agendamentos construída com **FastAPI/Python 3.13**, **PostgreSQL**, **Redis**, **RabbitMQ**, **Vue 3 + Tailwind PWA** e **Tauri 2** para desktop/mobile.
 
-O núcleo permanece em Python/FastAPI. Tauri é usado somente para aplicativos clientes da API SaaS.
+O núcleo permanece em Python/FastAPI. Tauri é usado somente para os aplicativos gerenciais desktop e mobile.
 
-## Estado funcional
+## Estado funcional auditado
 
-- Fundação de banco/Alembic/bootstrap: **IMPLEMENTED**;
-- autenticação, sessões, refresh rotativo e RBAC: **IMPLEMENTED**;
-- resolução/isolation multitenant por hostname e banco: **IMPLEMENTED**;
-- readiness de PostgreSQL/tenant/Redis/RabbitMQ/MinIO: **IMPLEMENTED**;
-- motor completo de agenda/disponibilidade/concorrência: **PARTIAL** — próximo incremento;
-- Outbox/notificações/WhatsApp real: **PARTIAL/PLANNED** — incremento posterior;
-- Web/Admin operacionais completos: **PARTIAL**;
-- provisionamento/Cloudflare real: **PARTIAL/BLOCKED_EXTERNAL quando faltarem credenciais**;
-- instaladores Desktop e APK/AAB finais: **PARTIAL** — não considerar fontes/PWA como artefato nativo concluído.
+- Fundação de banco/Alembic/bootstrap: **IMPLEMENTED** neste incremento.
+- Autenticação, sessões, refresh rotativo e RBAC: **IMPLEMENTED** neste incremento.
+- Resolução/isolamento multitenant por hostname e banco: **IMPLEMENTED** neste incremento.
+- Readiness de PostgreSQL/tenant/Redis/RabbitMQ/MinIO: **IMPLEMENTED** neste incremento.
+- Motor completo de agenda/disponibilidade/concorrência: **PARTIAL** — próximo incremento.
+- Outbox/notificações/WhatsApp real: **PARTIAL/PLANNED** — incremento posterior.
+- Web/Admin operacionais completos: **PARTIAL**.
+- Provisionamento/Cloudflare real: **PARTIAL**; operações externas ficam `BLOCKED_EXTERNAL` quando faltarem credenciais.
+- Instaladores Desktop e APK/AAB finais: **PARTIAL** — fontes/PWA não são considerados artefatos nativos concluídos.
 
 ## Estrutura
 
 ```text
 apps/
   api/        FastAPI + SQLAlchemy Async
-  web/        Webapp tenant PWA
-  admin/      Control Plane
+  web/        Webapp tenant PWA instalável
+  admin/      Super Admin / Control Plane PWA instalável
   desktop/    Tauri 2 Desktop
   mobile/     Tauri 2 Mobile
 packages/     contratos e SDK
-infrastructure/docker/
+infrastructure/docker
+  base/python Imagem base Python 3.13
+  api         Imagem API
+  worker      Imagem workers Celery
+  web         Imagem web/admin PWA via Nginx
+  proxy       Reverse proxy interno
 deployments/
+  development
+  cloudpanel
+  dockge
 docs/
 ```
 
-## Execução local da fundação
-
-```bash
-cp .env.example .env
-docker compose -f deployments/development/docker-compose.yml up --build -d
-```
-
-O serviço `bootstrap` cria/aplica, de forma idempotente, `platform`, `tenant_dev`, migrations, domínios locais, admins/RBAC e bucket MinIO antes de liberar a API.
-
-Ver comandos completos em `docs/operations/DEVELOPMENT.md`.
-
-## Health
-
-```bash
-curl -H 'Host: localhost' http://127.0.0.1:8000/api/v1/health/live
-curl -H 'Host: localhost' http://127.0.0.1:8000/api/v1/health/ready
-```
-
-`/health/live` verifica processo. `/health/ready` verifica as dependências obrigatórias e revisions Alembic; falha retorna HTTP 503.
-
-## Migrations
-
-Platform:
-
-```bash
-cd apps/api
-alembic -c alembic.ini upgrade head
-```
-
-Tenant:
-
-```bash
-ALEMBIC_TENANT_DATABASE=tenant_dev \
-ALEMBIC_TENANT_USER=tenant_dev_user \
-ALEMBIC_TENANT_PASSWORD=tenant_dev_password \
-alembic -c alembic-tenant.ini upgrade head
-```
-
-Os SQLs históricos foram preservados como baseline; não houve reconstrução destrutiva.
-
-## CI
-
-Pipelines relevantes da fundação:
-
-- `CI`: compile, lint, typecheck, unit tests, frontend build e Docker image builds;
-- `Integration Tests`: Compose real, bootstrap, readiness, PostgreSQL multitenant, Redis, RabbitMQ, MinIO, auth/RBAC/isolation e round-trip Alembic.
-
 ## Imagens GHCR
-
-A infraestrutura existente continua preparada para:
 
 ```text
 ghcr.io/wkarts/scheduler-pro-platform/python-base:latest
@@ -91,8 +50,83 @@ ghcr.io/wkarts/scheduler-pro-platform/admin:latest
 ghcr.io/wkarts/scheduler-pro-platform/proxy:latest
 ```
 
+A imagem `python-base` evita recompilar dependências nativas em toda build da API/worker.
+
+## Execução local
+
+```bash
+cp .env.example .env
+docker compose -f deployments/development/docker-compose.yml up --build
+```
+
+O serviço `bootstrap` cria/aplica de forma idempotente `tenant_dev`, migrations platform/tenant, domínios locais, administradores/RBAC e bucket MinIO antes de liberar a API.
+
+Health checks:
+
+```bash
+curl -H 'Host: localhost' http://127.0.0.1:8000/api/v1/health/live
+curl -H 'Host: localhost' http://127.0.0.1:8000/api/v1/health/ready
+```
+
+`/health/live` verifica o processo. `/health/ready` verifica dependências obrigatórias e revisions Alembic e retorna HTTP 503 quando a fundação não está pronta.
+
+Comandos detalhados: `docs/operations/DEVELOPMENT.md`.
+
+## CloudPanel/Dockge
+
+Use os pacotes em:
+
+```text
+deployments/cloudpanel
+deployments/dockge
+```
+
+Exemplo:
+
+```bash
+cd deployments/cloudpanel
+cp .env.example .env
+docker compose --env-file .env -f compose.yaml pull
+docker compose --env-file .env -f compose.yaml up -d
+```
+
+No CloudPanel, aponte o reverse proxy para:
+
+```text
+http://127.0.0.1:18080
+```
+
+## Builds e artefatos
+
+Workflows existentes:
+
+- `CI`: valida API, frontend e Docker; neste incremento ganhou compile/lint/typecheck/testes unitários mais rigorosos.
+- `Integration Tests`: valida Compose, bootstrap, PostgreSQL multitenant, Redis, RabbitMQ, MinIO, autenticação/RBAC, readiness e round-trip Alembic.
+- `Base Image`: publica `python-base`.
+- `Images`: publica `api`, `worker`, `web`, `admin`, `proxy` e `python-base`.
+- `Release`: fluxo legado de publicação; ainda será endurecido na fase de Build Manager/Release.
+- `Desktop Artifacts`: **PARTIAL**; presença do workflow não prova instalador final testável.
+- `Mobile Artifacts`: **PARTIAL**; PWA ou shell/fonte não é APK/AAB e não deve ser anunciado como tal.
+
+## Validação local
+
+```bash
+bash scripts/validate-local.sh
+bash scripts/build/build-images-local.sh local
+bash scripts/build/package-web-artifacts.sh local
+```
+
+A validação integral da fundação também pode ser executada pela stack de desenvolvimento:
+
+```bash
+docker compose -f deployments/development/docker-compose.yml up --build -d
+docker compose -f deployments/development/docker-compose.yml exec -T api pytest -q -m integration
+```
+
 ## Segurança
 
-Nenhum segredo real deve ser commitado. `tenant_databases.password_ref` contém somente uma referência (`secret://...`) resolvida antes da conexão. Em produção, utilize secrets/secret manager e chave de aplicação forte.
+Nenhum segredo deve ser commitado. Use `.env`, GitHub Actions Secrets e secret manager em produção.
+
+`tenant_databases.password_ref` armazena somente uma referência (`secret://...`); a senha é resolvida pelo `SecretResolver` antes da abertura da conexão.
 
 Detalhes: `docs/security/SECURITY.md`, `docs/architecture/AUTHORIZATION.md` e `docs/architecture/MULTITENANCY.md`.
