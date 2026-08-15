@@ -1,4 +1,5 @@
-from collections.abc import AsyncIterator, Callable
+from collections.abc import AsyncIterator, Awaitable, Callable
+from typing import Any
 from urllib.parse import urlsplit
 
 from fastapi import Depends, Request
@@ -63,7 +64,9 @@ async def get_tenant_session(
         yield session
 
 
-def _token(credentials: HTTPAuthorizationCredentials | None) -> dict:
+def _token(
+    credentials: HTTPAuthorizationCredentials | None,
+) -> dict[str, Any]:
     if credentials is None or credentials.scheme.lower() != "bearer":
         raise APIError("AUTH_REQUIRED", "Autenticação obrigatória.", 401)
     return decode_access_token(credentials.credentials)
@@ -125,9 +128,13 @@ async def get_current_tenant_user(
         ).scalars()
     )
     return AuthPrincipal(
-        user_id=row["id"], email=row["email"], user_type="tenant",
-        session_id=payload["sid"], tenant_id=context.tenant_id,
-        permissions=frozenset(permissions), roles=frozenset(roles),
+        user_id=row["id"],
+        email=row["email"],
+        user_type="tenant",
+        session_id=payload["sid"],
+        tenant_id=context.tenant_id,
+        permissions=frozenset(permissions),
+        roles=frozenset(roles),
     )
 
 
@@ -164,26 +171,48 @@ async def get_current_platform_user(
     permissions = {"platform.manage", "builds.manage"} if row["is_super_admin"] else set()
     roles = {"super-admin"} if row["is_super_admin"] else set()
     return AuthPrincipal(
-        user_id=row["id"], email=row["email"], user_type="platform",
-        session_id=payload["sid"], tenant_id=None,
-        permissions=frozenset(permissions), roles=frozenset(roles),
+        user_id=row["id"],
+        email=row["email"],
+        user_type="platform",
+        session_id=payload["sid"],
+        tenant_id=None,
+        permissions=frozenset(permissions),
+        roles=frozenset(roles),
         is_super_admin=bool(row["is_super_admin"]),
     )
 
 
-def require_permission(permission: str) -> Callable:
-    async def dependency(principal: AuthPrincipal = Depends(get_current_user)) -> AuthPrincipal:
+def require_permission(
+    permission: str,
+) -> Callable[[AuthPrincipal], Awaitable[AuthPrincipal]]:
+    async def dependency(
+        principal: AuthPrincipal = Depends(get_current_user),
+    ) -> AuthPrincipal:
         if permission not in principal.permissions:
-            raise APIError("AUTH_PERMISSION_DENIED", "Permissão insuficiente.", 403, {"permission": permission})
+            raise APIError(
+                "AUTH_PERMISSION_DENIED",
+                "Permissão insuficiente.",
+                403,
+                {"permission": permission},
+            )
         return principal
 
     return dependency
 
 
-def require_role(role: str) -> Callable:
-    async def dependency(principal: AuthPrincipal = Depends(get_current_user)) -> AuthPrincipal:
+def require_role(
+    role: str,
+) -> Callable[[AuthPrincipal], Awaitable[AuthPrincipal]]:
+    async def dependency(
+        principal: AuthPrincipal = Depends(get_current_user),
+    ) -> AuthPrincipal:
         if role not in principal.roles:
-            raise APIError("AUTH_ROLE_DENIED", "Perfil insuficiente.", 403, {"role": role})
+            raise APIError(
+                "AUTH_ROLE_DENIED",
+                "Perfil insuficiente.",
+                403,
+                {"role": role},
+            )
         return principal
 
     return dependency
@@ -193,5 +222,9 @@ async def require_super_admin(
     principal: AuthPrincipal = Depends(get_current_platform_user),
 ) -> AuthPrincipal:
     if not principal.is_super_admin:
-        raise APIError("AUTH_SUPER_ADMIN_REQUIRED", "Superadministrador obrigatório.", 403)
+        raise APIError(
+            "AUTH_SUPER_ADMIN_REQUIRED",
+            "Superadministrador obrigatório.",
+            403,
+        )
     return principal

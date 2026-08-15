@@ -1,7 +1,9 @@
 import json
 from datetime import UTC, datetime, timedelta
+from typing import Any
 
 from sqlalchemy import text
+from sqlalchemy.engine import RowMapping
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
@@ -36,13 +38,17 @@ class _BaseAuthService:
         result: str,
         ip_address: str | None,
         correlation_id: str | None,
-        metadata: dict | None = None,
+        metadata: dict[str, Any] | None = None,
     ) -> None:
         await self.session.execute(
             text(
                 f"""
-                insert into {self.audit_table}(user_id, action, result, ip_address, correlation_id, metadata)
-                values(:user_id, :action, :result, :ip, :correlation_id, cast(:metadata as jsonb))
+                insert into {self.audit_table}(
+                    user_id, action, result, ip_address, correlation_id, metadata
+                )
+                values(
+                    :user_id, :action, :result, :ip, :correlation_id, cast(:metadata as jsonb)
+                )
                 """
             ),
             {
@@ -55,7 +61,11 @@ class _BaseAuthService:
             },
         )
 
-    async def _permissions(self, user_id: str, is_super_admin: bool = False) -> tuple[list[str], list[str]]:
+    async def _permissions(
+        self,
+        user_id: str,
+        is_super_admin: bool = False,
+    ) -> tuple[list[str], list[str]]:
         if self.user_type == "platform":
             permissions = ["platform.manage", "builds.manage"] if is_super_admin else []
             return permissions, ["super-admin"] if is_super_admin else []
@@ -86,7 +96,7 @@ class _BaseAuthService:
         )
         return list(permission_rows.scalars()), list(role_rows.scalars())
 
-    async def _lookup_user(self, email: str):
+    async def _lookup_user(self, email: str) -> RowMapping | None:
         extra = ", is_super_admin" if self.user_type == "platform" else ""
         result = await self.session.execute(
             text(
@@ -110,7 +120,7 @@ class _BaseAuthService:
         user_agent: str | None,
         ip_address: str | None,
         correlation_id: str | None,
-    ) -> dict:
+    ) -> dict[str, Any]:
         now = datetime.now(UTC)
         user = await self._lookup_user(email)
         if user is None:
@@ -137,11 +147,17 @@ class _BaseAuthService:
                 text(
                     f"""
                     update {self.user_table}
-                    set failed_login_attempts=:attempts, locked_until=:locked_until, updated_at=now()
+                    set failed_login_attempts=:attempts,
+                        locked_until=:locked_until,
+                        updated_at=now()
                     where id=:user_id
                     """
                 ),
-                {"attempts": attempts, "locked_until": new_lock, "user_id": user_id},
+                {
+                    "attempts": attempts,
+                    "locked_until": new_lock,
+                    "user_id": user_id,
+                },
             )
             await self._audit(user_id, "auth.login", "DENIED", ip_address, correlation_id)
             await self.session.commit()
@@ -164,7 +180,9 @@ class _BaseAuthService:
             await self.session.execute(
                 text(
                     f"""
-                    insert into {self.session_table}(user_id, expires_at, user_agent, ip_address)
+                    insert into {self.session_table}(
+                        user_id, expires_at, user_agent, ip_address
+                    )
                     values(:user_id, :expires_at, :user_agent, :ip_address)
                     returning id::text
                     """
@@ -181,7 +199,9 @@ class _BaseAuthService:
         await self.session.execute(
             text(
                 f"""
-                insert into {self.refresh_table}(session_id, user_id, token_hash, expires_at)
+                insert into {self.refresh_table}(
+                    session_id, user_id, token_hash, expires_at
+                )
                 values(:session_id, :user_id, :token_hash, :expires_at)
                 """
             ),
@@ -217,16 +237,21 @@ class _BaseAuthService:
             },
         }
 
-    async def refresh(self, raw_refresh_token: str) -> dict:
+    async def refresh(self, raw_refresh_token: str) -> dict[str, Any]:
         token_hash = hash_opaque_token(raw_refresh_token)
         extra = ", u.is_super_admin" if self.user_type == "platform" else ""
         result = await self.session.execute(
             text(
                 f"""
-                select rt.id::text as token_id, rt.session_id::text as session_id,
-                       rt.user_id::text as user_id, rt.expires_at, rt.revoked_at,
-                       s.revoked_at as session_revoked_at, s.expires_at as session_expires_at,
-                       u.email, u.is_active {extra}
+                select rt.id::text as token_id,
+                       rt.session_id::text as session_id,
+                       rt.user_id::text as user_id,
+                       rt.expires_at,
+                       rt.revoked_at,
+                       s.revoked_at as session_revoked_at,
+                       s.expires_at as session_expires_at,
+                       u.email,
+                       u.is_active {extra}
                 from {self.refresh_table} rt
                 join {self.session_table} s on s.id=rt.session_id
                 join {self.user_table} u on u.id=rt.user_id
@@ -242,15 +267,27 @@ class _BaseAuthService:
             raise APIError("AUTH_REFRESH_INVALID", "Refresh token inválido ou expirado.", 401)
         if row["revoked_at"] is not None:
             await self.session.execute(
-                text(f"update {self.session_table} set revoked_at=coalesce(revoked_at, now()) where id=:session_id"),
+                text(
+                    f"update {self.session_table} "
+                    "set revoked_at=coalesce(revoked_at, now()) "
+                    "where id=:session_id"
+                ),
                 {"session_id": row["session_id"]},
             )
             await self.session.execute(
-                text(f"update {self.refresh_table} set revoked_at=coalesce(revoked_at, now()) where session_id=:session_id"),
+                text(
+                    f"update {self.refresh_table} "
+                    "set revoked_at=coalesce(revoked_at, now()) "
+                    "where session_id=:session_id"
+                ),
                 {"session_id": row["session_id"]},
             )
             await self.session.commit()
-            raise APIError("AUTH_REFRESH_REUSED", "Sessão revogada por reutilização de refresh token.", 401)
+            raise APIError(
+                "AUTH_REFRESH_REUSED",
+                "Sessão revogada por reutilização de refresh token.",
+                401,
+            )
         if (
             row["expires_at"] <= now
             or row["session_expires_at"] <= now
@@ -267,7 +304,9 @@ class _BaseAuthService:
             await self.session.execute(
                 text(
                     f"""
-                    insert into {self.refresh_table}(session_id, user_id, token_hash, expires_at)
+                    insert into {self.refresh_table}(
+                        session_id, user_id, token_hash, expires_at
+                    )
                     values(:session_id, :user_id, :token_hash, :expires_at)
                     returning id::text
                     """
@@ -291,7 +330,10 @@ class _BaseAuthService:
             {"replacement_id": replacement_id, "token_id": row["token_id"]},
         )
         await self.session.execute(
-            text(f"update {self.session_table} set last_seen_at=now() where id=:session_id"),
+            text(
+                f"update {self.session_table} "
+                "set last_seen_at=now() where id=:session_id"
+            ),
             {"session_id": row["session_id"]},
         )
         await self.session.commit()
@@ -321,28 +363,45 @@ class _BaseAuthService:
         token_hash = hash_opaque_token(raw_refresh_token)
         token = (
             await self.session.execute(
-                text(f"select session_id::text from {self.refresh_table} where token_hash=:token_hash"),
+                text(
+                    f"select session_id::text from {self.refresh_table} "
+                    "where token_hash=:token_hash"
+                ),
                 {"token_hash": token_hash},
             )
         ).scalar_one_or_none()
         if token is not None:
             await self.session.execute(
-                text(f"update {self.refresh_table} set revoked_at=coalesce(revoked_at, now()) where session_id=:session_id"),
+                text(
+                    f"update {self.refresh_table} "
+                    "set revoked_at=coalesce(revoked_at, now()) "
+                    "where session_id=:session_id"
+                ),
                 {"session_id": token},
             )
             await self.session.execute(
-                text(f"update {self.session_table} set revoked_at=coalesce(revoked_at, now()) where id=:session_id"),
+                text(
+                    f"update {self.session_table} "
+                    "set revoked_at=coalesce(revoked_at, now()) "
+                    "where id=:session_id"
+                ),
                 {"session_id": token},
             )
             await self.session.commit()
 
     async def logout_all(self, user_id: str) -> None:
         await self.session.execute(
-            text(f"update {self.session_table} set revoked_at=coalesce(revoked_at, now()) where user_id=:user_id"),
+            text(
+                f"update {self.session_table} "
+                "set revoked_at=coalesce(revoked_at, now()) where user_id=:user_id"
+            ),
             {"user_id": user_id},
         )
         await self.session.execute(
-            text(f"update {self.refresh_table} set revoked_at=coalesce(revoked_at, now()) where user_id=:user_id"),
+            text(
+                f"update {self.refresh_table} "
+                "set revoked_at=coalesce(revoked_at, now()) where user_id=:user_id"
+            ),
             {"user_id": user_id},
         )
         await self.session.commit()

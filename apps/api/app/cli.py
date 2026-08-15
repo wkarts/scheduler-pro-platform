@@ -3,6 +3,7 @@ import os
 import re
 import sys
 from pathlib import Path
+from typing import cast
 
 import asyncpg
 import boto3
@@ -193,7 +194,7 @@ async def seed_platform() -> str:
             settings.dev_platform_admin_email.lower(),
             hash_password(settings.dev_platform_admin_password),
         )
-        return tenant_id
+        return cast(str, tenant_id)
     finally:
         await conn.close()
 
@@ -286,7 +287,9 @@ async def ensure_dev_bucket() -> None:
         except (BotoCoreError, ClientError, OSError) as exc:
             last_error = exc
             await asyncio.sleep(1)
-    raise RuntimeError("MinIO/S3 did not become ready during development bootstrap") from last_error
+    raise RuntimeError(
+        "MinIO/S3 did not become ready during development bootstrap"
+    ) from last_error
 
 
 async def bootstrap_dev() -> None:

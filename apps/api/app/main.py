@@ -1,6 +1,7 @@
+from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import ORJSONResponse
 
@@ -12,7 +13,7 @@ from app.db.session import close_database_engines
 
 
 @asynccontextmanager
-async def lifespan(_: FastAPI):
+async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     yield
     await close_database_engines()
 
@@ -35,7 +36,10 @@ def create_app() -> FastAPI:
         allow_credentials=True,
         allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
         allow_headers=[
-            "Authorization", "Content-Type", "X-Request-ID", "X-Correlation-ID"
+            "Authorization",
+            "Content-Type",
+            "X-Request-ID",
+            "X-Correlation-ID",
         ],
     )
 
@@ -43,8 +47,13 @@ def create_app() -> FastAPI:
     app.add_exception_handler(Exception, unhandled_error_handler)
 
     @app.middleware("http")
-    async def correlation_middleware(request: Request, call_next):
-        request.state.request_id = request.headers.get("x-request-id") or settings.new_id("req")
+    async def correlation_middleware(
+        request: Request,
+        call_next: Callable[[Request], Awaitable[Response]],
+    ) -> Response:
+        request.state.request_id = (
+            request.headers.get("x-request-id") or settings.new_id("req")
+        )
         request.state.correlation_id = (
             request.headers.get("x-correlation-id") or settings.new_id("corr")
         )

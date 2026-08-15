@@ -1,4 +1,5 @@
 import asyncio
+from typing import Any
 
 import aio_pika
 import boto3
@@ -19,26 +20,32 @@ router = APIRouter()
 
 
 @router.get("/health")
-async def health():
+async def health() -> dict[str, Any]:
     return success({"status": "ok", "service": "scheduler-pro-api"})
 
 
 @router.get("/health/live")
-async def live():
+async def live() -> dict[str, Any]:
     return success({"live": True})
 
 
 async def _check_platform() -> tuple[str, str | None]:
     async with PlatformSession() as session:
         await session.execute(text("select 1"))
-        revision = (await session.execute(text("select version_num from alembic_version"))).scalar_one_or_none()
+        revision = (
+            await session.execute(text("select version_num from alembic_version"))
+        ).scalar_one_or_none()
         if revision != "platform_0004":
             return "failed", f"migration:{revision or 'missing'}"
     return "ok", None
 
 
 async def _check_redis() -> tuple[str, str | None]:
-    client = redis.from_url(settings.redis_url, socket_connect_timeout=2, socket_timeout=2)
+    client = redis.from_url(  # type: ignore[no-untyped-call]
+        settings.redis_url,
+        socket_connect_timeout=2,
+        socket_timeout=2,
+    )
     try:
         if not await client.ping():
             return "failed", "ping"
@@ -60,7 +67,11 @@ def _s3_list_buckets() -> None:
         aws_access_key_id=settings.s3_access_key,
         aws_secret_access_key=settings.s3_secret_key,
         region_name=settings.s3_region,
-        config=BotoConfig(connect_timeout=2, read_timeout=2, retries={"max_attempts": 1}),
+        config=BotoConfig(
+            connect_timeout=2,
+            read_timeout=2,
+            retries={"max_attempts": 1},
+        ),
     )
     client.list_buckets()
 
@@ -72,14 +83,20 @@ async def _check_s3() -> tuple[str, str | None]:
 
 async def _check_tenant(request: Request) -> tuple[str, str | None]:
     hostname = resolve_request_hostname(request)
-    if settings.app_env != "development" and hostname == resolve_request_hostname_from_value(settings.public_platform_domain):
+    if (
+        settings.app_env != "development"
+        and hostname
+        == resolve_request_hostname_from_value(settings.public_platform_domain)
+    ):
         return "not_applicable", None
     async with PlatformSession() as platform:
         context = await TenantResolver(platform).resolve(hostname)
     engine = await get_tenant_engine(context)
     factory = async_sessionmaker(engine, expire_on_commit=False, class_=AsyncSession)
     async with factory() as session:
-        revision = (await session.execute(text("select version_num from alembic_version"))).scalar_one_or_none()
+        revision = (
+            await session.execute(text("select version_num from alembic_version"))
+        ).scalar_one_or_none()
         if revision != "tenant_0002":
             return "failed", f"migration:{revision or 'missing'}"
         await session.execute(text("select 1"))
@@ -93,7 +110,7 @@ def resolve_request_hostname_from_value(value: str) -> str:
 
 
 @router.get("/health/ready")
-async def ready(request: Request):
+async def ready(request: Request) -> ORJSONResponse:
     checks: dict[str, dict[str, str]] = {}
     probes = {
         "postgres_platform": _check_platform,
@@ -120,4 +137,7 @@ async def ready(request: Request):
         checks["tenant"]["detail"] = detail
     ready_state = ready_state and state in {"ok", "not_applicable"}
     payload = success({"ready": ready_state, "checks": checks})
-    return ORJSONResponse(status_code=200 if ready_state else 503, content=payload)
+    return ORJSONResponse(
+        status_code=200 if ready_state else 503,
+        content=payload,
+    )
