@@ -1,34 +1,45 @@
-# Sistema
-.DS_Store
-Thumbs.db
-desktop.ini
-
-# Logs
-*.log
-logs/
-
-# Ambiente
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.venv/
+venv/
 .env
 .env.*
 !.env.example
 
-# Node/PHP/Python/Rust comuns
+# Node
 node_modules/
-vendor/
-__pycache__/
-target/
 dist/
 build/
 coverage/
+*.tsbuildinfo
 
-# IDE
-.vscode/
+# Tauri/Rust
+target/
+src-tauri/target/
+Cargo.lock.orig
+
+# OS/IDE
+.DS_Store
+Thumbs.db
 .idea/
+.vscode/
 
-# Docker local
-docker-compose.override.yml
-
-# Temporarios
-tmp/
-temp/
-*.tmp
+# Secrets / artifacts
+*.pem
+*.key
+*.p12
+*.jks
+*.keystore
+*.mobileprovision
+*.zip
+*.tar.gz
+artifacts/
+storage/
+minio-data/
+postgres-data/
+redis-data/
+rabbitmq-data/

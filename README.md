@@ -1,45 +1,76 @@
-# scheduler-pro-platform
+# Scheduler Pro Platform
 
-Repositorio criado online e pre-configurado para:
+Plataforma SaaS multitenant de agendamentos construída com **FastAPI/Python**, **PostgreSQL**, **Redis**, **RabbitMQ**, **Vue 3 + Tailwind PWA** e **Tauri 2** para desktop/mobile.
 
-- Codigo-fonte
-- Releases GitHub
-- Docker Images
-- GitHub Packages / GHCR
+Este repositório segue o contrato técnico do projeto: Control Plane, Tenant Plane e Delivery Plane. O núcleo permanece em Python/FastAPI. Tauri é usado somente para os aplicativos gerenciais desktop e mobile.
 
-## Visibilidade configurada
+## Estrutura
 
-Repository: private
+```text
+apps/
+  api/        FastAPI + SQLAlchemy Async + Alembic-ready
+  web/        Webapp tenant PWA instalável
+  admin/      Super Admin / Control Plane PWA instalável
+  desktop/    Tauri 2 Desktop
+  mobile/     Tauri 2 Mobile
+backend/      domínio compartilhado futuro
+services/     serviços assíncronos e workers
+packages/     contratos, SDK e componentes compartilhados
+infrastructure/docker
+deployments/development
+docs/
+```
 
-## Imagem Docker GHCR
+## Fundamentos implementados
 
-ghcr.io/wkarts/argws-licensys:latest
+- Tenant resolvido por hostname, nunca por `tenant_id` arbitrário do frontend.
+- Control Plane separado do Tenant Plane.
+- Banco da plataforma e banco individual por tenant.
+- Provisionamento idempotente por steps.
+- Agenda com proteção contra double booking no PostgreSQL.
+- Landing Page Builder com versionamento.
+- WhatsApp API com provider abstrato.
+- Webhooks idempotentes.
+- Transactional Outbox.
+- RBAC e feature flags.
+- Web/admin como PWA instalável pelo navegador.
+- Desktop/mobile com Tauri 2 consumindo a API.
 
-## Pull da imagem
+## Execução local
 
-Se o package estiver publico:
+```bash
+cp .env.example .env
+docker compose -f deployments/development/docker-compose.yml up --build
+```
 
-docker pull ghcr.io/wkarts/argws-licensys:latest
+API:
 
-Se o package estiver privado:
+```text
+http://localhost:8000
+```
 
-echo SEU_TOKEN_GITHUB | docker login ghcr.io -u SEU_USUARIO --password-stdin
-docker pull ghcr.io/wkarts/argws-licensys:latest
+Web tenant:
 
-## Observacoes
+```text
+http://localhost:5173
+```
 
-- Releases seguem a visibilidade do repositorio.
-- O package Docker/GHCR so existe depois da primeira publicacao da imagem.
-- A imagem e vinculada ao repositorio usando o label OCI:
+Admin:
 
-org.opencontainers.image.source=https://github.com/wkarts/scheduler-pro-platform
+```text
+http://localhost:5174
+```
 
-Apos a primeira publicacao, valide em:
+## Validação
 
-GitHub -> Profile/Organization -> Packages -> Package settings
+```bash
+bash scripts/validate-local.sh
+```
 
-Confira:
+## Segurança
 
-Repository conectado
-Manage Actions access / Inherit access from source repository
-Visibility: Public ou Private
+Nenhum segredo deve ser commitado. Use `.env`, secrets do GitHub Actions e secret manager em produção.
+
+## Status
+
+Branch inicial de foundation pronta para evolução incremental por PRs: agenda, WhatsApp, landing builder, Cloudflare, build manager e hardening.
