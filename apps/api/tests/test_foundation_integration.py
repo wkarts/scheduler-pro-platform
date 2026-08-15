@@ -160,7 +160,7 @@ async def test_rbac_is_loaded_from_database_not_from_jwt(client: httpx.AsyncClie
         password=settings.dev_tenant_database_password,
         database=settings.dev_tenant_database,
     )
-    email = f"readonly-{uuid4().hex}@tenant.local"
+    email = f"readonly-{uuid4().hex}@tenant.example"
     password = "ReadOnly-Password-2026!"
     try:
         user_id = await conn.fetchval(
@@ -305,7 +305,7 @@ async def _prepare_second_tenant() -> tuple[str, str, str, str]:
         password=db_password,
         database=db_name,
     )
-    email = "admin@tenant-b.local"
+    email = "admin@tenant-b.example"
     password = "Tenant-B-Password-2026!"
     try:
         role_id = await tenant.fetchval(
