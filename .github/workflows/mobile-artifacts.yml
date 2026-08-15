@@ -11,7 +11,7 @@ on:
     types: [published]
 
 permissions:
-  contents: read
+  contents: write
   actions: write
 
 jobs:
@@ -29,11 +29,17 @@ jobs:
       - name: Pack mobile shell artifact
         run: |
           mkdir -p artifacts
-          tar -C apps/mobile/dist -czf artifacts/scheduler-pro-mobile-shell-${{ github.sha }}.tar.gz .
+          tar -C apps/mobile/dist -czf artifacts/scheduler-pro-mobile-shell-${{ github.event.release.tag_name || github.sha }}.tar.gz .
       - uses: actions/upload-artifact@v4
         with:
-          name: scheduler-pro-mobile-shell-${{ github.sha }}
+          name: scheduler-pro-mobile-shell-${{ github.event.release.tag_name || github.sha }}
           path: artifacts/*
+      - name: Attach mobile shell to release
+        if: github.event_name == 'release'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: gh release upload "${{ github.event.release.tag_name }}" artifacts/* --clobber
 
   android-unsigned:
     runs-on: ubuntu-latest
@@ -57,6 +63,17 @@ jobs:
           find apps/mobile/src-tauri -name '*.apk' -o -name '*.aab' | xargs -r -I{} cp {} artifacts/
       - uses: actions/upload-artifact@v4
         with:
-          name: scheduler-pro-android-unsigned-${{ github.sha }}
+          name: scheduler-pro-android-unsigned-${{ github.event.release.tag_name || github.sha }}
           path: artifacts/*
           if-no-files-found: ignore
+      - name: Attach Android artifacts to release
+        if: github.event_name == 'release'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          if compgen -G "artifacts/*" > /dev/null; then
+            gh release upload "${{ github.event.release.tag_name }}" artifacts/* --clobber
+          else
+            echo "No Android artifacts generated yet."
+          fi
