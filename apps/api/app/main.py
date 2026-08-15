@@ -1,3 +1,5 @@
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import ORJSONResponse
@@ -6,6 +8,13 @@ from app.api.v1.router import api_router
 from app.core.config import settings
 from app.core.errors import APIError, api_error_handler, unhandled_error_handler
 from app.core.logging import configure_logging
+from app.db.session import close_database_engines
+
+
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    yield
+    await close_database_engines()
 
 
 def create_app() -> FastAPI:
@@ -17,6 +26,7 @@ def create_app() -> FastAPI:
         docs_url="/docs" if settings.app_debug else None,
         redoc_url="/redoc" if settings.app_debug else None,
         openapi_url="/openapi.json",
+        lifespan=lifespan,
     )
 
     app.add_middleware(
@@ -24,7 +34,9 @@ def create_app() -> FastAPI:
         allow_origins=settings.cors_allowed_origins,
         allow_credentials=True,
         allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-        allow_headers=["Authorization", "Content-Type", "X-Request-ID", "X-Correlation-ID"],
+        allow_headers=[
+            "Authorization", "Content-Type", "X-Request-ID", "X-Correlation-ID"
+        ],
     )
 
     app.add_exception_handler(APIError, api_error_handler)
@@ -33,7 +45,9 @@ def create_app() -> FastAPI:
     @app.middleware("http")
     async def correlation_middleware(request: Request, call_next):
         request.state.request_id = request.headers.get("x-request-id") or settings.new_id("req")
-        request.state.correlation_id = request.headers.get("x-correlation-id") or settings.new_id("corr")
+        request.state.correlation_id = (
+            request.headers.get("x-correlation-id") or settings.new_id("corr")
+        )
         response = await call_next(request)
         response.headers["x-request-id"] = request.state.request_id
         response.headers["x-correlation-id"] = request.state.correlation_id
@@ -41,5 +55,6 @@ def create_app() -> FastAPI:
 
     app.include_router(api_router, prefix="/api/v1")
     return app
+
 
 app = create_app()
