@@ -39,6 +39,12 @@ def _request_meta(request: Request) -> tuple[str | None, str | None, str | None]
     return ip_address, user_agent, correlation_id
 
 
+def _is_platform_login_host(hostname: str) -> bool:
+    allowed_hosts = {normalize_hostname(settings.public_platform_domain)}
+    allowed_hosts.update(normalize_hostname(host) for host in settings.admin_platform_domains)
+    return hostname in allowed_hosts or hostname.startswith("admin.")
+
+
 @router.post("/login")
 async def login(
     payload: LoginRequest,
@@ -94,10 +100,10 @@ async def platform_login(
     request: Request,
     session: AsyncSession = Depends(get_platform_session),
 ) -> dict[str, Any]:
-    if resolve_request_hostname(request) != normalize_hostname(settings.public_platform_domain):
+    if not _is_platform_login_host(resolve_request_hostname(request)):
         raise APIError(
             "PLATFORM_DOMAIN_REQUIRED",
-            "Login do control plane indisponível neste domínio.",
+            "Login administrativo indisponível neste domínio.",
             404,
         )
     ip_address, user_agent, correlation_id = _request_meta(request)

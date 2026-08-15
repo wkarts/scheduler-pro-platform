@@ -15,6 +15,9 @@ class Settings(BaseSettings):
     app_debug: bool = True
     app_secret_key: str = "change-me"
     public_platform_domain: str = "localhost"
+    admin_platform_domains: Annotated[list[str], NoDecode] = Field(
+        default_factory=lambda: ["admin.localhost", "localhost"]
+    )
 
     postgres_host: str = "localhost"
     postgres_port: int = 5432
@@ -70,7 +73,7 @@ class Settings(BaseSettings):
         ]
     )
 
-    @field_validator("cors_allowed_origins", "trusted_proxy_hosts", mode="before")
+    @field_validator("cors_allowed_origins", "trusted_proxy_hosts", "admin_platform_domains", mode="before")
     @classmethod
     def split_csv_values(cls, value: Any) -> Any:
         if isinstance(value, str):
