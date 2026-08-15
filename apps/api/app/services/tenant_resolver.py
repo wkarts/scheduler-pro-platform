@@ -53,6 +53,15 @@ class TenantResolver:
                 {"hostname": hostname},
             )
 
+        domain_status = str(row["domain_status"]).upper()
+        if domain_status != "ACTIVE":
+            raise APIError(
+                "DOMAIN_NOT_ACTIVE",
+                "Domínio do tenant ainda não está ativo.",
+                503,
+                {"status": domain_status},
+            )
+
         status = str(row["tenant_status"]).upper()
         if status == "SUSPENDED":
             raise APIError("TENANT_SUSPENDED", "Tenant suspenso.", 403)
