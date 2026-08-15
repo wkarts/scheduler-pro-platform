@@ -3,36 +3,41 @@ name: Mobile Artifacts
 on:
   workflow_dispatch:
     inputs:
-      build_android:
-        description: 'Executar build Android Tauri quando o projeto mobile nativo estiver inicializado'
+      build_profile:
+        description: 'Build profile id or slug'
         required: false
-        default: 'false'
+        default: 'default'
+  release:
+    types: [published]
 
 permissions:
   contents: read
+  actions: write
 
 jobs:
-  pwa-mobile-package:
+  mobile-shell:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - run: npm install
-      - run: npm --workspace apps/web run build
-      - name: Package installable PWA
+      - name: Install JS deps
+        run: npm install
+      - name: Build mobile shell
+        run: npm --workspace apps/mobile run build
+      - name: Pack mobile shell artifact
         run: |
           mkdir -p artifacts
-          tar -C apps/web/dist -czf artifacts/scheduler-pro-mobile-pwa-${{ github.sha }}.tar.gz .
+          tar -C apps/mobile/dist -czf artifacts/scheduler-pro-mobile-shell-${{ github.sha }}.tar.gz .
       - uses: actions/upload-artifact@v4
         with:
-          name: scheduler-pro-mobile-pwa-${{ github.sha }}
+          name: scheduler-pro-mobile-shell-${{ github.sha }}
           path: artifacts/*
 
   android-unsigned:
-    if: ${{ github.event.inputs.build_android == 'true' }}
     runs-on: ubuntu-latest
+    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -40,13 +45,18 @@ jobs:
           node-version: '22'
       - uses: dtolnay/rust-toolchain@stable
       - uses: android-actions/setup-android@v3
-      - run: npm install
-      - name: Build Android unsigned
+      - name: Install JS deps
+        run: npm install
+      - name: Build Android unsigned when native project exists
         working-directory: apps/mobile
-        run: npm run tauri:android:build
+        run: |
+          if [ -d src-tauri/gen/android ]; then npm run tauri:android -- --release; else echo 'Android native project not initialized yet'; fi
+      - name: Collect Android artifacts
+        run: |
+          mkdir -p artifacts
+          find apps/mobile/src-tauri -name '*.apk' -o -name '*.aab' | xargs -r -I{} cp {} artifacts/
       - uses: actions/upload-artifact@v4
         with:
           name: scheduler-pro-android-unsigned-${{ github.sha }}
-          path: |
-            apps/mobile/src-tauri/gen/android/app/build/outputs/**/*.apk
-            apps/mobile/src-tauri/gen/android/app/build/outputs/**/*.aab
+          path: artifacts/*
+          if-no-files-found: ignore

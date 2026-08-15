@@ -18,7 +18,7 @@ Padrão de erro:
 {"error": {"code": "APPOINTMENT_SLOT_UNAVAILABLE", "message": "Horário não disponível.", "details": {}}}
 ```
 
-Tags OpenAPI:
+Tags OpenAPI planejadas:
 
 - Authentication
 - Customers
@@ -26,14 +26,13 @@ Tags OpenAPI:
 - Services
 - Professionals
 - Landing Pages
-- Branding / White Label
 - WhatsApp
 - Files
+- Branding
+- Build Manager
 - Platform
 
-## Branding / White Label
-
-Endpoints tenant-aware. O tenant é resolvido pelo hostname, não por `tenant_id` enviado no frontend.
+## Branding / White-label
 
 ```text
 GET  /api/v1/branding/manifest
@@ -42,21 +41,16 @@ POST /api/v1/branding/publish
 POST /api/v1/branding/build-profiles
 ```
 
-### Manifesto
+O manifesto de branding é resolvido pelo hostname do tenant. O frontend não recebe autoridade por `tenant_id` arbitrário.
 
-```json
-{
-  "tenant": {"id": "...", "slug": "barbearia", "hostname": "barbearia.scheduler.com.br"},
-  "app": {"name": "Barbearia", "public_name": "Barbearia do João", "slogan": "Agende seu horário", "locale": "pt-BR", "timezone": "America/Bahia"},
-  "assets": {"logo_url": "...", "icon_url": "...", "favicon_url": "..."},
-  "theme": {
-    "mode": "system",
-    "font_family": "Inter, ui-sans-serif, system-ui",
-    "border_radius": "1rem",
-    "colors": {"primary": "#0f172a", "secondary": "#22d3ee", "accent": "#38bdf8", "background": "#020617", "text": "#f8fafc"}
-  },
-  "settings": {},
-  "status": "PUBLISHED",
-  "published_at": "2026-08-15T08:00:00Z"
-}
+## Build Manager
+
+```text
+GET  /api/v1/platform/builds/profiles
+POST /api/v1/platform/builds/requests
+GET  /api/v1/platform/builds/jobs
+GET  /api/v1/platform/builds/jobs/{job_id}
+POST /api/v1/platform/builds/jobs/{job_id}/artifacts
 ```
+
+O Build Manager registra `build_requests`, `build_jobs`, `build_logs`, `build_artifacts` e `build_credentials`. Os workflows GitHub Actions são o executor inicial, e a plataforma mantém o estado e o catálogo dos artefatos.

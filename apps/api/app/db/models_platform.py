@@ -1,7 +1,7 @@
 from datetime import datetime
 from uuid import uuid4
 
-from sqlalchemy import BigInteger, Boolean, DateTime, ForeignKey, String, Text, UniqueConstraint, func
+from sqlalchemy import BigInteger, Boolean, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint, func
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -153,4 +153,85 @@ class BuildProfile(PlatformBase):
     api_url: Mapped[str] = mapped_column(Text, nullable=False)
     features: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
     config: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class BuildRequest(PlatformBase):
+    __tablename__ = "build_requests"
+
+    id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True, default=lambda: str(uuid4()))
+    tenant_id: Mapped[str] = mapped_column(ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True)
+    build_profile_id: Mapped[str | None] = mapped_column(ForeignKey("build_profiles.id", ondelete="SET NULL"), index=True)
+    target: Mapped[str] = mapped_column(String(40), nullable=False)
+    status: Mapped[str] = mapped_column(String(32), nullable=False, default="QUEUED")
+    requested_by: Mapped[str | None] = mapped_column(UUID(as_uuid=False))
+    request_payload: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+    correlation_id: Mapped[str] = mapped_column(String(100), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class BuildJob(PlatformBase):
+    __tablename__ = "build_jobs"
+    __table_args__ = (UniqueConstraint("build_request_id", "target", name="uq_build_job_request_target"),)
+
+    id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True, default=lambda: str(uuid4()))
+    build_request_id: Mapped[str] = mapped_column(ForeignKey("build_requests.id", ondelete="CASCADE"), nullable=False, index=True)
+    tenant_id: Mapped[str] = mapped_column(ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True)
+    target: Mapped[str] = mapped_column(String(40), nullable=False)
+    status: Mapped[str] = mapped_column(String(32), nullable=False, default="QUEUED")
+    workflow_name: Mapped[str | None] = mapped_column(String(120))
+    workflow_run_id: Mapped[str | None] = mapped_column(String(120))
+    source_ref: Mapped[str | None] = mapped_column(String(160))
+    source_sha: Mapped[str | None] = mapped_column(String(80))
+    runner_label: Mapped[str | None] = mapped_column(String(120))
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    error: Mapped[str | None] = mapped_column(Text)
+    artifact_manifest: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class BuildLog(PlatformBase):
+    __tablename__ = "build_logs"
+    __table_args__ = (UniqueConstraint("build_job_id", "sequence", name="uq_build_log_job_sequence"),)
+
+    id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True, default=lambda: str(uuid4()))
+    build_job_id: Mapped[str] = mapped_column(ForeignKey("build_jobs.id", ondelete="CASCADE"), nullable=False, index=True)
+    sequence: Mapped[int] = mapped_column(Integer, nullable=False)
+    level: Mapped[str] = mapped_column(String(20), nullable=False, default="INFO")
+    message: Mapped[str] = mapped_column(Text, nullable=False)
+    context: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class BuildArtifact(PlatformBase):
+    __tablename__ = "build_artifacts"
+
+    id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True, default=lambda: str(uuid4()))
+    build_job_id: Mapped[str] = mapped_column(ForeignKey("build_jobs.id", ondelete="CASCADE"), nullable=False, index=True)
+    tenant_id: Mapped[str] = mapped_column(ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True)
+    target: Mapped[str] = mapped_column(String(40), nullable=False)
+    artifact_type: Mapped[str] = mapped_column(String(40), nullable=False)
+    name: Mapped[str] = mapped_column(String(180), nullable=False)
+    storage_key: Mapped[str | None] = mapped_column(Text)
+    download_url: Mapped[str | None] = mapped_column(Text)
+    checksum_sha256: Mapped[str | None] = mapped_column(String(64))
+    size_bytes: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)
+    metadata: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class BuildCredential(PlatformBase):
+    __tablename__ = "build_credentials"
+    __table_args__ = (UniqueConstraint("tenant_id", "target", "credential_type", name="uq_build_credential_tenant_target_type"),)
+
+    id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True, default=lambda: str(uuid4()))
+    tenant_id: Mapped[str] = mapped_column(ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True)
+    target: Mapped[str] = mapped_column(String(40), nullable=False)
+    credential_type: Mapped[str] = mapped_column(String(80), nullable=False)
+    secret_ref: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[str] = mapped_column(String(32), nullable=False, default="ACTIVE")
+    metadata: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
