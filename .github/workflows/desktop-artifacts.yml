@@ -1,0 +1,42 @@
+name: Desktop Artifacts
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'desktop-v*.*.*'
+
+permissions:
+  contents: read
+
+jobs:
+  desktop:
+    name: desktop-${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Linux dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf
+      - run: npm install
+      - run: npm --workspace apps/desktop run build
+      - name: Tauri build unsigned
+        working-directory: apps/desktop
+        run: npm run tauri:build
+      - uses: actions/upload-artifact@v4
+        with:
+          name: scheduler-pro-desktop-${{ runner.os }}-${{ github.sha }}
+          path: |
+            apps/desktop/src-tauri/target/release/bundle/**
+            apps/desktop/src-tauri/target/release/scheduler-pro-desktop*
+            apps/desktop/src-tauri/target/release/*.exe
