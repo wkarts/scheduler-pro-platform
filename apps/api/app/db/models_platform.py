@@ -1,7 +1,7 @@
 from datetime import datetime
 from uuid import uuid4
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, String, Text, UniqueConstraint, func
+from sqlalchemy import BigInteger, Boolean, DateTime, ForeignKey, String, Text, UniqueConstraint, func
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -93,3 +93,64 @@ class FeatureFlag(PlatformBase):
     key: Mapped[str] = mapped_column(String(120), primary_key=True)
     enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     rules: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+
+
+class TenantBrandingProfile(PlatformBase):
+    __tablename__ = "tenant_branding_profiles"
+
+    id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True, default=lambda: str(uuid4()))
+    tenant_id: Mapped[str] = mapped_column(ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, unique=True, index=True)
+    status: Mapped[str] = mapped_column(String(32), nullable=False, default="DRAFT")
+    app_name: Mapped[str] = mapped_column(String(160), nullable=False)
+    public_name: Mapped[str] = mapped_column(String(160), nullable=False)
+    slogan: Mapped[str | None] = mapped_column(String(220))
+    logo_url: Mapped[str | None] = mapped_column(Text)
+    icon_url: Mapped[str | None] = mapped_column(Text)
+    favicon_url: Mapped[str | None] = mapped_column(Text)
+    primary_color: Mapped[str] = mapped_column(String(20), nullable=False, default="#0f172a")
+    secondary_color: Mapped[str] = mapped_column(String(20), nullable=False, default="#22d3ee")
+    accent_color: Mapped[str] = mapped_column(String(20), nullable=False, default="#38bdf8")
+    background_color: Mapped[str] = mapped_column(String(20), nullable=False, default="#020617")
+    text_color: Mapped[str] = mapped_column(String(20), nullable=False, default="#f8fafc")
+    font_family: Mapped[str] = mapped_column(String(120), nullable=False, default="Inter, ui-sans-serif, system-ui")
+    border_radius: Mapped[str] = mapped_column(String(20), nullable=False, default="1rem")
+    theme_mode: Mapped[str] = mapped_column(String(20), nullable=False, default="system")
+    locale: Mapped[str] = mapped_column(String(20), nullable=False, default="pt-BR")
+    timezone: Mapped[str] = mapped_column(String(64), nullable=False, default="America/Bahia")
+    settings: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+    published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class TenantBrandingAsset(PlatformBase):
+    __tablename__ = "tenant_branding_assets"
+    __table_args__ = (UniqueConstraint("branding_profile_id", "asset_type", "storage_key", name="uq_branding_asset"),)
+
+    id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True, default=lambda: str(uuid4()))
+    tenant_id: Mapped[str] = mapped_column(ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True)
+    branding_profile_id: Mapped[str] = mapped_column(ForeignKey("tenant_branding_profiles.id", ondelete="CASCADE"), nullable=False)
+    asset_type: Mapped[str] = mapped_column(String(40), nullable=False)
+    storage_key: Mapped[str] = mapped_column(Text, nullable=False)
+    public_url: Mapped[str | None] = mapped_column(Text)
+    mime_type: Mapped[str] = mapped_column(String(120), nullable=False)
+    size_bytes: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)
+    checksum_sha256: Mapped[str | None] = mapped_column(String(64))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class BuildProfile(PlatformBase):
+    __tablename__ = "build_profiles"
+    __table_args__ = (UniqueConstraint("tenant_id", "target", "name", name="uq_build_profile_tenant_target_name"),)
+
+    id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True, default=lambda: str(uuid4()))
+    tenant_id: Mapped[str] = mapped_column(ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True)
+    branding_profile_id: Mapped[str | None] = mapped_column(ForeignKey("tenant_branding_profiles.id", ondelete="SET NULL"))
+    name: Mapped[str] = mapped_column(String(160), nullable=False)
+    target: Mapped[str] = mapped_column(String(40), nullable=False)
+    bundle_identifier: Mapped[str | None] = mapped_column(String(200))
+    package_name: Mapped[str | None] = mapped_column(String(200))
+    api_url: Mapped[str] = mapped_column(Text, nullable=False)
+    features: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
+    config: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
