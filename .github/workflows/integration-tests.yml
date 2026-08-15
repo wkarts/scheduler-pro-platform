@@ -111,14 +111,30 @@ jobs:
             pytest -vv --tb=short tests/test_tenant_domain_integration.py::test_inactive_domain_cannot_resolve_tenant \
             --junitxml=/tmp/integration-domain.xml
 
+      - name: Full integration suite single process regression
+        if: always()
+        shell: bash
+        run: |
+          docker compose -f deployments/development/docker-compose.yml exec -T api \
+            pytest -vv --tb=short -m integration --junitxml=/tmp/integration-full.xml
+
       - name: Copy integration diagnostics
         if: always()
         shell: bash
         run: |
           mkdir -p .ci-diagnostics/junit
-          for report in /tmp/integration-*.xml; do
+          for report in \
+            integration-bootstrap.xml \
+            integration-auth.xml \
+            integration-platform.xml \
+            integration-rbac.xml \
+            integration-isolation.xml \
+            integration-suspended.xml \
+            integration-readiness.xml \
+            integration-domain.xml \
+            integration-full.xml; do
             docker compose -f deployments/development/docker-compose.yml cp \
-              "api:${report}" .ci-diagnostics/junit/ || true
+              "api:/tmp/${report}" .ci-diagnostics/junit/ || true
           done
           docker compose -f deployments/development/docker-compose.yml ps \
             > .ci-diagnostics/compose-ps.txt 2>&1 || true
