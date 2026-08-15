@@ -217,10 +217,11 @@ async def seed_tenant() -> None:
         for permission in PERMISSIONS:
             permission_id = await conn.fetchval(
                 """
-                insert into permissions(key, description) values($1, $1)
+                insert into permissions(key, description) values($1, $2)
                 on conflict(key) do update set description=excluded.description
                 returning id::text
                 """,
+                permission,
                 permission,
             )
             permission_ids.append(permission_id)

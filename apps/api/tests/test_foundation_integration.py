@@ -327,9 +327,10 @@ async def _prepare_second_tenant() -> tuple[str, str, str, str]:
         for permission in ("customers.read", "customers.manage"):
             permission_id = await tenant.fetchval(
                 """
-                insert into permissions(key, description) values($1, $1)
+                insert into permissions(key, description) values($1, $2)
                 on conflict(key) do update set description=excluded.description returning id::text
                 """,
+                permission,
                 permission,
             )
             await tenant.execute(
@@ -396,7 +397,7 @@ async def test_tenant_isolation_and_unknown_hostname(client: httpx.AsyncClient) 
         "/api/v1/customers",
         headers={
             "host": domain,
-            "authorization": f"Bearer {tenant_b['access_token']}",
+            "authorization": f"Bearer {tenant_b['access_token']}"},
         },
         json={"name": name_b},
     )
