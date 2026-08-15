@@ -1,0 +1,52 @@
+name: Mobile Artifacts
+
+on:
+  workflow_dispatch:
+    inputs:
+      build_android:
+        description: 'Executar build Android Tauri quando o projeto mobile nativo estiver inicializado'
+        required: false
+        default: 'false'
+
+permissions:
+  contents: read
+
+jobs:
+  pwa-mobile-package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm install
+      - run: npm --workspace apps/web run build
+      - name: Package installable PWA
+        run: |
+          mkdir -p artifacts
+          tar -C apps/web/dist -czf artifacts/scheduler-pro-mobile-pwa-${{ github.sha }}.tar.gz .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: scheduler-pro-mobile-pwa-${{ github.sha }}
+          path: artifacts/*
+
+  android-unsigned:
+    if: ${{ github.event.inputs.build_android == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: android-actions/setup-android@v3
+      - run: npm install
+      - name: Build Android unsigned
+        working-directory: apps/mobile
+        run: npm run tauri:android:build
+      - uses: actions/upload-artifact@v4
+        with:
+          name: scheduler-pro-android-unsigned-${{ github.sha }}
+          path: |
+            apps/mobile/src-tauri/gen/android/app/build/outputs/**/*.apk
+            apps/mobile/src-tauri/gen/android/app/build/outputs/**/*.aab

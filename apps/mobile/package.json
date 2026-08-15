@@ -8,7 +8,9 @@
     "build": "vue-tsc --noEmit && vite build",
     "typecheck": "vue-tsc --noEmit",
     "tauri:android": "tauri android dev",
-    "tauri:ios": "tauri ios dev"
+    "tauri:android:build": "tauri android build",
+    "tauri:ios": "tauri ios dev",
+    "tauri:ios:build": "tauri ios build"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.0.0",

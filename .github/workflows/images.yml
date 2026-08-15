@@ -1,12 +1,17 @@
-name: Release
+name: Images
 
 on:
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: 'Tag das imagens GHCR'
+        required: false
+        default: 'latest'
   push:
-    tags:
-      - 'v*.*.*'
+    branches: [main]
 
 permissions:
-  contents: write
+  contents: read
   packages: write
 
 jobs:
@@ -26,12 +31,12 @@ jobs:
           file: infrastructure/docker/base/python/Dockerfile
           push: true
           tags: |
-            ghcr.io/${{ github.repository }}/python-base:${{ github.ref_name }}
-            ghcr.io/${{ github.repository }}/python-base:latest
+            ghcr.io/${{ github.repository }}/python-base:${{ github.event.inputs.image_tag || 'latest' }}
+            ghcr.io/${{ github.repository }}/python-base:${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-  images:
+  services:
     needs: base
     runs-on: ubuntu-latest
     strategy:
@@ -41,11 +46,11 @@ jobs:
           - name: api
             file: infrastructure/docker/api/Dockerfile
             tag: api
-            build_args: "PYTHON_BASE_IMAGE=ghcr.io/${{ github.repository }}/python-base:${{ github.ref_name }}"
+            build_args: "PYTHON_BASE_IMAGE=ghcr.io/${{ github.repository }}/python-base:${{ github.event.inputs.image_tag || 'latest' }}"
           - name: worker
             file: infrastructure/docker/worker/Dockerfile
             tag: worker
-            build_args: "PYTHON_BASE_IMAGE=ghcr.io/${{ github.repository }}/python-base:${{ github.ref_name }}"
+            build_args: "PYTHON_BASE_IMAGE=ghcr.io/${{ github.repository }}/python-base:${{ github.event.inputs.image_tag || 'latest' }}"
           - name: web
             file: infrastructure/docker/web/Dockerfile
             tag: web
@@ -74,33 +79,7 @@ jobs:
           push: true
           build-args: ${{ matrix.build_args }}
           tags: |
-            ghcr.io/${{ github.repository }}/${{ matrix.tag }}:${{ github.ref_name }}
-            ghcr.io/${{ github.repository }}/${{ matrix.tag }}:latest
+            ghcr.io/${{ github.repository }}/${{ matrix.tag }}:${{ github.event.inputs.image_tag || 'latest' }}
+            ghcr.io/${{ github.repository }}/${{ matrix.tag }}:${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
-
-  web-artifacts:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-      - run: npm install
-      - run: npm --workspace apps/web run build
-      - run: npm --workspace apps/admin run build
-      - name: Pack web/admin/deploy artifacts
-        run: |
-          mkdir -p artifacts
-          tar -C apps/web/dist -czf artifacts/scheduler-pro-web-${{ github.ref_name }}.tar.gz .
-          tar -C apps/admin/dist -czf artifacts/scheduler-pro-admin-${{ github.ref_name }}.tar.gz .
-          tar -C deployments/cloudpanel -czf artifacts/scheduler-pro-cloudpanel-deploy-${{ github.ref_name }}.tar.gz .
-          tar -C deployments/dockge -czf artifacts/scheduler-pro-dockge-deploy-${{ github.ref_name }}.tar.gz .
-      - uses: actions/upload-artifact@v4
-        with:
-          name: scheduler-pro-web-admin-deploy-${{ github.ref_name }}
-          path: artifacts/*
-      - uses: softprops/action-gh-release@v2
-        with:
-          files: artifacts/*
-          generate_release_notes: true

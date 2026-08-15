@@ -43,5 +43,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Docker build API
+      - name: Docker build API fallback image
         run: docker build -t scheduler-pro-api:ci .
+      - name: Docker build web image
+        run: docker build -f infrastructure/docker/web/Dockerfile --build-arg APP_DIR=apps/web -t scheduler-pro-web:ci .
+      - name: Docker build admin image
+        run: docker build -f infrastructure/docker/web/Dockerfile --build-arg APP_DIR=apps/admin -t scheduler-pro-admin:ci .
+      - name: Docker build proxy image
+        run: docker build -f infrastructure/docker/proxy/Dockerfile -t scheduler-pro-proxy:ci .
