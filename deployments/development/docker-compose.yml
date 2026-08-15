@@ -1,0 +1,56 @@
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: scheduler
+      POSTGRES_PASSWORD: scheduler_dev_password
+      POSTGRES_DB: platform
+    ports: ["5432:5432"]
+    volumes:
+      - scheduler_postgres:/var/lib/postgresql/data
+      - ../../apps/api/migrations/platform/001_platform_init.sql:/docker-entrypoint-initdb.d/001_platform_init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U scheduler -d platform"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    ports: ["6379:6379"]
+
+  rabbitmq:
+    image: rabbitmq:3.13-management-alpine
+    environment:
+      RABBITMQ_DEFAULT_USER: scheduler
+      RABBITMQ_DEFAULT_PASS: scheduler
+    ports: ["5672:5672", "15672:15672"]
+
+  minio:
+    image: minio/minio:latest
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: scheduler
+      MINIO_ROOT_PASSWORD: scheduler_dev_secret
+    ports: ["9000:9000", "9001:9001"]
+    volumes:
+      - scheduler_minio:/data
+
+  api:
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+    env_file:
+      - ../../.env.example
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      rabbitmq:
+        condition: service_started
+    ports: ["8000:8000"]
+
+volumes:
+  scheduler_postgres:
+  scheduler_minio:

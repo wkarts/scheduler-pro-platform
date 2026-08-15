@@ -1,0 +1,26 @@
+{
+  "name": "@scheduler-pro/web",
+  "private": true,
+  "version": "0.1.0-alpha.1",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 0.0.0.0 --port 5173",
+    "build": "vue-tsc --noEmit && vite build",
+    "typecheck": "vue-tsc --noEmit",
+    "lint": "echo lint-web-ok"
+  },
+  "dependencies": {
+    "@vitejs/plugin-vue": "latest",
+    "vite": "latest",
+    "vue": "latest",
+    "vue-router": "latest",
+    "pinia": "latest",
+    "typescript": "latest"
+  },
+  "devDependencies": {
+    "tailwindcss": "latest",
+    "postcss": "latest",
+    "autoprefixer": "latest",
+    "vue-tsc": "latest"
+  }
+}

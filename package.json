@@ -1,0 +1,25 @@
+{
+  "name": "scheduler-pro-platform",
+  "private": true,
+  "version": "0.1.0-alpha.1",
+  "workspaces": [
+    "apps/web",
+    "apps/admin",
+    "apps/desktop",
+    "apps/mobile",
+    "packages/api-client",
+    "packages/types"
+  ],
+  "scripts": {
+    "lint": "npm run lint --workspaces --if-present",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "build": "npm run build --workspaces --if-present",
+    "dev:web": "npm --workspace apps/web run dev",
+    "dev:admin": "npm --workspace apps/admin run dev",
+    "dev:desktop": "npm --workspace apps/desktop run tauri:dev",
+    "dev:mobile": "npm --workspace apps/mobile run dev"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

@@ -1,0 +1,15 @@
+{
+  "name": "@scheduler-pro/desktop",
+  "private": true,
+  "version": "0.1.0-alpha.1",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 0.0.0.0 --port 1420",
+    "build": "vue-tsc --noEmit && vite build",
+    "typecheck": "vue-tsc --noEmit",
+    "tauri:dev": "tauri dev",
+    "tauri:build": "tauri build"
+  },
+  "dependencies": {"@vitejs/plugin-vue":"latest","@tauri-apps/api":"latest","vue":"latest","pinia":"latest","typescript":"latest","vite":"latest"},
+  "devDependencies": {"@tauri-apps/cli":"latest","vue-tsc":"latest","tailwindcss":"latest","postcss":"latest","autoprefixer":"latest"}
+}
