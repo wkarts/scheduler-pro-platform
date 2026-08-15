@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Scheduler Pro">
+  <defs>
+    <linearGradient id="g" x1="0" x2="1" y1="0" y2="1"><stop stop-color="#3b82f6"/><stop offset="1" stop-color="#06b6d4"/></linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="112" fill="#0c2244"/>
+  <circle cx="394" cy="412" r="150" fill="#ffffff" opacity=".06"/>
+  <rect x="118" y="124" width="276" height="268" rx="48" fill="url(#g)"/>
+  <rect x="150" y="176" width="212" height="36" rx="8" fill="#fff" opacity=".96"/>
+  <rect x="178" y="104" width="34" height="92" rx="17" fill="#fff"/>
+  <rect x="300" y="104" width="34" height="92" rx="17" fill="#fff"/>
+  <path d="M183 289l49 50 104-118" fill="none" stroke="#fff" stroke-width="44" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

@@ -10,6 +10,7 @@
     "lint": "echo lint-web-ok"
   },
   "dependencies": {
+    "lucide-vue-next": "0.468.0",
     "pinia": "2.3.1",
     "vue": "3.5.13",
     "vue-router": "4.4.5"
