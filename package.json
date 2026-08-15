@@ -2,6 +2,7 @@
   "name": "scheduler-pro-platform",
   "private": true,
   "version": "0.1.0-alpha.1",
+  "packageManager": "npm@10.9.8",
   "workspaces": [
     "apps/web",
     "apps/admin",
@@ -21,5 +22,10 @@
   },
   "engines": {
     "node": ">=22"
+  },
+  "overrides": {
+    "typescript": "5.5.4",
+    "vue-tsc": "2.1.10",
+    "tailwindcss": "3.4.17"
   }
 }

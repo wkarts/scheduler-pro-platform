@@ -9,6 +9,17 @@
     "typecheck": "vue-tsc --noEmit",
     "lint": "echo lint-admin-ok"
   },
-  "dependencies": {"@vitejs/plugin-vue":"latest","vite":"latest","vue":"latest","pinia":"latest","typescript":"latest"},
-  "devDependencies": {"tailwindcss":"latest","postcss":"latest","autoprefixer":"latest","vue-tsc":"latest"}
+  "dependencies": {
+    "pinia": "2.3.1",
+    "vue": "3.5.13"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-vue": "5.2.1",
+    "autoprefixer": "10.4.20",
+    "postcss": "8.4.49",
+    "tailwindcss": "3.4.17",
+    "typescript": "5.5.4",
+    "vite": "5.4.11",
+    "vue-tsc": "2.1.10"
+  }
 }

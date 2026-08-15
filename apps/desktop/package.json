@@ -10,6 +10,19 @@
     "tauri:dev": "tauri dev",
     "tauri:build": "tauri build"
   },
-  "dependencies": {"@vitejs/plugin-vue":"latest","@tauri-apps/api":"latest","vue":"latest","pinia":"latest","typescript":"latest","vite":"latest"},
-  "devDependencies": {"@tauri-apps/cli":"latest","vue-tsc":"latest","tailwindcss":"latest","postcss":"latest","autoprefixer":"latest"}
+  "dependencies": {
+    "@tauri-apps/api": "^2.0.0",
+    "pinia": "2.3.1",
+    "vue": "3.5.13"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.0.0",
+    "@vitejs/plugin-vue": "5.2.1",
+    "autoprefixer": "10.4.20",
+    "postcss": "8.4.49",
+    "tailwindcss": "3.4.17",
+    "typescript": "5.5.4",
+    "vite": "5.4.11",
+    "vue-tsc": "2.1.10"
+  }
 }
