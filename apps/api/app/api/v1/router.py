@@ -13,6 +13,7 @@ from app.api.v1.routes import (
     landing_pages,
     platform,
     professionals,
+    public,
     services,
     settings,
     whatsapp,
@@ -20,6 +21,7 @@ from app.api.v1.routes import (
 
 api_router = APIRouter()
 api_router.include_router(health.router, tags=["Health"])
+api_router.include_router(public.router, prefix="/public", tags=["Public"])
 api_router.include_router(auth.router, prefix="/auth", tags=["Authentication"])
 api_router.include_router(customers.router, prefix="/customers", tags=["Customers"])
 api_router.include_router(
@@ -70,7 +72,6 @@ api_router.include_router(
     tags=["Settings"],
     dependencies=[Depends(require_permission("tenant.manage"))],
 )
-# Manifest is public. Mutations enforce branding.manage inside branding.py.
 api_router.include_router(branding.router, prefix="/branding", tags=["Branding"])
 api_router.include_router(
     platform.router,

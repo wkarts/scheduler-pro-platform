@@ -18,6 +18,8 @@ class Settings(BaseSettings):
     admin_platform_domains: Annotated[list[str], NoDecode] = Field(
         default_factory=lambda: ["admin.localhost", "localhost"]
     )
+    tenant_default_domain_root: str | None = None
+    public_base_url: str | None = None
 
     postgres_host: str = "localhost"
     postgres_port: int = 5432
@@ -59,8 +61,14 @@ class Settings(BaseSettings):
     s3_secret_key: str = "scheduler_dev_secret"
     s3_region: str = "us-east-1"
 
+    cloudflare_api_base_url: str = "https://api.cloudflare.com/client/v4"
     cloudflare_api_token: str | None = None
     cloudflare_zone_id: str | None = None
+    cloudflare_dry_run: bool = True
+    cloudflare_custom_hostname_origin: str | None = None
+    cloudflare_temporary_record_type: str = "CNAME"
+    cloudflare_temporary_record_target: str | None = None
+
     whatsapp_provider: str = "evolution"
     evolution_api_url: str | None = None
     evolution_api_token: str | None = None
@@ -86,6 +94,22 @@ class Settings(BaseSettings):
             if len(self.app_secret_key) < 64 or self.app_secret_key.startswith("change-me"):
                 raise ValueError("APP_SECRET_KEY must contain at least 64 non-placeholder characters")
         return self
+
+    @property
+    def tenant_domain_root(self) -> str:
+        return (self.tenant_default_domain_root or self.public_platform_domain).strip().lower()
+
+    @property
+    def tenant_domain_target(self) -> str:
+        return (self.cloudflare_temporary_record_target or self.public_platform_domain).strip()
+
+    @property
+    def platform_public_url(self) -> str:
+        if self.public_base_url:
+            return self.public_base_url.rstrip("/")
+        if self.public_platform_domain == "localhost":
+            return "http://localhost:5173"
+        return f"https://{self.public_platform_domain}"
 
     @staticmethod
     def _database_url(
