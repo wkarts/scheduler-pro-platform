@@ -45,9 +45,29 @@ jobs:
           docker compose -f deployments/development/docker-compose.yml logs --no-color
           exit 1
       - name: Integration tests against PostgreSQL Redis RabbitMQ and MinIO
+        shell: bash
         run: |
           docker compose -f deployments/development/docker-compose.yml exec -T api \
-            pytest -q -m integration
+            pytest -vv --tb=short -m integration --junitxml=/tmp/foundation-integration.xml
+      - name: Copy integration diagnostics
+        if: always()
+        shell: bash
+        run: |
+          mkdir -p .ci-diagnostics
+          docker compose -f deployments/development/docker-compose.yml cp \
+            api:/tmp/foundation-integration.xml .ci-diagnostics/foundation-integration.xml || true
+          docker compose -f deployments/development/docker-compose.yml ps \
+            > .ci-diagnostics/compose-ps.txt 2>&1 || true
+          docker compose -f deployments/development/docker-compose.yml logs --no-color bootstrap api \
+            > .ci-diagnostics/compose-bootstrap-api.log 2>&1 || true
+      - name: Upload integration diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: foundation-integration-diagnostics
+          path: .ci-diagnostics/
+          if-no-files-found: warn
+          retention-days: 7
       - name: Migration downgrade and re-upgrade
         shell: bash
         run: |
