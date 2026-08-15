@@ -398,7 +398,6 @@ async def test_tenant_isolation_and_unknown_hostname(client: httpx.AsyncClient) 
         headers={
             "host": domain,
             "authorization": f"Bearer {tenant_b['access_token']}"},
-        },
         json={"name": name_b},
     )
     assert created_a.status_code == 200
