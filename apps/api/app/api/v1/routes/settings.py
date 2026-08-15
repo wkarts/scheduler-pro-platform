@@ -1,3 +1,5 @@
+from typing import Any
+
 from fastapi import APIRouter, Depends
 
 from app.api.deps import get_tenant_context
@@ -8,5 +10,14 @@ router = APIRouter()
 
 
 @router.get("/tenant")
-async def tenant_settings(context: TenantContext = Depends(get_tenant_context)):
-    return success({"tenant_id": context.tenant_id, "slug": context.slug, "hostname": context.hostname, "timezone": context.timezone})
+async def tenant_settings(
+    context: TenantContext = Depends(get_tenant_context),
+) -> dict[str, Any]:
+    return success(
+        {
+            "tenant_id": context.tenant_id,
+            "slug": context.slug,
+            "hostname": context.hostname,
+            "timezone": context.timezone,
+        }
+    )

@@ -1,3 +1,5 @@
+from typing import Any
+
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 from sqlalchemy import select
@@ -17,14 +19,33 @@ class ProfessionalCreate(BaseModel):
 
 
 @router.get("")
-async def list_professionals(session: AsyncSession = Depends(get_tenant_session)):
+async def list_professionals(
+    session: AsyncSession = Depends(get_tenant_session),
+) -> dict[str, Any]:
     result = await session.execute(select(Professional).order_by(Professional.name))
-    return success([{"id": p.id, "name": p.name, "email": p.email, "phone": p.phone} for p in result.scalars()])
+    return success(
+        [
+            {
+                "id": professional.id,
+                "name": professional.name,
+                "email": professional.email,
+                "phone": professional.phone,
+            }
+            for professional in result.scalars()
+        ]
+    )
 
 
 @router.post("")
-async def create_professional(payload: ProfessionalCreate, session: AsyncSession = Depends(get_tenant_session)):
-    professional = Professional(name=payload.name, email=payload.email, phone=payload.phone)
+async def create_professional(
+    payload: ProfessionalCreate,
+    session: AsyncSession = Depends(get_tenant_session),
+) -> dict[str, Any]:
+    professional = Professional(
+        name=payload.name,
+        email=payload.email,
+        phone=payload.phone,
+    )
     session.add(professional)
     await session.commit()
     await session.refresh(professional)

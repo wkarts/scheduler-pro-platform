@@ -1,8 +1,20 @@
 # Scheduler Pro Platform
 
-Plataforma SaaS multitenant de agendamentos construída com **FastAPI/Python**, **PostgreSQL**, **Redis**, **RabbitMQ**, **Vue 3 + Tailwind PWA** e **Tauri 2** para desktop/mobile.
+Plataforma SaaS multitenant de agendamentos construída com **FastAPI/Python 3.13**, **PostgreSQL**, **Redis**, **RabbitMQ**, **Vue 3 + Tailwind PWA** e **Tauri 2** para desktop/mobile.
 
 O núcleo permanece em Python/FastAPI. Tauri é usado somente para os aplicativos gerenciais desktop e mobile.
+
+## Estado funcional auditado
+
+- Fundação de banco/Alembic/bootstrap: **IMPLEMENTED** neste incremento.
+- Autenticação, sessões, refresh rotativo e RBAC: **IMPLEMENTED** neste incremento.
+- Resolução/isolamento multitenant por hostname e banco: **IMPLEMENTED** neste incremento.
+- Readiness de PostgreSQL/tenant/Redis/RabbitMQ/MinIO: **IMPLEMENTED** neste incremento.
+- Motor completo de agenda/disponibilidade/concorrência: **PARTIAL** — próximo incremento.
+- Outbox/notificações/WhatsApp real: **PARTIAL/PLANNED** — incremento posterior.
+- Web/Admin operacionais completos: **PARTIAL**.
+- Provisionamento/Cloudflare real: **PARTIAL**; operações externas ficam `BLOCKED_EXTERNAL` quando faltarem credenciais.
+- Instaladores Desktop e APK/AAB finais: **PARTIAL** — fontes/PWA não são considerados artefatos nativos concluídos.
 
 ## Estrutura
 
@@ -47,6 +59,19 @@ cp .env.example .env
 docker compose -f deployments/development/docker-compose.yml up --build
 ```
 
+O serviço `bootstrap` cria/aplica de forma idempotente `tenant_dev`, migrations platform/tenant, domínios locais, administradores/RBAC e bucket MinIO antes de liberar a API.
+
+Health checks:
+
+```bash
+curl -H 'Host: localhost' http://127.0.0.1:8000/api/v1/health/live
+curl -H 'Host: localhost' http://127.0.0.1:8000/api/v1/health/ready
+```
+
+`/health/live` verifica o processo. `/health/ready` verifica dependências obrigatórias e revisions Alembic e retorna HTTP 503 quando a fundação não está pronta.
+
+Comandos detalhados: `docs/operations/DEVELOPMENT.md`.
+
 ## CloudPanel/Dockge
 
 Use os pacotes em:
@@ -73,14 +98,15 @@ http://127.0.0.1:18080
 
 ## Builds e artefatos
 
-Workflows disponíveis:
+Workflows existentes:
 
-- `CI`: valida API, frontend e Docker.
+- `CI`: valida API, frontend e Docker; neste incremento ganhou compile/lint/typecheck/testes unitários mais rigorosos.
+- `Integration Tests`: valida Compose, bootstrap, PostgreSQL multitenant, Redis, RabbitMQ, MinIO, autenticação/RBAC, readiness e round-trip Alembic.
 - `Base Image`: publica `python-base`.
 - `Images`: publica `api`, `worker`, `web`, `admin`, `proxy` e `python-base`.
-- `Release`: publica imagens e anexa artefatos web/admin/deploy em tag `v*.*.*`.
-- `Desktop Artifacts`: gera Tauri desktop unsigned para Windows/Linux/macOS.
-- `Mobile Artifacts`: gera PWA mobile e build Android unsigned quando habilitado.
+- `Release`: fluxo legado de publicação; ainda será endurecido na fase de Build Manager/Release.
+- `Desktop Artifacts`: **PARTIAL**; presença do workflow não prova instalador final testável.
+- `Mobile Artifacts`: **PARTIAL**; PWA ou shell/fonte não é APK/AAB e não deve ser anunciado como tal.
 
 ## Validação local
 
@@ -90,6 +116,17 @@ bash scripts/build/build-images-local.sh local
 bash scripts/build/package-web-artifacts.sh local
 ```
 
+A validação integral da fundação também pode ser executada pela stack de desenvolvimento:
+
+```bash
+docker compose -f deployments/development/docker-compose.yml up --build -d
+docker compose -f deployments/development/docker-compose.yml exec -T api pytest -q -m integration
+```
+
 ## Segurança
 
 Nenhum segredo deve ser commitado. Use `.env`, GitHub Actions Secrets e secret manager em produção.
+
+`tenant_databases.password_ref` armazena somente uma referência (`secret://...`); a senha é resolvida pelo `SecretResolver` antes da abertura da conexão.
+
+Detalhes: `docs/security/SECURITY.md`, `docs/architecture/AUTHORIZATION.md` e `docs/architecture/MULTITENANCY.md`.

@@ -4,8 +4,9 @@ from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_platform_session, get_tenant_context
+from app.api.deps import get_platform_session, get_tenant_context, require_permission
 from app.core.responses import success
+from app.core.security import AuthPrincipal
 from app.core.tenant_context import TenantContext
 from app.services.branding_service import BrandingService
 
@@ -46,7 +47,7 @@ class BuildProfileRequest(BaseModel):
 async def get_manifest(
     context: TenantContext = Depends(get_tenant_context),
     session: AsyncSession = Depends(get_platform_session),
-):
+) -> dict[str, Any]:
     service = BrandingService(session)
     return success(await service.manifest_for_context(context))
 
@@ -54,19 +55,23 @@ async def get_manifest(
 @router.put("/profile")
 async def save_profile(
     payload: BrandingProfileRequest,
+    _: AuthPrincipal = Depends(require_permission("branding.manage")),
     context: TenantContext = Depends(get_tenant_context),
     session: AsyncSession = Depends(get_platform_session),
-):
+) -> dict[str, Any]:
     service = BrandingService(session)
     data = payload.model_dump(exclude_none=True)
-    return success(await service.save_profile(context.tenant_id, data, tenant_name=context.slug))
+    return success(
+        await service.save_profile(context.tenant_id, data, tenant_name=context.slug)
+    )
 
 
 @router.post("/publish")
 async def publish_profile(
+    _: AuthPrincipal = Depends(require_permission("branding.manage")),
     context: TenantContext = Depends(get_tenant_context),
     session: AsyncSession = Depends(get_platform_session),
-):
+) -> dict[str, Any]:
     service = BrandingService(session)
     return success(await service.publish(context.tenant_id, tenant_name=context.slug))
 
@@ -74,8 +79,11 @@ async def publish_profile(
 @router.post("/build-profiles")
 async def create_build_profile(
     payload: BuildProfileRequest,
+    _: AuthPrincipal = Depends(require_permission("branding.manage")),
     context: TenantContext = Depends(get_tenant_context),
     session: AsyncSession = Depends(get_platform_session),
-):
+) -> dict[str, Any]:
     service = BrandingService(session)
-    return success(await service.create_build_profile(context.tenant_id, payload.model_dump()))
+    return success(
+        await service.create_build_profile(context.tenant_id, payload.model_dump())
+    )

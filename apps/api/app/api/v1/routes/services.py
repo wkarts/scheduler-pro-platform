@@ -1,3 +1,5 @@
+from typing import Any
+
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
 from sqlalchemy import select
@@ -17,14 +19,33 @@ class ServiceCreate(BaseModel):
 
 
 @router.get("")
-async def list_services(session: AsyncSession = Depends(get_tenant_session)):
+async def list_services(
+    session: AsyncSession = Depends(get_tenant_session),
+) -> dict[str, Any]:
     result = await session.execute(select(Service).order_by(Service.name))
-    return success([{"id": s.id, "name": s.name, "duration_minutes": s.duration_minutes, "price": float(s.price) if s.price is not None else None} for s in result.scalars()])
+    return success(
+        [
+            {
+                "id": service.id,
+                "name": service.name,
+                "duration_minutes": service.duration_minutes,
+                "price": float(service.price) if service.price is not None else None,
+            }
+            for service in result.scalars()
+        ]
+    )
 
 
 @router.post("")
-async def create_service(payload: ServiceCreate, session: AsyncSession = Depends(get_tenant_session)):
-    service = Service(name=payload.name, duration_minutes=payload.duration_minutes, price=payload.price)
+async def create_service(
+    payload: ServiceCreate,
+    session: AsyncSession = Depends(get_tenant_session),
+) -> dict[str, Any]:
+    service = Service(
+        name=payload.name,
+        duration_minutes=payload.duration_minutes,
+        price=payload.price,
+    )
     session.add(service)
     await session.commit()
     await session.refresh(service)

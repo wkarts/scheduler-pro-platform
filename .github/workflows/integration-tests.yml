@@ -1,0 +1,179 @@
+name: Integration Tests
+
+on:
+  pull_request:
+    paths:
+      - 'apps/api/**'
+      - 'deployments/development/**'
+      - '.env.example'
+      - 'Dockerfile'
+      - '.github/workflows/integration-tests.yml'
+  push:
+    branches: [main, 'fix/**', 'feat/**']
+    paths:
+      - 'apps/api/**'
+      - 'deployments/development/**'
+      - '.env.example'
+      - 'Dockerfile'
+      - '.github/workflows/integration-tests.yml'
+
+concurrency:
+  group: integration-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  postgres-multitenant-stack:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate Compose model
+        run: docker compose -f deployments/development/docker-compose.yml config --quiet
+
+      - name: Start development stack and bootstrap
+        run: docker compose -f deployments/development/docker-compose.yml up --build -d
+
+      - name: Wait for real readiness
+        shell: bash
+        run: |
+          for i in {1..60}; do
+            if curl -fsS -H 'Host: localhost' http://127.0.0.1:8000/api/v1/health/ready >/tmp/ready.json; then
+              cat /tmp/ready.json
+              exit 0
+            fi
+            sleep 2
+          done
+          docker compose -f deployments/development/docker-compose.yml ps
+          docker compose -f deployments/development/docker-compose.yml logs --no-color
+          exit 1
+
+      - name: Test bootstrap migrations storage and secret reference
+        shell: bash
+        run: |
+          docker compose -f deployments/development/docker-compose.yml exec -T api \
+            pytest -vv --tb=short tests/test_foundation_integration.py::test_bootstrap_created_platform_tenant_migrations_and_bucket \
+            --junitxml=/tmp/integration-bootstrap.xml
+
+      - name: Test login refresh rotation reuse detection and logout
+        if: always()
+        shell: bash
+        run: |
+          docker compose -f deployments/development/docker-compose.yml exec -T api \
+            pytest -vv --tb=short tests/test_foundation_integration.py::test_login_invalid_login_refresh_rotation_and_logout \
+            --junitxml=/tmp/integration-auth.xml
+
+      - name: Test private routes platform routes and superadmin
+        if: always()
+        shell: bash
+        run: |
+          docker compose -f deployments/development/docker-compose.yml exec -T api \
+            pytest -vv --tb=short tests/test_foundation_integration.py::test_private_routes_and_platform_routes_are_protected \
+            --junitxml=/tmp/integration-platform.xml
+
+      - name: Test RBAC permissions loaded from database
+        if: always()
+        shell: bash
+        run: |
+          docker compose -f deployments/development/docker-compose.yml exec -T api \
+            pytest -vv --tb=short tests/test_foundation_integration.py::test_rbac_is_loaded_from_database_not_from_jwt \
+            --junitxml=/tmp/integration-rbac.xml
+
+      - name: Test tenant isolation second PostgreSQL database and unknown hostname
+        if: always()
+        shell: bash
+        run: |
+          docker compose -f deployments/development/docker-compose.yml exec -T api \
+            pytest -vv --tb=short tests/test_foundation_integration.py::test_tenant_isolation_and_unknown_hostname \
+            --junitxml=/tmp/integration-isolation.xml
+
+      - name: Test suspended tenant rejects login
+        if: always()
+        shell: bash
+        run: |
+          docker compose -f deployments/development/docker-compose.yml exec -T api \
+            pytest -vv --tb=short tests/test_foundation_integration.py::test_suspended_tenant_cannot_open_session \
+            --junitxml=/tmp/integration-suspended.xml
+
+      - name: Test readiness PostgreSQL Redis RabbitMQ and MinIO
+        if: always()
+        shell: bash
+        run: |
+          docker compose -f deployments/development/docker-compose.yml exec -T api \
+            pytest -vv --tb=short tests/test_foundation_integration.py::test_readiness_checks_real_dependencies \
+            --junitxml=/tmp/integration-readiness.xml
+
+      - name: Test inactive tenant domain rejects login
+        if: always()
+        shell: bash
+        run: |
+          docker compose -f deployments/development/docker-compose.yml exec -T api \
+            pytest -vv --tb=short tests/test_tenant_domain_integration.py::test_inactive_domain_cannot_resolve_tenant \
+            --junitxml=/tmp/integration-domain.xml
+
+      - name: Full integration suite single process regression
+        if: always()
+        shell: bash
+        run: |
+          docker compose -f deployments/development/docker-compose.yml exec -T api \
+            pytest -vv --tb=short -m integration --junitxml=/tmp/integration-full.xml
+
+      - name: Copy integration diagnostics
+        if: always()
+        shell: bash
+        run: |
+          mkdir -p .ci-diagnostics/junit
+          for report in \
+            integration-bootstrap.xml \
+            integration-auth.xml \
+            integration-platform.xml \
+            integration-rbac.xml \
+            integration-isolation.xml \
+            integration-suspended.xml \
+            integration-readiness.xml \
+            integration-domain.xml \
+            integration-full.xml; do
+            docker compose -f deployments/development/docker-compose.yml cp \
+              "api:/tmp/${report}" .ci-diagnostics/junit/ || true
+          done
+          docker compose -f deployments/development/docker-compose.yml ps \
+            > .ci-diagnostics/compose-ps.txt 2>&1 || true
+          docker compose -f deployments/development/docker-compose.yml logs --no-color bootstrap api \
+            > .ci-diagnostics/compose-bootstrap-api.log 2>&1 || true
+
+      - name: Upload integration diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: foundation-integration-diagnostics
+          path: .ci-diagnostics/
+          if-no-files-found: warn
+          retention-days: 7
+
+      - name: Migration downgrade and re-upgrade
+        shell: bash
+        run: |
+          docker compose -f deployments/development/docker-compose.yml exec -T api \
+            alembic -c alembic-tenant.ini downgrade tenant_0001
+          docker compose -f deployments/development/docker-compose.yml exec -T api \
+            alembic -c alembic-tenant.ini upgrade head
+          docker compose -f deployments/development/docker-compose.yml exec -T api \
+            alembic -c alembic.ini downgrade platform_0003
+          docker compose -f deployments/development/docker-compose.yml exec -T api \
+            alembic -c alembic.ini upgrade head
+          docker compose -f deployments/development/docker-compose.yml run --rm bootstrap
+
+      - name: Smoke test after migration roundtrip
+        run: |
+          curl -fsS -H 'Host: localhost' http://127.0.0.1:8000/api/v1/health/live
+          curl -fsS -H 'Host: localhost' http://127.0.0.1:8000/api/v1/health/ready
+
+      - name: Stack diagnostics
+        if: always()
+        run: |
+          docker compose -f deployments/development/docker-compose.yml ps
+          docker compose -f deployments/development/docker-compose.yml logs --no-color bootstrap api || true
+
+      - name: Clean stack
+        if: always()
+        run: docker compose -f deployments/development/docker-compose.yml down -v --remove-orphans

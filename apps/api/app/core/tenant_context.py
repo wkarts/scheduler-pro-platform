@@ -11,8 +11,14 @@ class TenantContext:
     storage_bucket: str
     hostname: str
     timezone: str = "America/Bahia"
+    database_credential_version: int = 1
 
     def assert_same_tenant(self, authenticated_tenant_id: str | None) -> None:
         if authenticated_tenant_id and authenticated_tenant_id != self.tenant_id:
             from app.core.errors import APIError
-            raise APIError("TENANT_CONTEXT_MISMATCH", "Usuário autenticado não pertence ao tenant resolvido.", 403)
+
+            raise APIError(
+                "TENANT_CONTEXT_MISMATCH",
+                "Usuário autenticado não pertence ao tenant resolvido.",
+                403,
+            )

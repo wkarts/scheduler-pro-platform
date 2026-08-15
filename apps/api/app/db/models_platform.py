@@ -17,7 +17,7 @@ class Tenant(PlatformBase):
     slug: Mapped[str] = mapped_column(String(120), nullable=False, unique=True, index=True)
     status: Mapped[str] = mapped_column(String(32), nullable=False, default=TenantStatus.pending.value)
     timezone: Mapped[str] = mapped_column(String(64), nullable=False, default="America/Bahia")
-    settings: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+    settings: Mapped[dict[str, object]] = mapped_column(JSONB, nullable=False, default=dict)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     database: Mapped["TenantDatabase"] = relationship(back_populates="tenant", cascade="all, delete-orphan")
@@ -32,6 +32,7 @@ class TenantDatabase(PlatformBase):
     database_name: Mapped[str] = mapped_column(String(128), nullable=False, unique=True)
     database_user: Mapped[str] = mapped_column(String(128), nullable=False, unique=True)
     password_ref: Mapped[str] = mapped_column(Text, nullable=False)
+    credential_version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     tenant: Mapped[Tenant] = relationship(back_populates="database")
 
 
@@ -54,7 +55,7 @@ class Domain(PlatformBase):
     is_primary: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     is_temporary: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     status: Mapped[str] = mapped_column(String(32), nullable=False, default="PENDING")
-    validation: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+    validation: Mapped[dict[str, object]] = mapped_column(JSONB, nullable=False, default=dict)
 
 
 class ProvisioningJob(PlatformBase):
@@ -85,6 +86,11 @@ class PlatformUser(PlatformBase):
     email: Mapped[str] = mapped_column(String(180), nullable=False, unique=True)
     password_hash: Mapped[str] = mapped_column(Text, nullable=False)
     is_super_admin: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    failed_login_attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    locked_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
 class FeatureFlag(PlatformBase):
@@ -92,7 +98,7 @@ class FeatureFlag(PlatformBase):
 
     key: Mapped[str] = mapped_column(String(120), primary_key=True)
     enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
-    rules: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+    rules: Mapped[dict[str, object]] = mapped_column(JSONB, nullable=False, default=dict)
 
 
 class TenantBrandingProfile(PlatformBase):
@@ -117,7 +123,7 @@ class TenantBrandingProfile(PlatformBase):
     theme_mode: Mapped[str] = mapped_column(String(20), nullable=False, default="system")
     locale: Mapped[str] = mapped_column(String(20), nullable=False, default="pt-BR")
     timezone: Mapped[str] = mapped_column(String(64), nullable=False, default="America/Bahia")
-    settings: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+    settings: Mapped[dict[str, object]] = mapped_column(JSONB, nullable=False, default=dict)
     published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
@@ -151,8 +157,8 @@ class BuildProfile(PlatformBase):
     bundle_identifier: Mapped[str | None] = mapped_column(String(200))
     package_name: Mapped[str | None] = mapped_column(String(200))
     api_url: Mapped[str] = mapped_column(Text, nullable=False)
-    features: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
-    config: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+    features: Mapped[list[object]] = mapped_column(JSONB, nullable=False, default=list)
+    config: Mapped[dict[str, object]] = mapped_column(JSONB, nullable=False, default=dict)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
@@ -165,7 +171,7 @@ class BuildRequest(PlatformBase):
     target: Mapped[str] = mapped_column(String(40), nullable=False)
     status: Mapped[str] = mapped_column(String(32), nullable=False, default="QUEUED")
     requested_by: Mapped[str | None] = mapped_column(UUID(as_uuid=False))
-    request_payload: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+    request_payload: Mapped[dict[str, object]] = mapped_column(JSONB, nullable=False, default=dict)
     correlation_id: Mapped[str] = mapped_column(String(100), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
@@ -188,7 +194,7 @@ class BuildJob(PlatformBase):
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     error: Mapped[str | None] = mapped_column(Text)
-    artifact_manifest: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+    artifact_manifest: Mapped[dict[str, object]] = mapped_column(JSONB, nullable=False, default=dict)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
@@ -202,7 +208,7 @@ class BuildLog(PlatformBase):
     sequence: Mapped[int] = mapped_column(Integer, nullable=False)
     level: Mapped[str] = mapped_column(String(20), nullable=False, default="INFO")
     message: Mapped[str] = mapped_column(Text, nullable=False)
-    context: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+    context: Mapped[dict[str, object]] = mapped_column(JSONB, nullable=False, default=dict)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
@@ -219,7 +225,7 @@ class BuildArtifact(PlatformBase):
     download_url: Mapped[str | None] = mapped_column(Text)
     checksum_sha256: Mapped[str | None] = mapped_column(String(64))
     size_bytes: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)
-    metadata: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+    artifact_metadata: Mapped[dict[str, object]] = mapped_column("metadata", JSONB, nullable=False, default=dict)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
@@ -233,5 +239,5 @@ class BuildCredential(PlatformBase):
     credential_type: Mapped[str] = mapped_column(String(80), nullable=False)
     secret_ref: Mapped[str] = mapped_column(Text, nullable=False)
     status: Mapped[str] = mapped_column(String(32), nullable=False, default="ACTIVE")
-    metadata: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+    credential_metadata: Mapped[dict[str, object]] = mapped_column("metadata", JSONB, nullable=False, default=dict)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

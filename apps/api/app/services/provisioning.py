@@ -21,7 +21,7 @@ class ProvisioningService:
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
 
-    async def enqueue_tenant(self, name: str, slug: str, admin_email: str) -> dict:
+    async def enqueue_tenant(self, name: str, slug: str, admin_email: str) -> dict[str, str]:
         tenant = Tenant(name=name, slug=slug, status=TenantStatus.pending.value)
         self.session.add(tenant)
         await self.session.flush()
