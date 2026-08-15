@@ -160,7 +160,7 @@ services:
       scheduler-minio:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "curl --fail --silent http://127.0.0.1:8000/api/v1/health/ready >/dev/null || exit 1"]
+      test: ["CMD-SHELL", "curl --fail --silent -H 'Host: ${PUBLIC_PLATFORM_DOMAIN}' http://127.0.0.1:8000/api/v1/health/ready >/dev/null || exit 1"]
       interval: 20s
       timeout: 5s
       retries: 20
