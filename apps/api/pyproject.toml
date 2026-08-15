@@ -9,6 +9,9 @@ dependencies = []
 pythonpath = ["."]
 testpaths = ["tests"]
 asyncio_mode = "auto"
+markers = [
+  "integration: requires PostgreSQL, Redis, RabbitMQ and MinIO development stack",
+]
 
 [tool.ruff]
 line-length = 100

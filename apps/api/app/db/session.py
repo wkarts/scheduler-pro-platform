@@ -33,6 +33,7 @@ async def platform_session() -> AsyncIterator[AsyncSession]:
 def _tenant_cache_key(context: TenantContext) -> str:
     return ":".join(
         [
+            context.hostname,
             settings.postgres_host,
             str(settings.postgres_port),
             context.database,
@@ -45,7 +46,8 @@ def _tenant_cache_key(context: TenantContext) -> str:
 async def _purge_expired_engines(now: float) -> None:
     ttl = max(settings.tenant_engine_cache_ttl_seconds, 1)
     expired = [
-        key for key, entry in _tenant_engines.items()
+        key
+        for key, entry in _tenant_engines.items()
         if now - entry.last_used >= ttl
     ]
     for key in expired:

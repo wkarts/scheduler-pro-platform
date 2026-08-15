@@ -3,7 +3,11 @@ name: CI
 on:
   pull_request:
   push:
-    branches: [main, develop, 'feature/**']
+    branches: [main, develop, 'feature/**', 'feat/**', 'fix/**']
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   api:
@@ -21,9 +25,15 @@ jobs:
       - name: Compile Python
         working-directory: apps/api
         run: python -m compileall app tests
-      - name: Tests
+      - name: Ruff
         working-directory: apps/api
-        run: pytest -q
+        run: ruff check app tests
+      - name: Mypy foundation security core
+        working-directory: apps/api
+        run: mypy app/core/security.py app/core/secrets.py app/core/tenant_context.py
+      - name: Unit tests
+        working-directory: apps/api
+        run: pytest -q -m "not integration"
 
   web:
     runs-on: ubuntu-latest

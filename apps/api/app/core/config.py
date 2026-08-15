@@ -1,9 +1,10 @@
 from functools import lru_cache
+from typing import Annotated, Any
 from urllib.parse import quote_plus
 from uuid import uuid4
 
-from pydantic import Field, field_validator
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic import Field, field_validator, model_validator
+from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 
 class Settings(BaseSettings):
@@ -41,7 +42,9 @@ class Settings(BaseSettings):
     login_lock_minutes: int = 15
     tenant_engine_cache_max: int = 64
     tenant_engine_cache_ttl_seconds: int = 900
-    trusted_proxy_hosts: list[str] = Field(default_factory=lambda: ["127.0.0.1", "::1"])
+    trusted_proxy_hosts: Annotated[list[str], NoDecode] = Field(
+        default_factory=lambda: ["127.0.0.1", "::1"]
+    )
 
     redis_url: str = "redis://localhost:6379/0"
     rabbitmq_url: str = "amqp://scheduler:scheduler@localhost:5672//"
@@ -59,7 +62,7 @@ class Settings(BaseSettings):
     evolution_api_url: str | None = None
     evolution_api_token: str | None = None
 
-    cors_allowed_origins: list[str] = Field(
+    cors_allowed_origins: Annotated[list[str], NoDecode] = Field(
         default_factory=lambda: [
             "http://localhost:5173",
             "http://localhost:5174",
@@ -69,13 +72,27 @@ class Settings(BaseSettings):
 
     @field_validator("cors_allowed_origins", "trusted_proxy_hosts", mode="before")
     @classmethod
-    def split_csv_values(cls, value):
-        if isinstance(value, str) and not value.lstrip().startswith("["):
+    def split_csv_values(cls, value: Any) -> Any:
+        if isinstance(value, str):
             return [item.strip() for item in value.split(",") if item.strip()]
         return value
 
+    @model_validator(mode="after")
+    def validate_production_secrets(self) -> "Settings":
+        if self.app_env != "development":
+            if len(self.app_secret_key) < 64 or self.app_secret_key.startswith("change-me"):
+                raise ValueError("APP_SECRET_KEY must contain at least 64 non-placeholder characters")
+        return self
+
     @staticmethod
-    def _database_url(driver: str, user: str, password: str, host: str, port: int, database: str) -> str:
+    def _database_url(
+        driver: str,
+        user: str,
+        password: str,
+        host: str,
+        port: int,
+        database: str,
+    ) -> str:
         return (
             f"postgresql+{driver}://{quote_plus(user)}:{quote_plus(password)}"
             f"@{host}:{port}/{database}"
@@ -84,15 +101,23 @@ class Settings(BaseSettings):
     @property
     def platform_database_url(self) -> str:
         return self._database_url(
-            "asyncpg", self.postgres_user, self.postgres_password,
-            self.postgres_host, self.postgres_port, self.postgres_db,
+            "asyncpg",
+            self.postgres_user,
+            self.postgres_password,
+            self.postgres_host,
+            self.postgres_port,
+            self.postgres_db,
         )
 
     @property
     def platform_database_url_sync(self) -> str:
         return self._database_url(
-            "psycopg", self.postgres_user, self.postgres_password,
-            self.postgres_host, self.postgres_port, self.postgres_db,
+            "psycopg",
+            self.postgres_user,
+            self.postgres_password,
+            self.postgres_host,
+            self.postgres_port,
+            self.postgres_db,
         )
 
     def tenant_database_url(self, database: str, user: str, password: str) -> str:

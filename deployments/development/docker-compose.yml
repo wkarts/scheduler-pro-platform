@@ -8,16 +8,20 @@ services:
     ports: ["5432:5432"]
     volumes:
       - scheduler_postgres:/var/lib/postgresql/data
-      - ../../apps/api/migrations/platform/001_platform_init.sql:/docker-entrypoint-initdb.d/001_platform_init.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U scheduler -d platform"]
-      interval: 10s
-      timeout: 5s
-      retries: 10
+      interval: 3s
+      timeout: 3s
+      retries: 30
 
   redis:
     image: redis:7-alpine
     ports: ["6379:6379"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 3s
+      timeout: 3s
+      retries: 30
 
   rabbitmq:
     image: rabbitmq:3.13-management-alpine
@@ -25,6 +29,11 @@ services:
       RABBITMQ_DEFAULT_USER: scheduler
       RABBITMQ_DEFAULT_PASS: scheduler
     ports: ["5672:5672", "15672:15672"]
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
 
   minio:
     image: minio/minio:latest
@@ -36,6 +45,20 @@ services:
     volumes:
       - scheduler_minio:/data
 
+  bootstrap:
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+    env_file:
+      - ../../.env.example
+    command: ["python", "-m", "app.cli", "bootstrap-dev"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      minio:
+        condition: service_started
+    restart: "no"
+
   api:
     build:
       context: ../..
@@ -43,13 +66,22 @@ services:
     env_file:
       - ../../.env.example
     depends_on:
+      bootstrap:
+        condition: service_completed_successfully
       postgres:
         condition: service_healthy
       redis:
-        condition: service_started
+        condition: service_healthy
       rabbitmq:
+        condition: service_healthy
+      minio:
         condition: service_started
     ports: ["8000:8000"]
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8000/api/v1/health/live"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
 
 volumes:
   scheduler_postgres:

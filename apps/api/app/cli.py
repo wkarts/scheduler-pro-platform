@@ -8,6 +8,7 @@ import asyncpg
 import boto3
 from alembic import command
 from alembic.config import Config
+from botocore.exceptions import BotoCoreError, ClientError
 
 from app.core.config import settings
 from app.core.security import hash_password
@@ -89,12 +90,20 @@ async def ensure_dev_database() -> None:
     )
     try:
         role = settings.dev_tenant_database_user
-        password_literal = await conn.fetchval("select quote_literal($1)", settings.dev_tenant_database_password)
-        role_exists = await conn.fetchval("select exists(select 1 from pg_roles where rolname=$1)", role)
+        password_literal = await conn.fetchval(
+            "select quote_literal($1)", settings.dev_tenant_database_password
+        )
+        role_exists = await conn.fetchval(
+            "select exists(select 1 from pg_roles where rolname=$1)", role
+        )
         if role_exists:
-            await conn.execute(f"alter role {_identifier(role)} with login password {password_literal}")
+            await conn.execute(
+                f"alter role {_identifier(role)} with login password {password_literal}"
+            )
         else:
-            await conn.execute(f"create role {_identifier(role)} login password {password_literal}")
+            await conn.execute(
+                f"create role {_identifier(role)} login password {password_literal}"
+            )
 
         db_exists = await conn.fetchval(
             "select exists(select 1 from pg_database where datname=$1)",
@@ -113,8 +122,7 @@ async def seed_platform() -> str:
     conn = await _connect(settings.postgres_db)
     try:
         tenant_id = await conn.fetchval(
-            "select id::text from tenants where slug=$1",
-            settings.dev_tenant_slug,
+            "select id::text from tenants where slug=$1", settings.dev_tenant_slug
         )
         if tenant_id is None:
             tenant_id = await conn.fetchval(
@@ -127,7 +135,9 @@ async def seed_platform() -> str:
                 settings.dev_tenant_slug,
             )
         else:
-            await conn.execute("update tenants set status='ACTIVE' where id=$1::uuid", tenant_id)
+            await conn.execute(
+                "update tenants set status='ACTIVE' where id=$1::uuid", tenant_id
+            )
 
         await conn.execute(
             """
@@ -156,8 +166,9 @@ async def seed_platform() -> str:
         for hostname, primary in (("localhost", True), ("127.0.0.1", False)):
             await conn.execute(
                 """
-                insert into domains(tenant_id, hostname, is_primary, is_temporary, status, validation)
-                values($1::uuid, $2, $3, true, 'ACTIVE', '{}'::jsonb)
+                insert into domains(
+                    tenant_id, hostname, is_primary, is_temporary, status, validation
+                ) values($1::uuid, $2, $3, true, 'ACTIVE', '{}'::jsonb)
                 on conflict(hostname) do nothing
                 """,
                 tenant_id,
@@ -196,7 +207,8 @@ async def seed_tenant() -> None:
     try:
         role_id = await conn.fetchval(
             """
-            insert into roles(name, description) values('tenant-admin', 'Administrador do tenant')
+            insert into roles(name, description)
+            values('tenant-admin', 'Administrador do tenant')
             on conflict(name) do update set description=excluded.description
             returning id::text
             """
@@ -231,7 +243,10 @@ async def seed_tenant() -> None:
             hash_password(settings.dev_tenant_admin_password),
         )
         await conn.execute(
-            "insert into user_roles(user_id, role_id) values($1::uuid, $2::uuid) on conflict do nothing",
+            """
+            insert into user_roles(user_id, role_id)
+            values($1::uuid, $2::uuid) on conflict do nothing
+            """,
             user_id,
             role_id,
         )
@@ -248,7 +263,7 @@ async def seed_tenant() -> None:
         await conn.close()
 
 
-def ensure_dev_bucket() -> None:
+def _ensure_dev_bucket_once() -> None:
     s3 = boto3.client(
         "s3",
         endpoint_url=settings.s3_endpoint,
@@ -259,6 +274,18 @@ def ensure_dev_bucket() -> None:
     existing = {bucket["Name"] for bucket in s3.list_buckets().get("Buckets", [])}
     if settings.dev_tenant_bucket not in existing:
         s3.create_bucket(Bucket=settings.dev_tenant_bucket)
+
+
+async def ensure_dev_bucket() -> None:
+    last_error: Exception | None = None
+    for _ in range(60):
+        try:
+            await asyncio.to_thread(_ensure_dev_bucket_once)
+            return
+        except (BotoCoreError, ClientError, OSError) as exc:
+            last_error = exc
+            await asyncio.sleep(1)
+    raise RuntimeError("MinIO/S3 did not become ready during development bootstrap") from last_error
 
 
 async def bootstrap_dev() -> None:
@@ -273,7 +300,7 @@ async def bootstrap_dev() -> None:
         settings.dev_tenant_database_password,
     )
     await seed_tenant()
-    await asyncio.to_thread(ensure_dev_bucket)
+    await ensure_dev_bucket()
     print("Scheduler Pro development bootstrap completed.")
 
 
@@ -290,7 +317,9 @@ async def main() -> None:
             user = user or settings.dev_tenant_database_user
             password = password or settings.dev_tenant_database_password
         if not user or not password:
-            raise RuntimeError("ALEMBIC_TENANT_USER and ALEMBIC_TENANT_PASSWORD are required")
+            raise RuntimeError(
+                "ALEMBIC_TENANT_USER and ALEMBIC_TENANT_PASSWORD are required"
+            )
         migrate_tenant(database, user, password)
         return
     if command_name == "bootstrap-dev":

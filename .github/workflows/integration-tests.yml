@@ -1,0 +1,74 @@
+name: Integration Tests
+
+on:
+  pull_request:
+    paths:
+      - 'apps/api/**'
+      - 'deployments/development/**'
+      - '.env.example'
+      - 'Dockerfile'
+      - '.github/workflows/integration-tests.yml'
+  push:
+    branches: [main, 'fix/**', 'feat/**']
+    paths:
+      - 'apps/api/**'
+      - 'deployments/development/**'
+      - '.env.example'
+      - 'Dockerfile'
+      - '.github/workflows/integration-tests.yml'
+
+concurrency:
+  group: integration-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  postgres-multitenant-stack:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate Compose model
+        run: docker compose -f deployments/development/docker-compose.yml config --quiet
+      - name: Start development stack and bootstrap
+        run: docker compose -f deployments/development/docker-compose.yml up --build -d
+      - name: Wait for real readiness
+        shell: bash
+        run: |
+          for i in {1..60}; do
+            if curl -fsS -H 'Host: localhost' http://127.0.0.1:8000/api/v1/health/ready >/tmp/ready.json; then
+              cat /tmp/ready.json
+              exit 0
+            fi
+            sleep 2
+          done
+          docker compose -f deployments/development/docker-compose.yml ps
+          docker compose -f deployments/development/docker-compose.yml logs --no-color
+          exit 1
+      - name: Integration tests against PostgreSQL Redis RabbitMQ and MinIO
+        run: |
+          docker compose -f deployments/development/docker-compose.yml exec -T api \
+            pytest -q -m integration
+      - name: Migration downgrade and re-upgrade
+        shell: bash
+        run: |
+          docker compose -f deployments/development/docker-compose.yml exec -T api \
+            alembic -c alembic-tenant.ini downgrade tenant_0001
+          docker compose -f deployments/development/docker-compose.yml exec -T api \
+            alembic -c alembic-tenant.ini upgrade head
+          docker compose -f deployments/development/docker-compose.yml exec -T api \
+            alembic -c alembic.ini downgrade platform_0003
+          docker compose -f deployments/development/docker-compose.yml exec -T api \
+            alembic -c alembic.ini upgrade head
+          docker compose -f deployments/development/docker-compose.yml run --rm bootstrap
+      - name: Smoke test after migration roundtrip
+        run: |
+          curl -fsS -H 'Host: localhost' http://127.0.0.1:8000/api/v1/health/live
+          curl -fsS -H 'Host: localhost' http://127.0.0.1:8000/api/v1/health/ready
+      - name: Stack diagnostics
+        if: always()
+        run: |
+          docker compose -f deployments/development/docker-compose.yml ps
+          docker compose -f deployments/development/docker-compose.yml logs --no-color bootstrap api || true
+      - name: Clean stack
+        if: always()
+        run: docker compose -f deployments/development/docker-compose.yml down -v --remove-orphans
