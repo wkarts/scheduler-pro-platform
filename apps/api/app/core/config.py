@@ -31,9 +31,9 @@ class Settings(BaseSettings):
     dev_tenant_slug: str = "dev"
     dev_tenant_name: str = "Scheduler Pro Development"
     dev_tenant_bucket: str = "tenant-dev"
-    dev_tenant_admin_email: str = "admin@tenant.local"
+    dev_tenant_admin_email: str = "admin@tenant.example"
     dev_tenant_admin_password: str = "ChangeMe-Tenant-2026!"
-    dev_platform_admin_email: str = "admin@platform.local"
+    dev_platform_admin_email: str = "admin@platform.example"
     dev_platform_admin_password: str = "ChangeMe-Platform-2026!"
 
     access_token_minutes: int = 15
