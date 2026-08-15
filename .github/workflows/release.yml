@@ -2,50 +2,144 @@ name: Release
 
 on:
   push:
-    tags:
-      - 'v*.*.*'
+    branches:
+      - main
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag. Leave empty to generate v0.1.0-alpha.<run_number>'
+        required: false
+        default: ''
 
 permissions:
   contents: write
   packages: write
 
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAMESPACE: ghcr.io/${{ github.repository }}
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
-  base:
+  release:
+    name: Build release assets and publish GitHub Release
     runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.version.outputs.tag }}
     steps:
       - uses: actions/checkout@v4
-      - uses: docker/setup-buildx-action@v3
-      - uses: docker/login-action@v3
         with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-      - uses: docker/build-push-action@v6
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
         with:
-          context: .
-          file: infrastructure/docker/base/python/Dockerfile
-          push: true
-          tags: |
-            ghcr.io/${{ github.repository }}/python-base:${{ github.ref_name }}
-            ghcr.io/${{ github.repository }}/python-base:latest
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          node-version: '22'
+
+      - name: Resolve release tag
+        id: version
+        shell: bash
+        run: |
+          if [ -n "${{ github.event.inputs.tag }}" ]; then
+            TAG="${{ github.event.inputs.tag }}"
+          else
+            TAG="v0.1.0-alpha.${GITHUB_RUN_NUMBER}"
+          fi
+          SHORT_SHA="${GITHUB_SHA::7}"
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+          echo "short_sha=${SHORT_SHA}" >> "$GITHUB_OUTPUT"
+          echo "SCHEDULER_PRO_RELEASE_TAG=${TAG}" >> "$GITHUB_ENV"
+          echo "SCHEDULER_PRO_SHORT_SHA=${SHORT_SHA}" >> "$GITHUB_ENV"
+
+      - name: Install JS dependencies
+        run: npm install
+
+      - name: Build web/admin PWAs
+        run: |
+          npm --workspace apps/web run build
+          npm --workspace apps/admin run build
+
+      - name: Pack release artifacts
+        shell: bash
+        run: |
+          mkdir -p artifacts
+          tar -C apps/web/dist -czf "artifacts/scheduler-pro-web-${SCHEDULER_PRO_RELEASE_TAG}.tar.gz" .
+          tar -C apps/admin/dist -czf "artifacts/scheduler-pro-admin-${SCHEDULER_PRO_RELEASE_TAG}.tar.gz" .
+          tar -C apps/desktop -czf "artifacts/scheduler-pro-desktop-source-${SCHEDULER_PRO_RELEASE_TAG}.tar.gz" .
+          tar -C apps/mobile -czf "artifacts/scheduler-pro-mobile-source-${SCHEDULER_PRO_RELEASE_TAG}.tar.gz" .
+          tar -C deployments/cloudpanel -czf "artifacts/scheduler-pro-cloudpanel-${SCHEDULER_PRO_RELEASE_TAG}.tar.gz" .
+          tar -C deployments/dockge -czf "artifacts/scheduler-pro-dockge-${SCHEDULER_PRO_RELEASE_TAG}.tar.gz" .
+          git archive --format=tar.gz --output="artifacts/scheduler-pro-source-${SCHEDULER_PRO_RELEASE_TAG}.tar.gz" HEAD
+          cat > artifacts/distribution-manifest.json <<JSON
+          {
+            "name": "Scheduler Pro",
+            "tag": "${SCHEDULER_PRO_RELEASE_TAG}",
+            "commit": "${GITHUB_SHA}",
+            "images": {
+              "python_base": "${IMAGE_NAMESPACE}/python-base:${SCHEDULER_PRO_RELEASE_TAG}",
+              "api": "${IMAGE_NAMESPACE}/api:${SCHEDULER_PRO_RELEASE_TAG}",
+              "worker": "${IMAGE_NAMESPACE}/worker:${SCHEDULER_PRO_RELEASE_TAG}",
+              "web": "${IMAGE_NAMESPACE}/web:${SCHEDULER_PRO_RELEASE_TAG}",
+              "admin": "${IMAGE_NAMESPACE}/admin:${SCHEDULER_PRO_RELEASE_TAG}",
+              "proxy": "${IMAGE_NAMESPACE}/proxy:${SCHEDULER_PRO_RELEASE_TAG}"
+            },
+            "artifacts": [
+              "scheduler-pro-web-${SCHEDULER_PRO_RELEASE_TAG}.tar.gz",
+              "scheduler-pro-admin-${SCHEDULER_PRO_RELEASE_TAG}.tar.gz",
+              "scheduler-pro-desktop-source-${SCHEDULER_PRO_RELEASE_TAG}.tar.gz",
+              "scheduler-pro-mobile-source-${SCHEDULER_PRO_RELEASE_TAG}.tar.gz",
+              "scheduler-pro-cloudpanel-${SCHEDULER_PRO_RELEASE_TAG}.tar.gz",
+              "scheduler-pro-dockge-${SCHEDULER_PRO_RELEASE_TAG}.tar.gz",
+              "scheduler-pro-source-${SCHEDULER_PRO_RELEASE_TAG}.tar.gz"
+            ]
+          }
+          JSON
+          (cd artifacts && sha256sum * > SHA256SUMS.txt)
+
+      - name: Create tag and GitHub Release with assets
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          TAG="${SCHEDULER_PRO_RELEASE_TAG}"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" artifacts/* --clobber
+          else
+            gh release create "$TAG" artifacts/* \
+              --target "$GITHUB_SHA" \
+              --title "Scheduler Pro ${TAG}" \
+              --notes "Release automática do Scheduler Pro. Inclui PWAs web/admin, pacotes CloudPanel/Dockge, source package, manifesto de distribuição e checksums. Os workflows Desktop Artifacts e Mobile Artifacts adicionam binários/artefatos nativos quando finalizarem." \
+              --latest
+          fi
+
+      - name: Upload workflow artifact mirror
+        uses: actions/upload-artifact@v4
+        with:
+          name: scheduler-pro-release-${{ steps.version.outputs.tag }}
+          path: artifacts/*
 
   images:
-    needs: base
+    name: Publish image ${{ matrix.name }}
+    needs: release
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
         include:
+          - name: python-base
+            file: infrastructure/docker/base/python/Dockerfile
+            tag: python-base
+            build_args: ""
           - name: api
             file: infrastructure/docker/api/Dockerfile
             tag: api
-            build_args: "PYTHON_BASE_IMAGE=ghcr.io/${{ github.repository }}/python-base:${{ github.ref_name }}"
+            build_args: "PYTHON_BASE_IMAGE=ghcr.io/${{ github.repository }}/python-base:${{ needs.release.outputs.tag }}"
           - name: worker
             file: infrastructure/docker/worker/Dockerfile
             tag: worker
-            build_args: "PYTHON_BASE_IMAGE=ghcr.io/${{ github.repository }}/python-base:${{ github.ref_name }}"
+            build_args: "PYTHON_BASE_IMAGE=ghcr.io/${{ github.repository }}/python-base:${{ needs.release.outputs.tag }}"
           - name: web
             file: infrastructure/docker/web/Dockerfile
             tag: web
@@ -74,33 +168,7 @@ jobs:
           push: true
           build-args: ${{ matrix.build_args }}
           tags: |
-            ghcr.io/${{ github.repository }}/${{ matrix.tag }}:${{ github.ref_name }}
+            ghcr.io/${{ github.repository }}/${{ matrix.tag }}:${{ needs.release.outputs.tag }}
             ghcr.io/${{ github.repository }}/${{ matrix.tag }}:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
-
-  web-artifacts:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-      - run: npm install
-      - run: npm --workspace apps/web run build
-      - run: npm --workspace apps/admin run build
-      - name: Pack web/admin/deploy artifacts
-        run: |
-          mkdir -p artifacts
-          tar -C apps/web/dist -czf artifacts/scheduler-pro-web-${{ github.ref_name }}.tar.gz .
-          tar -C apps/admin/dist -czf artifacts/scheduler-pro-admin-${{ github.ref_name }}.tar.gz .
-          tar -C deployments/cloudpanel -czf artifacts/scheduler-pro-cloudpanel-deploy-${{ github.ref_name }}.tar.gz .
-          tar -C deployments/dockge -czf artifacts/scheduler-pro-dockge-deploy-${{ github.ref_name }}.tar.gz .
-      - uses: actions/upload-artifact@v4
-        with:
-          name: scheduler-pro-web-admin-deploy-${{ github.ref_name }}
-          path: artifacts/*
-      - uses: softprops/action-gh-release@v2
-        with:
-          files: artifacts/*
-          generate_release_notes: true
