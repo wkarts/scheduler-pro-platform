@@ -21,11 +21,23 @@ async def _connect(database: str | None = None):
 
 
 async def migrate_platform() -> None:
-    sql_path = ROOT / "migrations" / "platform" / "001_platform_init.sql"
+    migrations_dir = ROOT / "migrations" / "platform"
     conn = await _connect(settings.postgres_db)
     try:
-        await conn.execute(sql_path.read_text(encoding="utf-8"))
-        print(f"platform migration applied: {sql_path}")
+        for sql_path in sorted(migrations_dir.glob("*.sql")):
+            await conn.execute(sql_path.read_text(encoding="utf-8"))
+            print(f"platform migration applied: {sql_path.name}")
+    finally:
+        await conn.close()
+
+
+async def migrate_tenant(database: str) -> None:
+    migrations_dir = ROOT / "migrations" / "tenant"
+    conn = await _connect(database)
+    try:
+        for sql_path in sorted(migrations_dir.glob("*.sql")):
+            await conn.execute(sql_path.read_text(encoding="utf-8"))
+            print(f"tenant migration applied: {database}: {sql_path.name}")
     finally:
         await conn.close()
 
@@ -35,7 +47,10 @@ async def main() -> None:
     if command == "migrate-platform":
         await migrate_platform()
         return
-    print("Usage: python -m app.cli migrate-platform", file=sys.stderr)
+    if command == "migrate-tenant" and len(sys.argv) >= 3:
+        await migrate_tenant(sys.argv[2])
+        return
+    print("Usage: python -m app.cli migrate-platform | migrate-tenant <database>", file=sys.stderr)
     raise SystemExit(2)
 
 
