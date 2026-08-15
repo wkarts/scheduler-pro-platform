@@ -2,39 +2,43 @@
 
 Plataforma SaaS multitenant de agendamentos construída com **FastAPI/Python**, **PostgreSQL**, **Redis**, **RabbitMQ**, **Vue 3 + Tailwind PWA** e **Tauri 2** para desktop/mobile.
 
-Este repositório segue o contrato técnico do projeto: Control Plane, Tenant Plane e Delivery Plane. O núcleo permanece em Python/FastAPI. Tauri é usado somente para os aplicativos gerenciais desktop e mobile.
+O núcleo permanece em Python/FastAPI. Tauri é usado somente para os aplicativos gerenciais desktop e mobile.
 
 ## Estrutura
 
 ```text
 apps/
-  api/        FastAPI + SQLAlchemy Async + Alembic-ready
+  api/        FastAPI + SQLAlchemy Async
   web/        Webapp tenant PWA instalável
   admin/      Super Admin / Control Plane PWA instalável
   desktop/    Tauri 2 Desktop
   mobile/     Tauri 2 Mobile
-backend/      domínio compartilhado futuro
-services/     serviços assíncronos e workers
-packages/     contratos, SDK e componentes compartilhados
+packages/     contratos e SDK
 infrastructure/docker
-deployments/development
+  base/python Imagem base Python 3.13
+  api         Imagem API
+  worker      Imagem workers Celery
+  web         Imagem web/admin PWA via Nginx
+  proxy       Reverse proxy interno
+deployments/
+  development
+  cloudpanel
+  dockge
 docs/
 ```
 
-## Fundamentos implementados
+## Imagens GHCR
 
-- Tenant resolvido por hostname, nunca por `tenant_id` arbitrário do frontend.
-- Control Plane separado do Tenant Plane.
-- Banco da plataforma e banco individual por tenant.
-- Provisionamento idempotente por steps.
-- Agenda com proteção contra double booking no PostgreSQL.
-- Landing Page Builder com versionamento.
-- WhatsApp API com provider abstrato.
-- Webhooks idempotentes.
-- Transactional Outbox.
-- RBAC e feature flags.
-- Web/admin como PWA instalável pelo navegador.
-- Desktop/mobile com Tauri 2 consumindo a API.
+```text
+ghcr.io/wkarts/scheduler-pro-platform/python-base:latest
+ghcr.io/wkarts/scheduler-pro-platform/api:latest
+ghcr.io/wkarts/scheduler-pro-platform/worker:latest
+ghcr.io/wkarts/scheduler-pro-platform/web:latest
+ghcr.io/wkarts/scheduler-pro-platform/admin:latest
+ghcr.io/wkarts/scheduler-pro-platform/proxy:latest
+```
+
+A imagem `python-base` evita recompilar dependências nativas em toda build da API/worker.
 
 ## Execução local
 
@@ -43,34 +47,49 @@ cp .env.example .env
 docker compose -f deployments/development/docker-compose.yml up --build
 ```
 
-API:
+## CloudPanel/Dockge
+
+Use os pacotes em:
 
 ```text
-http://localhost:8000
+deployments/cloudpanel
+deployments/dockge
 ```
 
-Web tenant:
+Exemplo:
+
+```bash
+cd deployments/cloudpanel
+cp .env.example .env
+docker compose --env-file .env -f compose.yaml pull
+docker compose --env-file .env -f compose.yaml up -d
+```
+
+No CloudPanel, aponte o reverse proxy para:
 
 ```text
-http://localhost:5173
+http://127.0.0.1:18080
 ```
 
-Admin:
+## Builds e artefatos
 
-```text
-http://localhost:5174
-```
+Workflows disponíveis:
 
-## Validação
+- `CI`: valida API, frontend e Docker.
+- `Base Image`: publica `python-base`.
+- `Images`: publica `api`, `worker`, `web`, `admin`, `proxy` e `python-base`.
+- `Release`: publica imagens e anexa artefatos web/admin/deploy em tag `v*.*.*`.
+- `Desktop Artifacts`: gera Tauri desktop unsigned para Windows/Linux/macOS.
+- `Mobile Artifacts`: gera PWA mobile e build Android unsigned quando habilitado.
+
+## Validação local
 
 ```bash
 bash scripts/validate-local.sh
+bash scripts/build/build-images-local.sh local
+bash scripts/build/package-web-artifacts.sh local
 ```
 
 ## Segurança
 
-Nenhum segredo deve ser commitado. Use `.env`, secrets do GitHub Actions e secret manager em produção.
-
-## Status
-
-Branch inicial de foundation pronta para evolução incremental por PRs: agenda, WhatsApp, landing builder, Cloudflare, build manager e hardening.
+Nenhum segredo deve ser commitado. Use `.env`, GitHub Actions Secrets e secret manager em produção.
