@@ -5,7 +5,11 @@ from fastapi import APIRouter, Body, Depends
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_tenant_context, get_tenant_session
+from app.api.deps import (
+    get_platform_session,
+    get_tenant_context,
+    get_tenant_session,
+)
 from app.core.responses import success
 from app.core.tenant_context import TenantContext
 
@@ -18,7 +22,9 @@ async def tenant_settings(
     session: AsyncSession = Depends(get_tenant_session),
 ) -> dict[str, Any]:
     rows = (
-        await session.execute(text("select key, value, updated_at from tenant_settings order by key"))
+        await session.execute(
+            text("select key, value, updated_at from tenant_settings order by key")
+        )
     ).mappings().all()
     return success(
         {
@@ -31,6 +37,33 @@ async def tenant_settings(
     )
 
 
+@router.get("/capabilities")
+async def tenant_capabilities(
+    context: TenantContext = Depends(get_tenant_context),
+    platform_session: AsyncSession = Depends(get_platform_session),
+) -> dict[str, Any]:
+    rows = (
+        await platform_session.execute(
+            text(
+                """
+                select capability_key as key, enabled, config, updated_at
+                from tenant_capabilities
+                where tenant_id=cast(:tenant_id as uuid)
+                order by capability_key
+                """
+            ),
+            {"tenant_id": context.tenant_id},
+        )
+    ).mappings().all()
+    return success(
+        {
+            "tenant_id": context.tenant_id,
+            "enabled": [row["key"] for row in rows if row["enabled"]],
+            "capabilities": [dict(row) for row in rows],
+        }
+    )
+
+
 @router.put("/tenant/{key}")
 async def update_tenant_setting(
     key: str,
@@ -38,7 +71,11 @@ async def update_tenant_setting(
     session: AsyncSession = Depends(get_tenant_session),
 ) -> dict[str, Any]:
     clean_key = key.strip().lower().replace(" ", "_")
-    if not clean_key or len(clean_key) > 120 or not clean_key.replace("_", "").replace("-", "").isalnum():
+    if (
+        not clean_key
+        or len(clean_key) > 120
+        or not clean_key.replace("_", "").replace("-", "").isalnum()
+    ):
         from app.core.errors import APIError
 
         raise APIError("SETTING_KEY_INVALID", "Chave de configuração inválida.", 422)
@@ -50,7 +87,10 @@ async def update_tenant_setting(
             on conflict(key) do update set value=excluded.value, updated_at=now()
             """
         ),
-        {"key": clean_key, "value": json.dumps(value, ensure_ascii=False, default=str)},
+        {
+            "key": clean_key,
+            "value": json.dumps(value, ensure_ascii=False, default=str),
+        },
     )
     await session.commit()
     return success({"key": clean_key, "value": value})
