@@ -1,11 +1,5 @@
 name: ${COMPOSE_PROJECT_NAME:-scheduler-pro}
 
-x-api-image: &api-image ${IMAGE_REGISTRY:-ghcr.io}/${IMAGE_NAMESPACE:-wkarts/scheduler-pro-platform}/api:${APP_IMAGE_TAG:-latest}
-x-worker-image: &worker-image ${IMAGE_REGISTRY:-ghcr.io}/${IMAGE_NAMESPACE:-wkarts/scheduler-pro-platform}/worker:${APP_IMAGE_TAG:-latest}
-x-web-image: &web-image ${IMAGE_REGISTRY:-ghcr.io}/${IMAGE_NAMESPACE:-wkarts/scheduler-pro-platform}/web:${APP_IMAGE_TAG:-latest}
-x-admin-image: &admin-image ${IMAGE_REGISTRY:-ghcr.io}/${IMAGE_NAMESPACE:-wkarts/scheduler-pro-platform}/admin:${APP_IMAGE_TAG:-latest}
-x-proxy-image: &proxy-image ${IMAGE_REGISTRY:-ghcr.io}/${IMAGE_NAMESPACE:-wkarts/scheduler-pro-platform}/proxy:${APP_IMAGE_TAG:-latest}
-
 x-api-environment: &api-environment
   APP_NAME: ${APP_NAME:-Scheduler Pro}
   APP_ENV: ${APP_ENV:-production}
@@ -23,8 +17,8 @@ x-api-environment: &api-environment
   POSTGRES_ADMIN_USER: ${POSTGRES_ADMIN_USER:-postgres}
   POSTGRES_ADMIN_PASSWORD: ${POSTGRES_ADMIN_PASSWORD:?POSTGRES_ADMIN_PASSWORD obrigatória}
   REDIS_URL: redis://scheduler-redis:6379/0
-  RABBITMQ_URL: amqp://${RABBITMQ_USER:-scheduler}:${RABBITMQ_PASSWORD}@scheduler-rabbitmq:5672//
-  CELERY_BROKER_URL: amqp://${RABBITMQ_USER:-scheduler}:${RABBITMQ_PASSWORD}@scheduler-rabbitmq:5672//
+  RABBITMQ_URL: amqp://${RABBITMQ_USER:-scheduler}:${RABBITMQ_PASSWORD:?RABBITMQ_PASSWORD obrigatória}@scheduler-rabbitmq:5672//
+  CELERY_BROKER_URL: amqp://${RABBITMQ_USER:-scheduler}:${RABBITMQ_PASSWORD:?RABBITMQ_PASSWORD obrigatória}@scheduler-rabbitmq:5672//
   CELERY_RESULT_BACKEND: redis://scheduler-redis:6379/1
   S3_ENDPOINT: http://scheduler-minio:9000
   S3_ACCESS_KEY: ${S3_ACCESS_KEY:?S3_ACCESS_KEY obrigatória}
@@ -50,7 +44,10 @@ services:
     user: "0:0"
     volumes:
       - ${SCHEDULER_PRO_DATA_ROOT:-./scheduler-pro-data}:/data
-    command: ["/bin/sh", "-ec", "mkdir -p /data/postgres /data/redis /data/rabbitmq /data/minio /data/app /data/backups && chmod 0755 /data && chmod 0777 /data/postgres /data/redis /data/rabbitmq /data/minio"]
+    command:
+      - /bin/sh
+      - -ec
+      - mkdir -p /data/postgres /data/redis /data/rabbitmq /data/minio /data/app /data/backups && chmod 0755 /data && chmod 0777 /data/postgres /data/redis /data/rabbitmq /data/minio
 
   scheduler-postgres:
     image: ${POSTGRES_IMAGE:-postgres:17-alpine}
@@ -70,13 +67,17 @@ services:
       interval: 10s
       timeout: 5s
       retries: 20
+      start_period: 20s
 
   scheduler-redis:
     image: ${REDIS_IMAGE:-redis:8-alpine}
     restart: unless-stopped
+    depends_on:
+      scheduler-storage-init:
+        condition: service_completed_successfully
+    command: ["redis-server", "--appendonly", "yes", "--appendfsync", "everysec"]
     volumes:
       - ${SCHEDULER_PRO_DATA_ROOT:-./scheduler-pro-data}/redis:/data
-    command: ["redis-server", "--appendonly", "yes", "--appendfsync", "everysec"]
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
@@ -86,12 +87,16 @@ services:
   scheduler-rabbitmq:
     image: ${RABBITMQ_IMAGE:-rabbitmq:4-management-alpine}
     restart: unless-stopped
+    depends_on:
+      scheduler-storage-init:
+        condition: service_completed_successfully
     environment:
       RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-scheduler}
       RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:?RABBITMQ_PASSWORD obrigatória}
       TZ: ${APP_TIMEZONE:-America/Bahia}
     volumes:
       - ${SCHEDULER_PRO_DATA_ROOT:-./scheduler-pro-data}/rabbitmq:/var/lib/rabbitmq
+      - ./rabbitmq.conf:/etc/rabbitmq/rabbitmq.conf:ro
     healthcheck:
       test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
       interval: 15s
@@ -102,11 +107,15 @@ services:
   scheduler-minio:
     image: ${MINIO_IMAGE:-minio/minio:RELEASE.2025-09-07T16-13-09Z}
     restart: unless-stopped
+    depends_on:
+      scheduler-storage-init:
+        condition: service_completed_successfully
     command: ["server", "/data", "--console-address", ":9001"]
     environment:
       MINIO_ROOT_USER: ${S3_ACCESS_KEY:?S3_ACCESS_KEY obrigatória}
       MINIO_ROOT_PASSWORD: ${S3_SECRET_KEY:?S3_SECRET_KEY obrigatória}
       MINIO_REGION_NAME: ${S3_REGION:-sa-east-1}
+      TZ: ${APP_TIMEZONE:-America/Bahia}
     volumes:
       - ${SCHEDULER_PRO_DATA_ROOT:-./scheduler-pro-data}/minio:/data
     healthcheck:
@@ -114,9 +123,10 @@ services:
       interval: 15s
       timeout: 5s
       retries: 20
+      start_period: 20s
 
   scheduler-migrate:
-    image: *api-image
+    image: ${IMAGE_REGISTRY:-ghcr.io}/${IMAGE_NAMESPACE:-wkarts/scheduler-pro-platform}/api:${APP_IMAGE_TAG:-latest}
     pull_policy: always
     restart: "no"
     environment: *api-environment
@@ -126,7 +136,7 @@ services:
     command: ["python", "-m", "app.cli", "migrate-platform"]
 
   scheduler-api:
-    image: *api-image
+    image: ${IMAGE_REGISTRY:-ghcr.io}/${IMAGE_NAMESPACE:-wkarts/scheduler-pro-platform}/api:${APP_IMAGE_TAG:-latest}
     pull_policy: always
     restart: unless-stopped
     environment: *api-environment
@@ -144,39 +154,40 @@ services:
       interval: 20s
       timeout: 5s
       retries: 20
+      start_period: 20s
 
   scheduler-worker-default:
-    image: *worker-image
+    image: ${IMAGE_REGISTRY:-ghcr.io}/${IMAGE_NAMESPACE:-wkarts/scheduler-pro-platform}/worker:${APP_IMAGE_TAG:-latest}
     pull_policy: always
     restart: unless-stopped
     environment: *api-environment
     depends_on:
       scheduler-api:
         condition: service_healthy
-    command: ["celery", "-A", "app.workers.celery_app.celery_app", "worker", "-Q", "default,provisioning,domains,builds,maintenance", "--loglevel=INFO", "--concurrency=2"]
+    command: ["celery", "-A", "app.workers.celery_app.celery_app", "worker", "-Q", "default,provisioning,domains,builds,maintenance", "--loglevel=INFO", "--concurrency=2", "--without-gossip", "--without-mingle", "--without-heartbeat"]
 
   scheduler-worker-whatsapp:
-    image: *worker-image
+    image: ${IMAGE_REGISTRY:-ghcr.io}/${IMAGE_NAMESPACE:-wkarts/scheduler-pro-platform}/worker:${APP_IMAGE_TAG:-latest}
     pull_policy: always
     restart: unless-stopped
     environment: *api-environment
     depends_on:
       scheduler-api:
         condition: service_healthy
-    command: ["celery", "-A", "app.workers.celery_app.celery_app", "worker", "-Q", "whatsapp,notifications,webhooks", "--loglevel=INFO", "--concurrency=2"]
+    command: ["celery", "-A", "app.workers.celery_app.celery_app", "worker", "-Q", "whatsapp,notifications,webhooks", "--loglevel=INFO", "--concurrency=2", "--without-gossip", "--without-mingle", "--without-heartbeat"]
 
   scheduler-web:
-    image: *web-image
+    image: ${IMAGE_REGISTRY:-ghcr.io}/${IMAGE_NAMESPACE:-wkarts/scheduler-pro-platform}/web:${APP_IMAGE_TAG:-latest}
     pull_policy: always
     restart: unless-stopped
 
   scheduler-admin:
-    image: *admin-image
+    image: ${IMAGE_REGISTRY:-ghcr.io}/${IMAGE_NAMESPACE:-wkarts/scheduler-pro-platform}/admin:${APP_IMAGE_TAG:-latest}
     pull_policy: always
     restart: unless-stopped
 
   scheduler-proxy:
-    image: *proxy-image
+    image: ${IMAGE_REGISTRY:-ghcr.io}/${IMAGE_NAMESPACE:-wkarts/scheduler-pro-platform}/proxy:${APP_IMAGE_TAG:-latest}
     pull_policy: always
     restart: unless-stopped
     depends_on:
