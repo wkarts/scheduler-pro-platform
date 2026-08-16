@@ -7,7 +7,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import (
     assert_platform_tenant_access,
-    get_current_platform_user,
     get_platform_session,
     get_tenant_session,
     require_platform_permission,
@@ -148,7 +147,10 @@ async def tenant_database_logs(
     platform_db: AsyncSession = Depends(get_platform_session),
 ) -> dict[str, Any]:
     assert_platform_tenant_access(principal, tenant_id)
-    context = await TenantResolver(platform_db).resolve_by_id(tenant_id, require_active=False)
+    context = await TenantResolver(platform_db).resolve_by_id(
+        tenant_id,
+        require_active=False,
+    )
     async for tenant_db in tenant_session(context):
         rows = await ObservabilityService(tenant_db).list_tenant_logs(
             source=source,
@@ -173,7 +175,10 @@ async def tenant_database_audit(
     platform_db: AsyncSession = Depends(get_platform_session),
 ) -> dict[str, Any]:
     assert_platform_tenant_access(principal, tenant_id)
-    context = await TenantResolver(platform_db).resolve_by_id(tenant_id, require_active=False)
+    context = await TenantResolver(platform_db).resolve_by_id(
+        tenant_id,
+        require_active=False,
+    )
     async for tenant_db in tenant_session(context):
         rows = (
             await tenant_db.execute(
