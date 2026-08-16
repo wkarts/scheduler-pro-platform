@@ -38,7 +38,7 @@ async def list_appointments(
     status: str | None = Query(default=None),
     session: AsyncSession = Depends(get_tenant_session),
 ) -> dict[str, Any]:
-    data = await AppointmentService(session).list(
+    data = await AppointmentService(session).list_appointments(
         day=day,
         professional_id=professional_id,
         customer_id=customer_id,
