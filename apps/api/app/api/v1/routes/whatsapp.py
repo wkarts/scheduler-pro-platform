@@ -21,16 +21,30 @@ class SendTextRequest(BaseModel):
     message: str = Field(min_length=1, max_length=4096)
 
 
-async def _tenant_provider(session: AsyncSession, context: TenantContext) -> tuple[str, WhatsAppProvider]:
-    instance_name = await session.scalar(text("select instance_name from whatsapp_integrations where name='default' limit 1"))
+async def _tenant_provider(
+    session: AsyncSession,
+    context: TenantContext,
+) -> tuple[str, WhatsAppProvider]:
+    instance_name = await session.scalar(
+        text(
+            "select instance_name from whatsapp_integrations "
+            "where name='default' limit 1"
+        )
+    )
     if not instance_name:
         instance_name = f"{settings.evolution_instance_name}-{context.slug}"[:160]
         await session.execute(
             text(
                 """
-                insert into whatsapp_integrations(name, provider, instance_name, status, settings)
-                values('default', 'evolution', :instance_name, 'DISCONNECTED', '{}'::jsonb)
-                on conflict(name) do update set instance_name=excluded.instance_name
+                insert into whatsapp_integrations(
+                    name, provider, instance_name, status, settings
+                )
+                values(
+                    'default', 'evolution', :instance_name,
+                    'DISCONNECTED', '{}'::jsonb
+                )
+                on conflict(name) do update
+                set instance_name=excluded.instance_name
                 """
             ),
             {"instance_name": instance_name},
@@ -47,8 +61,22 @@ async def connect(
     instance_name, provider = await _tenant_provider(session, context)
     result = await provider.connect_instance()
     await session.execute(
-        text("update whatsapp_integrations set status='CONNECTING', settings=cast(:settings as jsonb), updated_at=now() where name='default'"),
-        {"settings": json.dumps({"last_connect": result}, ensure_ascii=False, default=str)},
+        text(
+            """
+            update whatsapp_integrations
+            set status='CONNECTING',
+                settings=cast(:settings as jsonb),
+                updated_at=now()
+            where name='default'
+            """
+        ),
+        {
+            "settings": json.dumps(
+                {"last_connect": result},
+                ensure_ascii=False,
+                default=str,
+            )
+        },
     )
     await session.commit()
     return success({"instance_name": instance_name, **result})
@@ -61,15 +89,45 @@ async def status(
 ) -> dict[str, Any]:
     instance_name, provider = await _tenant_provider(session, context)
     result = await provider.connection_status()
-    instance_data = result.get("instance") if isinstance(result.get("instance"), dict) else {}
+    raw_instance = result.get("instance")
+    instance_data: dict[str, Any] = (
+        raw_instance if isinstance(raw_instance, dict) else {}
+    )
     state = str(instance_data.get("state") or "unknown").lower()
-    db_status = "CONNECTED" if state in {"open", "connected"} else "DISCONNECTED" if state in {"close", "closed", "disconnected"} else "CONNECTING"
+    if state in {"open", "connected"}:
+        db_status = "CONNECTED"
+    elif state in {"close", "closed", "disconnected"}:
+        db_status = "DISCONNECTED"
+    else:
+        db_status = "CONNECTING"
+
     await session.execute(
-        text("update whatsapp_integrations set status=:status, settings=cast(:settings as jsonb), updated_at=now() where name='default'"),
-        {"status": db_status, "settings": json.dumps({"last_status": result}, ensure_ascii=False, default=str)},
+        text(
+            """
+            update whatsapp_integrations
+            set status=:status,
+                settings=cast(:settings as jsonb),
+                updated_at=now()
+            where name='default'
+            """
+        ),
+        {
+            "status": db_status,
+            "settings": json.dumps(
+                {"last_status": result},
+                ensure_ascii=False,
+                default=str,
+            ),
+        },
     )
     await session.commit()
-    return success({"instance_name": instance_name, "status": db_status, "provider": result})
+    return success(
+        {
+            "instance_name": instance_name,
+            "status": db_status,
+            "provider": result,
+        }
+    )
 
 
 @router.post("/send-text")
@@ -101,34 +159,70 @@ async def webhook(
         or ""
     )
     if not provider_event_id:
-        provider_event_id = f"missing-{integration_key}-{abs(hash(str(payload)))}"
+        provider_event_id = (
+            f"missing-{integration_key}-{abs(hash(str(payload)))}"
+        )
+
     payload_json = json.dumps(payload, ensure_ascii=False, default=str)
     inserted = await session.scalar(
         text(
             """
-            insert into whatsapp_events(provider_event_id, integration_key, payload)
-            values(:provider_event_id, :integration_key, cast(:payload as jsonb))
+            insert into whatsapp_events(
+                provider_event_id, integration_key, payload
+            )
+            values(
+                :provider_event_id, :integration_key, cast(:payload as jsonb)
+            )
             on conflict(provider_event_id) do nothing
             returning id::text
             """
         ),
-        {"provider_event_id": provider_event_id, "integration_key": integration_key, "payload": payload_json},
+        {
+            "provider_event_id": provider_event_id,
+            "integration_key": integration_key,
+            "payload": payload_json,
+        },
     )
     if inserted:
         await session.execute(
             text(
                 """
                 insert into outbox_events(event_name, aggregate_id, payload)
-                values('whatsapp.webhook.received', :aggregate_id, cast(:payload as jsonb))
+                values(
+                    'whatsapp.webhook.received',
+                    :aggregate_id,
+                    cast(:payload as jsonb)
+                )
                 """
             ),
-            {"aggregate_id": inserted, "payload": json.dumps({"integration_key": integration_key, "provider_event_id": provider_event_id})},
+            {
+                "aggregate_id": inserted,
+                "payload": json.dumps(
+                    {
+                        "integration_key": integration_key,
+                        "provider_event_id": provider_event_id,
+                    }
+                ),
+            },
         )
     await session.commit()
+
     if inserted:
         celery_app.send_task(
             "app.workers.tasks.process_whatsapp_webhook",
-            args=[context.tenant_id, str(inserted), f"whatsapp-{inserted}"],
+            args=[
+                context.tenant_id,
+                str(inserted),
+                f"whatsapp-{inserted}",
+            ],
             queue="whatsapp",
         )
-    return success({"accepted": True, "duplicate": inserted is None, "queued": inserted is not None, "integration_key": integration_key, "provider_event_id": provider_event_id})
+    return success(
+        {
+            "accepted": True,
+            "duplicate": inserted is None,
+            "queued": inserted is not None,
+            "integration_key": integration_key,
+            "provider_event_id": provider_event_id,
+        }
+    )
