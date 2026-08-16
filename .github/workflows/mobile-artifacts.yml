@@ -1,6 +1,12 @@
 name: Mobile Artifacts
 
 on:
+  pull_request:
+    paths:
+      - 'apps/mobile/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/mobile-artifacts.yml'
   workflow_dispatch:
     inputs:
       build_profile:
@@ -27,13 +33,18 @@ jobs:
       - name: Build mobile shell
         run: npm --workspace apps/mobile run build
       - name: Pack mobile shell artifact
+        shell: bash
         run: |
+          set -euo pipefail
+          suffix="${{ github.event.release.tag_name || github.sha }}"
           mkdir -p artifacts
-          tar -C apps/mobile/dist -czf artifacts/scheduler-pro-mobile-shell-${{ github.event.release.tag_name || github.sha }}.tar.gz .
+          tar -C apps/mobile/dist -czf "artifacts/scheduler-pro-mobile-shell-${suffix}.tar.gz" .
       - uses: actions/upload-artifact@v4
         with:
           name: scheduler-pro-mobile-shell-${{ github.event.release.tag_name || github.sha }}
           path: artifacts/*
+          if-no-files-found: error
+          retention-days: 30
       - name: Attach mobile shell to release
         if: github.event_name == 'release'
         env:
@@ -41,8 +52,68 @@ jobs:
         shell: bash
         run: gh release upload "${{ github.event.release.tag_name }}" artifacts/* --clobber
 
-  android-unsigned:
+  android-apk-unsigned:
     runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: android-actions/setup-android@v3
+      - name: Install Android SDK packages
+        shell: bash
+        run: |
+          set -euo pipefail
+          yes | sdkmanager --licenses >/dev/null
+          sdkmanager "platform-tools" "platforms;android-35" "build-tools;35.0.0" "ndk;27.0.12077973"
+          echo "ANDROID_NDK_HOME=${ANDROID_HOME}/ndk/27.0.12077973" >> "$GITHUB_ENV"
+          echo "NDK_HOME=${ANDROID_HOME}/ndk/27.0.12077973" >> "$GITHUB_ENV"
+      - name: Install Rust Android targets
+        run: rustup target add aarch64-linux-android armv7-linux-androideabi i686-linux-android x86_64-linux-android
+      - name: Install JS deps
+        run: npm install
+      - name: Initialize Android project when absent
+        working-directory: apps/mobile
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ ! -d src-tauri/gen/android ]; then
+            npm run tauri:android:init
+          fi
+      - name: Build unsigned Android APK
+        working-directory: apps/mobile
+        run: npm run tauri:android:apk
+      - name: Collect APK artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts
+          find apps/mobile/src-tauri -type f -name '*.apk' -print -exec cp {} artifacts/ \;
+          if [ -z "$(find artifacts -type f -name '*.apk' -print -quit)" ]; then
+            echo 'Nenhum APK foi gerado.' >&2
+            exit 1
+          fi
+          sha256sum artifacts/*.apk > artifacts/SHA256SUMS-android.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: scheduler-pro-android-apk-unsigned-${{ github.event.release.tag_name || github.sha }}
+          path: artifacts/*
+          if-no-files-found: error
+          retention-days: 30
+      - name: Attach Android APK to release
+        if: github.event_name == 'release'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: gh release upload "${{ github.event.release.tag_name }}" artifacts/* --clobber
+
+  ios-unsigned-attempt:
+    runs-on: macos-latest
     continue-on-error: true
     steps:
       - uses: actions/checkout@v4
@@ -50,30 +121,59 @@ jobs:
         with:
           node-version: '22'
       - uses: dtolnay/rust-toolchain@stable
-      - uses: android-actions/setup-android@v3
+      - name: Install Rust iOS targets
+        run: rustup target add aarch64-apple-ios aarch64-apple-ios-sim x86_64-apple-ios
       - name: Install JS deps
         run: npm install
-      - name: Build Android unsigned when native project exists
+      - name: Initialize iOS project when absent
         working-directory: apps/mobile
+        shell: bash
         run: |
-          if [ -d src-tauri/gen/android ]; then npm run tauri:android -- --release; else echo 'Android native project not initialized yet'; fi
-      - name: Collect Android artifacts
+          set -euo pipefail
+          if [ ! -d src-tauri/gen/apple ]; then
+            npm run tauri:ios:init
+          fi
+      - name: Try build unsigned iOS app
+        working-directory: apps/mobile
+        shell: bash
         run: |
+          set +e
+          npm run tauri:ios:build
+          echo "ios_build_exit=$?" >> "$GITHUB_ENV"
+          exit 0
+      - name: Package IPA or diagnostics
+        shell: bash
+        run: |
+          set -euo pipefail
           mkdir -p artifacts
-          find apps/mobile/src-tauri -name '*.apk' -o -name '*.aab' | xargs -r -I{} cp {} artifacts/
+          ipa_file=$(find apps/mobile/src-tauri -type f -name '*.ipa' -print -quit || true)
+          if [ -n "$ipa_file" ]; then
+            cp "$ipa_file" artifacts/
+          else
+            app_bundle=$(find apps/mobile/src-tauri -type d -name '*.app' -print -quit || true)
+            if [ -n "$app_bundle" ]; then
+              rm -rf Payload
+              mkdir -p Payload
+              cp -R "$app_bundle" Payload/
+              /usr/bin/zip -qry artifacts/scheduler-pro-ios-unsigned-${{ github.sha }}.ipa Payload
+            else
+              cat > artifacts/IOS_UNSIGNED_STATUS.txt <<'TXT'
+          Nenhum .ipa/.app foi gerado pelo runner macOS.
+          O workflow manteve diagnóstico para não mascarar exigência Apple/Xcode/provisioning.
+          Para IPA instalável em aparelho físico, rode com certificado Apple Developer ou perfil de provisionamento local.
+          TXT
+            fi
+          fi
+          find artifacts -type f -maxdepth 1 -print
       - uses: actions/upload-artifact@v4
         with:
-          name: scheduler-pro-android-unsigned-${{ github.event.release.tag_name || github.sha }}
+          name: scheduler-pro-ios-unsigned-attempt-${{ github.event.release.tag_name || github.sha }}
           path: artifacts/*
-          if-no-files-found: ignore
-      - name: Attach Android artifacts to release
+          if-no-files-found: error
+          retention-days: 30
+      - name: Attach iOS attempt to release
         if: github.event_name == 'release'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         shell: bash
-        run: |
-          if compgen -G "artifacts/*" > /dev/null; then
-            gh release upload "${{ github.event.release.tag_name }}" artifacts/* --clobber
-          else
-            echo "No Android artifacts generated yet."
-          fi
+        run: gh release upload "${{ github.event.release.tag_name }}" artifacts/* --clobber
