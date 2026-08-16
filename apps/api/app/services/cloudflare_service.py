@@ -1,4 +1,5 @@
 from typing import Any, cast
+from urllib.parse import urlencode
 
 import httpx
 
@@ -54,17 +55,9 @@ class CloudflareService:
                 424,
                 {"hint": "Configure CLOUDFLARE_API_TOKEN no .env do CloudPanel/Dockge."},
             )
-        headers = {
-            "Authorization": f"Bearer {self.api_token}",
-            "Content-Type": "application/json",
-        }
+        headers = {"Authorization": f"Bearer {self.api_token}", "Content-Type": "application/json"}
         async with httpx.AsyncClient(timeout=30) as client:
-            response = await client.request(
-                method,
-                f"{self.api_base_url}{path}",
-                headers=headers,
-                json=payload,
-            )
+            response = await client.request(method, f"{self.api_base_url}{path}", headers=headers, json=payload)
         data = cast(dict[str, Any], response.json())
         if response.status_code >= 400 or not data.get("success", False):
             cf_code = self._cloudflare_error_code(data)
@@ -76,7 +69,7 @@ class CloudflareService:
                     {
                         "status_code": response.status_code,
                         "response": data,
-                        "hint": "Verifique /user/tokens/verify, confira se CLOUDFLARE_ZONE_ID pertence ao domínio correto e crie token com Zone:DNS:Edit e permissões de Custom Hostnames/SSL necessárias.",
+                        "hint": "Verifique /user/tokens/verify, confirme a zone do domínio e permissões Zone:DNS:Edit.",
                     },
                 )
             raise APIError(
@@ -92,6 +85,14 @@ class CloudflareService:
             raise APIError("CLOUDFLARE_ZONE_MISSING", "Zone ID Cloudflare não configurado.", 424)
         return f"/zones/{self.zone_id}{suffix}"
 
+    async def list_dns_records(self, hostname: str, record_type: str | None = None) -> dict[str, Any]:
+        if self.dry_run:
+            return self._dry_result("GET /dns_records", {"records": [], "name": hostname})
+        params: dict[str, str] = {"name": hostname.strip().lower().rstrip(".")}
+        if record_type:
+            params["type"] = record_type.upper()
+        return await self._request("GET", f"{self._zone_path('/dns_records')}?{urlencode(params)}")
+
     async def create_dns_record(
         self,
         hostname: str,
@@ -103,21 +104,60 @@ class CloudflareService:
     ) -> dict[str, Any]:
         payload = {
             "type": record_type,
-            "name": hostname,
-            "content": target,
+            "name": hostname.strip().lower().rstrip("."),
+            "content": target.strip().lower().rstrip(".") if record_type.upper() == "CNAME" else target.strip(),
             "proxied": proxied,
             "ttl": ttl,
         }
         return await self._request("POST", self._zone_path("/dns_records"), payload=payload)
 
+    async def ensure_dns_record(
+        self,
+        hostname: str,
+        target: str,
+        *,
+        record_type: str = "CNAME",
+        proxied: bool = True,
+        ttl: int = 1,
+    ) -> dict[str, Any]:
+        clean_hostname = hostname.strip().lower().rstrip(".")
+        clean_target = target.strip().lower().rstrip(".") if record_type.upper() == "CNAME" else target.strip()
+        existing = await self.list_dns_records(clean_hostname, record_type)
+        records = existing.get("result") if isinstance(existing.get("result"), list) else []
+        for record in records:
+            if not isinstance(record, dict):
+                continue
+            content = str(record.get("content", "")).strip().lower().rstrip(".")
+            if content == clean_target:
+                return {
+                    "success": True,
+                    "existing": True,
+                    "record_exists": True,
+                    "result": record,
+                    "lookup": existing,
+                }
+        try:
+            created = await self.create_dns_record(clean_hostname, clean_target, record_type=record_type, proxied=proxied, ttl=ttl)
+            return {"success": True, "existing": False, "record_exists": True, "result": created.get("result"), "cloudflare": created}
+        except APIError:
+            after_error = await self.list_dns_records(clean_hostname, record_type)
+            retry_records = after_error.get("result") if isinstance(after_error.get("result"), list) else []
+            if retry_records:
+                return {
+                    "success": True,
+                    "existing": True,
+                    "record_exists": True,
+                    "result": retry_records[0],
+                    "lookup": after_error,
+                    "recovered_after_create_error": True,
+                }
+            raise
+
     async def delete_dns_record(self, record_id: str) -> dict[str, Any]:
         return await self._request("DELETE", self._zone_path(f"/dns_records/{record_id}"))
 
     async def create_custom_hostname(self, hostname: str) -> dict[str, Any]:
-        payload: dict[str, Any] = {
-            "hostname": hostname,
-            "ssl": {"method": "http", "type": "dv", "settings": {"http2": "on"}},
-        }
+        payload: dict[str, Any] = {"hostname": hostname, "ssl": {"method": "http", "type": "dv", "settings": {"http2": "on"}}}
         if self.custom_hostname_origin:
             payload["custom_origin_server"] = self.custom_hostname_origin
         return await self._request("POST", self._zone_path("/custom_hostnames"), payload=payload)
