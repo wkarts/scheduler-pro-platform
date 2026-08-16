@@ -73,7 +73,7 @@ jobs:
           if gh release view "$TAG" >/dev/null 2>&1; then
             gh release upload "$TAG" artifacts/* --clobber
           else
-            gh release create "$TAG" artifacts/* --target "$GITHUB_SHA" --title "Scheduler Pro ${TAG}" --notes "Release automática do Scheduler Pro. APKs Android publicados aqui são debug assinados para instalação direta em homologação. AAB/Play Store não roda por padrão." --latest
+            gh release create "$TAG" artifacts/* --target "$GITHUB_SHA" --title "Scheduler Pro ${TAG}" --notes "Release automática do Scheduler Pro. APKs Android publicados aqui são debug assinados para instalação direta em homologação. Desktop publica instaladores finais: Windows MSI/NSIS, Linux DEB e macOS DMG." --latest
           fi
       - uses: actions/upload-artifact@v4
         with:
@@ -94,26 +94,32 @@ jobs:
             label: linux
             app_path: apps/desktop
             app_name: client
+            bundles: deb
           - os: windows-latest
             label: windows
             app_path: apps/desktop
             app_name: client
+            bundles: msi,nsis
           - os: macos-15
             label: macos
             app_path: apps/desktop
             app_name: client
+            bundles: dmg
           - os: ubuntu-24.04
             label: linux
             app_path: apps/admin-desktop
             app_name: admin
+            bundles: deb
           - os: windows-latest
             label: windows
             app_path: apps/admin-desktop
             app_name: admin
+            bundles: msi,nsis
           - os: macos-15
             label: macos
             app_path: apps/admin-desktop
             app_name: admin
+            bundles: dmg
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -130,16 +136,16 @@ jobs:
         run: node scripts/build/ensure-tauri-icons.mjs ${{ matrix.app_path }}/src-tauri/icons --ico
       - name: Build installable desktop app
         working-directory: ${{ matrix.app_path }}
-        run: npm run tauri:build
+        run: npm run tauri:build -- --bundles ${{ matrix.bundles }}
       - name: Collect installers only
         shell: bash
         run: |
           set -euo pipefail
           TAG="${{ needs.prepare-release.outputs.tag }}"
           mkdir -p artifacts desktop-installers
-          find "${{ matrix.app_path }}/src-tauri/target/release/bundle" -type f \( -name '*.msi' -o -name '*setup*.exe' -o -name '*Setup*.exe' -o -name '*.dmg' -o -name '*.AppImage' -o -name '*.deb' -o -name '*.rpm' \) -print0 | while IFS= read -r -d '' file; do cp "$file" desktop-installers/; done
+          find "${{ matrix.app_path }}/src-tauri/target/release/bundle" -type f \( -name '*.msi' -o -name '*setup*.exe' -o -name '*Setup*.exe' -o -name '*.dmg' -o -name '*.deb' -o -name '*.rpm' \) -print0 | while IFS= read -r -d '' file; do cp "$file" desktop-installers/; done
           if [ -z "$(find desktop-installers -type f -print -quit)" ]; then
-            echo "Nenhum instalador final foi gerado. Executáveis portáveis e build_script_*.exe não são aceitos." >&2
+            echo "Nenhum instalador final foi gerado. Executáveis portáveis, AppImage e build_script_*.exe não são aceitos neste fluxo." >&2
             find "${{ matrix.app_path }}/src-tauri/target/release" -maxdepth 5 -type f | sed -n '1,160p'
             exit 1
           fi
