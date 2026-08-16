@@ -123,7 +123,10 @@ class CloudflareService:
         clean_hostname = hostname.strip().lower().rstrip(".")
         clean_target = target.strip().lower().rstrip(".") if record_type.upper() == "CNAME" else target.strip()
         existing = await self.list_dns_records(clean_hostname, record_type)
-        records = existing.get("result") if isinstance(existing.get("result"), list) else []
+        records: list[Any] = []
+        existing_result = existing.get("result")
+        if isinstance(existing_result, list):
+            records = existing_result
         for record in records:
             if not isinstance(record, dict):
                 continue
@@ -141,7 +144,10 @@ class CloudflareService:
             return {"success": True, "existing": False, "record_exists": True, "result": created.get("result"), "cloudflare": created}
         except APIError:
             after_error = await self.list_dns_records(clean_hostname, record_type)
-            retry_records = after_error.get("result") if isinstance(after_error.get("result"), list) else []
+            retry_records: list[Any] = []
+            retry_result = after_error.get("result")
+            if isinstance(retry_result, list):
+                retry_records = retry_result
             if retry_records:
                 return {
                     "success": True,
