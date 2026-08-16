@@ -137,8 +137,42 @@ async def get_current_tenant_user(
     )
 
 
-async def get_current_user(principal: AuthPrincipal = Depends(get_current_tenant_user)) -> AuthPrincipal:
+async def get_current_user(
+    principal: AuthPrincipal = Depends(get_current_tenant_user),
+) -> AuthPrincipal:
     return principal
+
+
+def require_tenant_capability(
+    capability: str,
+) -> Callable[..., Awaitable[None]]:
+    async def dependency(
+        context: TenantContext = Depends(get_tenant_context),
+        session: AsyncSession = Depends(get_platform_session),
+    ) -> None:
+        enabled = (
+            await session.execute(
+                text(
+                    """
+                    select enabled
+                    from tenant_capabilities
+                    where tenant_id=cast(:tenant_id as uuid)
+                      and capability_key=:capability
+                    limit 1
+                    """
+                ),
+                {"tenant_id": context.tenant_id, "capability": capability},
+            )
+        ).scalar_one_or_none()
+        if enabled is not True:
+            raise APIError(
+                "TENANT_CAPABILITY_DISABLED",
+                "Este recurso não está liberado para o tenant.",
+                403,
+                {"capability": capability},
+            )
+
+    return dependency
 
 
 async def get_current_platform_user(
@@ -168,9 +202,13 @@ async def get_current_platform_user(
 
     is_super_admin = bool(row["is_super_admin"])
     if is_super_admin:
-        permissions = set((await session.execute(text("select key from platform_permissions"))).scalars())
+        permissions = set(
+            (await session.execute(text("select key from platform_permissions"))).scalars()
+        )
         roles = {"super-admin"}
-        tenant_ids = set((await session.execute(text("select id::text from tenants"))).scalars())
+        tenant_ids = set(
+            (await session.execute(text("select id::text from tenants"))).scalars()
+        )
     else:
         permissions = set(
             (
@@ -205,7 +243,13 @@ async def get_current_platform_user(
         tenant_ids = set(
             (
                 await session.execute(
-                    text("select tenant_id::text from platform_user_tenants where user_id=cast(:user_id as uuid)"),
+                    text(
+                        """
+                        select tenant_id::text
+                        from platform_user_tenants
+                        where user_id=cast(:user_id as uuid)
+                        """
+                    ),
                     {"user_id": row["id"]},
                 )
             ).scalars()
@@ -224,19 +268,37 @@ async def get_current_platform_user(
     )
 
 
-def require_permission(permission: str) -> Callable[[AuthPrincipal], Awaitable[AuthPrincipal]]:
-    async def dependency(principal: AuthPrincipal = Depends(get_current_user)) -> AuthPrincipal:
+def require_permission(
+    permission: str,
+) -> Callable[[AuthPrincipal], Awaitable[AuthPrincipal]]:
+    async def dependency(
+        principal: AuthPrincipal = Depends(get_current_user),
+    ) -> AuthPrincipal:
         if permission not in principal.permissions:
-            raise APIError("AUTH_PERMISSION_DENIED", "Permissão insuficiente.", 403, {"permission": permission})
+            raise APIError(
+                "AUTH_PERMISSION_DENIED",
+                "Permissão insuficiente.",
+                403,
+                {"permission": permission},
+            )
         return principal
 
     return dependency
 
 
-def require_platform_permission(permission: str) -> Callable[[AuthPrincipal], Awaitable[AuthPrincipal]]:
-    async def dependency(principal: AuthPrincipal = Depends(get_current_platform_user)) -> AuthPrincipal:
+def require_platform_permission(
+    permission: str,
+) -> Callable[[AuthPrincipal], Awaitable[AuthPrincipal]]:
+    async def dependency(
+        principal: AuthPrincipal = Depends(get_current_platform_user),
+    ) -> AuthPrincipal:
         if not principal.is_super_admin and permission not in principal.permissions:
-            raise APIError("AUTH_PERMISSION_DENIED", "Permissão administrativa insuficiente.", 403, {"permission": permission})
+            raise APIError(
+                "AUTH_PERMISSION_DENIED",
+                "Permissão administrativa insuficiente.",
+                403,
+                {"permission": permission},
+            )
         return principal
 
     return dependency
@@ -246,19 +308,39 @@ def assert_platform_tenant_access(principal: AuthPrincipal, tenant_id: str) -> N
     if principal.is_super_admin:
         return
     if tenant_id not in principal.tenant_ids:
-        raise APIError("AUTH_TENANT_SCOPE_DENIED", "Este usuário administrativo não possui acesso ao tenant.", 403, {"tenant_id": tenant_id})
+        raise APIError(
+            "AUTH_TENANT_SCOPE_DENIED",
+            "Este usuário administrativo não possui acesso ao tenant.",
+            403,
+            {"tenant_id": tenant_id},
+        )
 
 
-def require_role(role: str) -> Callable[[AuthPrincipal], Awaitable[AuthPrincipal]]:
-    async def dependency(principal: AuthPrincipal = Depends(get_current_user)) -> AuthPrincipal:
+def require_role(
+    role: str,
+) -> Callable[[AuthPrincipal], Awaitable[AuthPrincipal]]:
+    async def dependency(
+        principal: AuthPrincipal = Depends(get_current_user),
+    ) -> AuthPrincipal:
         if role not in principal.roles:
-            raise APIError("AUTH_ROLE_DENIED", "Perfil insuficiente.", 403, {"role": role})
+            raise APIError(
+                "AUTH_ROLE_DENIED",
+                "Perfil insuficiente.",
+                403,
+                {"role": role},
+            )
         return principal
 
     return dependency
 
 
-async def require_super_admin(principal: AuthPrincipal = Depends(get_current_platform_user)) -> AuthPrincipal:
+async def require_super_admin(
+    principal: AuthPrincipal = Depends(get_current_platform_user),
+) -> AuthPrincipal:
     if not principal.is_super_admin:
-        raise APIError("AUTH_SUPER_ADMIN_REQUIRED", "Superadministrador obrigatório.", 403)
+        raise APIError(
+            "AUTH_SUPER_ADMIN_REQUIRED",
+            "Superadministrador obrigatório.",
+            403,
+        )
     return principal
