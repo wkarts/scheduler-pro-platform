@@ -29,12 +29,10 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
-
       - name: Resolve release tag
         id: version
         env:
@@ -42,22 +40,15 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          if [ -n "${INPUT_TAG}" ]; then
-            TAG="${INPUT_TAG}"
-          else
-            TAG="v0.1.0-alpha.${GITHUB_RUN_NUMBER}"
-          fi
+          if [ -n "${INPUT_TAG}" ]; then TAG="${INPUT_TAG}"; else TAG="v0.1.0-alpha.${GITHUB_RUN_NUMBER}"; fi
           echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
           echo "SCHEDULER_PRO_RELEASE_TAG=${TAG}" >> "$GITHUB_ENV"
-
       - name: Install JS dependencies
         run: npm install
-
       - name: Build web/admin PWAs
         run: |
           npm --workspace apps/web run build
           npm --workspace apps/admin run build
-
       - name: Pack web/admin/deploy/source artifacts
         shell: bash
         run: |
@@ -69,29 +60,9 @@ jobs:
           tar -C deployments/dockge -czf "artifacts/scheduler-pro-dockge-${SCHEDULER_PRO_RELEASE_TAG}.tar.gz" .
           git archive --format=tar.gz --output="artifacts/scheduler-pro-source-${SCHEDULER_PRO_RELEASE_TAG}.tar.gz" HEAD
           cat > artifacts/distribution-manifest.json <<JSON
-          {
-            "name": "Scheduler Pro",
-            "tag": "${SCHEDULER_PRO_RELEASE_TAG}",
-            "commit": "${GITHUB_SHA}",
-            "origin_port": 18080,
-            "domains": {
-              "platform": "scheduler.argws.com.br",
-              "admin": "admin.scheduler.argws.com.br",
-              "api": "api.scheduler.argws.com.br",
-              "tenant_pattern": "<codigo-curto>.scheduler.argws.com.br"
-            },
-            "images": {
-              "python_base": "${IMAGE_NAMESPACE}/python-base:latest",
-              "api": "${IMAGE_NAMESPACE}/api:latest",
-              "worker": "${IMAGE_NAMESPACE}/worker:latest",
-              "web": "${IMAGE_NAMESPACE}/web:latest",
-              "admin": "${IMAGE_NAMESPACE}/admin:latest",
-              "proxy": "${IMAGE_NAMESPACE}/proxy:latest"
-            }
-          }
+          {"name":"Scheduler Pro","tag":"${SCHEDULER_PRO_RELEASE_TAG}","commit":"${GITHUB_SHA}","origin_port":18080,"domains":{"platform":"scheduler.argws.com.br","admin":"admin.scheduler.argws.com.br","api":"api.scheduler.argws.com.br","tenant_pattern":"<codigo-curto>.scheduler.argws.com.br"},"images":{"api":"${IMAGE_NAMESPACE}/api:latest","worker":"${IMAGE_NAMESPACE}/worker:latest","web":"${IMAGE_NAMESPACE}/web:latest","admin":"${IMAGE_NAMESPACE}/admin:latest","proxy":"${IMAGE_NAMESPACE}/proxy:latest"}}
           JSON
           (cd artifacts && sha256sum * > SHA256SUMS.txt)
-
       - name: Create or update GitHub Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -102,21 +73,16 @@ jobs:
           if gh release view "$TAG" >/dev/null 2>&1; then
             gh release upload "$TAG" artifacts/* --clobber
           else
-            gh release create "$TAG" artifacts/* \
-              --target "$GITHUB_SHA" \
-              --title "Scheduler Pro ${TAG}" \
-              --notes "Release automática do Scheduler Pro. Inclui PWAs web/admin, CloudPanel/Dockge, source, manifesto e checksums. Os jobs desktop/android/ios desta mesma execução anexam os binários nativos quando concluírem." \
-              --latest
+            gh release create "$TAG" artifacts/* --target "$GITHUB_SHA" --title "Scheduler Pro ${TAG}" --notes "Release automática do Scheduler Pro. Artefatos pesados nativos são anexados pelos jobs pós-merge desta execução." --latest
           fi
-
       - uses: actions/upload-artifact@v4
         with:
           name: scheduler-pro-release-${{ steps.version.outputs.tag }}
           path: artifacts/*
           if-no-files-found: error
 
-  desktop-binaries:
-    name: Desktop ${{ matrix.label }} binary
+  desktop-installers:
+    name: Desktop installer ${{ matrix.app_name }} / ${{ matrix.label }}
     needs: prepare-release
     runs-on: ${{ matrix.os }}
     timeout-minutes: 120
@@ -126,10 +92,28 @@ jobs:
         include:
           - os: ubuntu-24.04
             label: linux
+            app_path: apps/desktop
+            app_name: client
           - os: windows-latest
             label: windows
+            app_path: apps/desktop
+            app_name: client
           - os: macos-15
             label: macos
+            app_path: apps/desktop
+            app_name: client
+          - os: ubuntu-24.04
+            label: linux
+            app_path: apps/admin-desktop
+            app_name: admin
+          - os: windows-latest
+            label: windows
+            app_path: apps/admin-desktop
+            app_name: admin
+          - os: macos-15
+            label: macos
+            app_path: apps/admin-desktop
+            app_name: admin
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -143,36 +127,27 @@ jobs:
       - name: Install JS deps
         run: npm install
       - name: Ensure Tauri desktop icons
-        run: node scripts/build/ensure-tauri-icons.mjs apps/desktop/src-tauri/icons --ico
-      - name: Build Tauri desktop unsigned
-        working-directory: apps/desktop
+        run: node scripts/build/ensure-tauri-icons.mjs ${{ matrix.app_path }}/src-tauri/icons --ico
+      - name: Build installable desktop app
+        working-directory: ${{ matrix.app_path }}
         run: npm run tauri:build
-      - name: Collect desktop artifacts
+      - name: Collect installers only
         shell: bash
         run: |
           set -euo pipefail
           TAG="${{ needs.prepare-release.outputs.tag }}"
-          mkdir -p artifacts desktop-collect
-          find apps/desktop/src-tauri/target/release -type f \( \
-            -name 'scheduler_pro_desktop' -o \
-            -name 'scheduler_pro_desktop.exe' -o \
-            -name '*.AppImage' -o \
-            -name '*.deb' -o \
-            -name '*.rpm' -o \
-            -name '*.dmg' -o \
-            -name '*.msi' -o \
-            -name '*.exe' \
-          \) -print0 | while IFS= read -r -d '' file; do cp "$file" desktop-collect/; done
-          if [ -z "$(find desktop-collect -type f -print -quit)" ]; then
-            echo "Nenhum binário desktop foi encontrado." >&2
-            find apps/desktop/src-tauri/target -maxdepth 5 -type f | sed -n '1,120p'
+          mkdir -p artifacts desktop-installers
+          find "${{ matrix.app_path }}/src-tauri/target/release/bundle" -type f \( -name '*.msi' -o -name '*setup*.exe' -o -name '*Setup*.exe' -o -name '*.dmg' -o -name '*.AppImage' -o -name '*.deb' -o -name '*.rpm' \) -print0 | while IFS= read -r -d '' file; do cp "$file" desktop-installers/; done
+          if [ -z "$(find desktop-installers -type f -print -quit)" ]; then
+            echo "Nenhum instalador final foi gerado. Executáveis portáveis e build_script_*.exe não são aceitos." >&2
+            find "${{ matrix.app_path }}/src-tauri/target/release" -maxdepth 5 -type f | sed -n '1,160p'
             exit 1
           fi
-          tar -C desktop-collect -czf "artifacts/scheduler-pro-desktop-${{ matrix.label }}-${TAG}.tar.gz" .
-          (cd artifacts && sha256sum * > "scheduler-pro-desktop-${{ matrix.label }}-${TAG}.sha256")
+          tar -C desktop-installers -czf "artifacts/scheduler-pro-${{ matrix.app_name }}-desktop-${{ matrix.label }}-${TAG}.tar.gz" .
+          (cd artifacts && sha256sum * > "scheduler-pro-${{ matrix.app_name }}-desktop-${{ matrix.label }}-${TAG}.sha256")
       - uses: actions/upload-artifact@v4
         with:
-          name: scheduler-pro-desktop-${{ matrix.label }}-${{ needs.prepare-release.outputs.tag }}
+          name: scheduler-pro-${{ matrix.app_name }}-desktop-${{ matrix.label }}-${{ needs.prepare-release.outputs.tag }}
           path: artifacts/*
           if-no-files-found: error
       - name: Attach desktop artifact to release
@@ -182,10 +157,18 @@ jobs:
         run: gh release upload "${{ needs.prepare-release.outputs.tag }}" artifacts/* --clobber
 
   android-artifacts:
-    name: Android APK/AAB unsigned
+    name: Android release ${{ matrix.app_name }}
     needs: prepare-release
     runs-on: ubuntu-24.04
     timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - app_path: apps/mobile
+            app_name: client
+          - app_path: apps/admin-mobile
+            app_name: admin
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -211,15 +194,15 @@ jobs:
       - name: Install JS deps
         run: npm install
       - name: Ensure Tauri mobile icon
-        run: node scripts/build/ensure-tauri-icons.mjs apps/mobile/src-tauri/icons
+        run: node scripts/build/ensure-tauri-icons.mjs ${{ matrix.app_path }}/src-tauri/icons
       - name: Initialize Android project
-        working-directory: apps/mobile
+        working-directory: ${{ matrix.app_path }}
         run: npm run tauri:android:init || true
-      - name: Build debug APK
-        working-directory: apps/mobile
+      - name: Build release APK
+        working-directory: ${{ matrix.app_path }}
         run: npm run tauri:android:apk
       - name: Build unsigned AAB
-        working-directory: apps/mobile
+        working-directory: ${{ matrix.app_path }}
         run: npm run tauri:android:aab
       - name: Collect Android artifacts
         shell: bash
@@ -227,80 +210,22 @@ jobs:
           set -euo pipefail
           TAG="${{ needs.prepare-release.outputs.tag }}"
           mkdir -p artifacts
-          find apps/mobile/src-tauri -type f \( -name '*.apk' -o -name '*.aab' \) -print0 | while IFS= read -r -d '' file; do
+          find "${{ matrix.app_path }}/src-tauri" -type f \( -name '*.apk' -o -name '*.aab' \) -print0 | while IFS= read -r -d '' file; do
             base="$(basename "$file")"
-            cp "$file" "artifacts/scheduler-pro-${base%.*}-${TAG}.${base##*.}"
+            cp "$file" "artifacts/scheduler-pro-${{ matrix.app_name }}-${base%.*}-${TAG}.${base##*.}"
           done
           if [ -z "$(find artifacts -type f -print -quit)" ]; then
-            echo "Nenhum APK/AAB foi gerado." >&2
-            find apps/mobile/src-tauri -maxdepth 7 -type f | sed -n '1,160p'
+            echo "Nenhum APK/AAB release foi gerado." >&2
+            find "${{ matrix.app_path }}/src-tauri" -maxdepth 7 -type f | sed -n '1,160p'
             exit 1
           fi
-          (cd artifacts && sha256sum * > "scheduler-pro-android-${TAG}.sha256")
+          (cd artifacts && sha256sum * > "scheduler-pro-${{ matrix.app_name }}-android-${TAG}.sha256")
       - uses: actions/upload-artifact@v4
         with:
-          name: scheduler-pro-android-${{ needs.prepare-release.outputs.tag }}
+          name: scheduler-pro-${{ matrix.app_name }}-android-${{ needs.prepare-release.outputs.tag }}
           path: artifacts/*
           if-no-files-found: error
       - name: Attach Android artifacts to release
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        shell: bash
-        run: gh release upload "${{ needs.prepare-release.outputs.tag }}" artifacts/* --clobber
-
-  ios-artifacts:
-    name: iOS unsigned attempt
-    needs: prepare-release
-    runs-on: macos-15
-    timeout-minutes: 120
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: npm
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: aarch64-apple-ios
-      - name: Install JS deps
-        run: npm install
-      - name: Ensure Tauri mobile icon
-        run: node scripts/build/ensure-tauri-icons.mjs apps/mobile/src-tauri/icons
-      - name: Initialize iOS project
-        working-directory: apps/mobile
-        run: npm run tauri:ios:init || true
-      - name: Try build iOS app bundle
-        working-directory: apps/mobile
-        shell: bash
-        run: |
-          set +e
-          npm run tauri:ios:build
-          echo "IOS_BUILD_EXIT=$?" >> "$GITHUB_ENV"
-          exit 0
-      - name: Package unsigned IPA or diagnostics
-        shell: bash
-        run: |
-          set -euo pipefail
-          TAG="${{ needs.prepare-release.outputs.tag }}"
-          mkdir -p artifacts ipa-work/Payload
-          app_path="$(find apps/mobile/src-tauri -type d -name '*.app' -print -quit || true)"
-          if [ -n "${app_path}" ]; then
-            cp -R "$app_path" ipa-work/Payload/
-            (cd ipa-work && zip -qry "../artifacts/scheduler-pro-ios-arm64-${TAG}-unsigned.ipa" Payload)
-          else
-            cat > "artifacts/IOS_UNSIGNED_STATUS-${TAG}.txt" <<TXT
-          Nenhum .app/.ipa foi gerado no runner macOS.
-          Saída do build iOS: ${IOS_BUILD_EXIT:-unknown}.
-          Para IPA instalável em aparelho físico, configure Apple Developer Team, certificado e perfil de provisionamento.
-          TXT
-          fi
-          (cd artifacts && shasum -a 256 * > "scheduler-pro-ios-${TAG}.sha256")
-      - uses: actions/upload-artifact@v4
-        with:
-          name: scheduler-pro-ios-${{ needs.prepare-release.outputs.tag }}
-          path: artifacts/*
-          if-no-files-found: error
-      - name: Attach iOS artifact to release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         shell: bash

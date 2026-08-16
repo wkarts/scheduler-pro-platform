@@ -8,6 +8,8 @@
     "apps/admin",
     "apps/desktop",
     "apps/mobile",
+    "apps/admin-desktop",
+    "apps/admin-mobile",
     "packages/api-client",
     "packages/types"
   ],
@@ -18,7 +20,9 @@
     "dev:web": "npm --workspace apps/web run dev",
     "dev:admin": "npm --workspace apps/admin run dev",
     "dev:desktop": "npm --workspace apps/desktop run tauri:dev",
-    "dev:mobile": "npm --workspace apps/mobile run dev"
+    "dev:mobile": "npm --workspace apps/mobile run dev",
+    "dev:admin-desktop": "npm --workspace apps/admin-desktop run tauri:dev",
+    "dev:admin-mobile": "npm --workspace apps/admin-mobile run dev"
   },
   "engines": {
     "node": ">=22"
