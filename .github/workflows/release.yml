@@ -18,6 +18,8 @@ permissions:
 env:
   IMAGE_NAMESPACE: ghcr.io/${{ github.repository }}
   NODE_VERSION: '24'
+  CARGO_INCREMENTAL: '0'
+  CARGO_TERM_COLOR: always
 
 jobs:
   prepare-release:
@@ -70,10 +72,11 @@ jobs:
         run: |
           set -euo pipefail
           TAG="${SCHEDULER_PRO_RELEASE_TAG}"
+          NOTES='Release automática do Scheduler Pro. Android publica APK debug ARM64 assinado para instalação direta em homologação. Desktop publica instaladores Windows MSI/NSIS, Linux DEB e macOS DMG. iOS publica IPA ARM64 não assinado; para instalar em aparelho físico é necessário assinar com identidade/provisionamento Apple.'
           if gh release view "$TAG" >/dev/null 2>&1; then
             gh release upload "$TAG" artifacts/* --clobber
           else
-            gh release create "$TAG" artifacts/* --target "$GITHUB_SHA" --title "Scheduler Pro ${TAG}" --notes "Release automática do Scheduler Pro. APKs Android publicados aqui são debug assinados para instalação direta em homologação. Desktop publica instaladores finais: Windows MSI/NSIS, Linux DEB e macOS DMG." --latest
+            gh release create "$TAG" artifacts/* --target "$GITHUB_SHA" --title "Scheduler Pro ${TAG}" --notes "$NOTES" --latest
           fi
       - uses: actions/upload-artifact@v4
         with:
@@ -90,42 +93,16 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: ubuntu-24.04
-            label: linux
-            app_path: apps/desktop
-            app_name: client
-            bundles: deb
-          - os: windows-latest
-            label: windows
-            app_path: apps/desktop
-            app_name: client
-            bundles: msi,nsis
-          - os: macos-15
-            label: macos
-            app_path: apps/desktop
-            app_name: client
-            bundles: dmg
-          - os: ubuntu-24.04
-            label: linux
-            app_path: apps/admin-desktop
-            app_name: admin
-            bundles: deb
-          - os: windows-latest
-            label: windows
-            app_path: apps/admin-desktop
-            app_name: admin
-            bundles: msi,nsis
-          - os: macos-15
-            label: macos
-            app_path: apps/admin-desktop
-            app_name: admin
-            bundles: dmg
+          - { os: ubuntu-24.04, label: linux, app_path: apps/desktop, app_name: client, bundles: deb }
+          - { os: windows-latest, label: windows, app_path: apps/desktop, app_name: client, bundles: 'msi,nsis' }
+          - { os: macos-15, label: macos, app_path: apps/desktop, app_name: client, bundles: dmg }
+          - { os: ubuntu-24.04, label: linux, app_path: apps/admin-desktop, app_name: admin, bundles: deb }
+          - { os: windows-latest, label: windows, app_path: apps/admin-desktop, app_name: admin, bundles: 'msi,nsis' }
+          - { os: macos-15, label: macos, app_path: apps/admin-desktop, app_name: admin, bundles: dmg }
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: npm
+        with: { node-version: '${{ env.NODE_VERSION }}', cache: npm }
       - uses: dtolnay/rust-toolchain@stable
       - name: Linux Tauri dependencies
         if: matrix.label == 'linux'
@@ -145,7 +122,7 @@ jobs:
           mkdir -p artifacts desktop-installers
           find "${{ matrix.app_path }}/src-tauri/target/release/bundle" -type f \( -name '*.msi' -o -name '*setup*.exe' -o -name '*Setup*.exe' -o -name '*.dmg' -o -name '*.deb' -o -name '*.rpm' \) -print0 | while IFS= read -r -d '' file; do cp "$file" desktop-installers/; done
           if [ -z "$(find desktop-installers -type f -print -quit)" ]; then
-            echo "Nenhum instalador final foi gerado. Executáveis portáveis, AppImage e build_script_*.exe não são aceitos neste fluxo." >&2
+            echo "Nenhum instalador final foi gerado." >&2
             find "${{ matrix.app_path }}/src-tauri/target/release" -maxdepth 5 -type f | sed -n '1,160p'
             exit 1
           fi
@@ -157,8 +134,7 @@ jobs:
           path: artifacts/*
           if-no-files-found: error
       - name: Attach desktop artifact to release
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        env: { GH_TOKEN: '${{ secrets.GITHUB_TOKEN }}' }
         shell: bash
         run: gh release upload "${{ needs.prepare-release.outputs.tag }}" artifacts/* --clobber
 
@@ -171,24 +147,17 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - app_path: apps/mobile
-            app_name: client
-          - app_path: apps/admin-mobile
-            app_name: admin
+          - { app_path: apps/mobile, app_name: client }
+          - { app_path: apps/admin-mobile, app_name: admin }
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: npm
+        with: { node-version: '${{ env.NODE_VERSION }}', cache: npm }
       - uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: '17'
+        with: { distribution: temurin, java-version: '17' }
       - uses: android-actions/setup-android@v3
       - uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: aarch64-linux-android,armv7-linux-androideabi,x86_64-linux-android,i686-linux-android
+        with: { targets: aarch64-linux-android }
       - name: Install Android SDK/NDK
         shell: bash
         run: |
@@ -213,18 +182,12 @@ jobs:
           set -euo pipefail
           TAG="${{ needs.prepare-release.outputs.tag }}"
           mkdir -p artifacts
-          find "${{ matrix.app_path }}/src-tauri" -type f -name '*debug*.apk' -print0 | while IFS= read -r -d '' file; do
-            cp "$file" "artifacts/scheduler-pro-${{ matrix.app_name }}-android-${TAG}-debug-installable.apk"
-          done
-          if [ -z "$(find artifacts -type f -name '*.apk' -print -quit)" ]; then
-            echo "Nenhum APK debug instalável foi gerado." >&2
-            find "${{ matrix.app_path }}/src-tauri" -maxdepth 8 -type f | sed -n '1,180p'
-            exit 1
-          fi
+          apk="$(find "${{ matrix.app_path }}/src-tauri" -type f -name '*debug*.apk' -print -quit)"
+          test -n "$apk"
+          cp "$apk" "artifacts/scheduler-pro-${{ matrix.app_name }}-android-${TAG}-debug-installable.apk"
           cat > "artifacts/scheduler-pro-${{ matrix.app_name }}-android-${TAG}-README.txt" <<TXT
-          APK debug assinado automaticamente pelo Gradle/Tauri para instalação direta em homologação.
-          Não é artefato Play Store. Não precisa de keystore de produção.
-          Para instalar: adb install -r scheduler-pro-${{ matrix.app_name }}-android-${TAG}-debug-installable.apk
+          APK debug ARM64 assinado automaticamente pelo Gradle/Tauri para instalação direta.
+          Instale com: adb install -r scheduler-pro-${{ matrix.app_name }}-android-${TAG}-debug-installable.apk
           TXT
           (cd artifacts && sha256sum * > "scheduler-pro-${{ matrix.app_name }}-android-${TAG}.sha256")
       - uses: actions/upload-artifact@v4
@@ -232,8 +195,62 @@ jobs:
           name: scheduler-pro-${{ matrix.app_name }}-android-debug-installable-${{ needs.prepare-release.outputs.tag }}
           path: artifacts/*
           if-no-files-found: error
+          compression-level: 0
       - name: Attach Android debug APK to release
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        env: { GH_TOKEN: '${{ secrets.GITHUB_TOKEN }}' }
+        shell: bash
+        run: gh release upload "${{ needs.prepare-release.outputs.tag }}" artifacts/* --clobber
+
+  ios-unsigned-ipas:
+    name: iOS unsigned IPA ${{ matrix.app_name }}
+    needs: prepare-release
+    runs-on: macos-15
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { app_path: apps/mobile, app_name: client }
+          - { app_path: apps/admin-mobile, app_name: admin }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '${{ env.NODE_VERSION }}', cache: npm }
+      - uses: dtolnay/rust-toolchain@stable
+        with: { targets: aarch64-apple-ios }
+      - name: Install JS deps
+        run: npm install
+      - name: Validate Xcode and CocoaPods
+        shell: bash
+        run: |
+          set -euo pipefail
+          xcodebuild -version
+          if ! command -v pod >/dev/null 2>&1; then brew install cocoapods; fi
+          pod --version
+      - name: Ensure Tauri mobile icon
+        run: node scripts/build/ensure-tauri-icons.mjs ${{ matrix.app_path }}/src-tauri/icons
+      - name: Build real unsigned iOS ARM64 application bundle
+        shell: bash
+        run: bash scripts/mobile/build-ios-unsigned.sh "${{ matrix.app_path }}" "release/${{ matrix.app_name }}-ios-app" "${{ matrix.app_name }}"
+      - name: Package and validate real unsigned IPA
+        shell: bash
+        run: |
+          set -euo pipefail
+          TAG="${{ needs.prepare-release.outputs.tag }}"
+          app_path="$(cat release/${{ matrix.app_name }}-ios-app/app-path.txt)"
+          mkdir -p artifacts
+          bash scripts/release/package-ios-unsigned.sh \
+            "$app_path" \
+            "artifacts/scheduler-pro-${{ matrix.app_name }}-ios-arm64-${TAG}-unsigned.ipa"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: scheduler-pro-${{ matrix.app_name }}-ios-arm64-unsigned-${{ needs.prepare-release.outputs.tag }}
+          path: |
+            artifacts/*.ipa
+            artifacts/*.ipa.sha256
+          if-no-files-found: error
+          compression-level: 0
+      - name: Attach unsigned iOS IPA to release
+        env: { GH_TOKEN: '${{ secrets.GITHUB_TOKEN }}' }
         shell: bash
         run: gh release upload "${{ needs.prepare-release.outputs.tag }}" artifacts/* --clobber
