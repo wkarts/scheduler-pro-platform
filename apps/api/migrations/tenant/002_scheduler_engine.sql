@@ -49,6 +49,19 @@ create table if not exists notification_templates (
   created_at timestamptz not null default now()
 );
 
+insert into notification_templates(key, channel, body, active) values
+  ('appointment_created', 'whatsapp', 'Olá, {{customer_name}}! Recebemos sua solicitação de {{service_name}} com {{professional_name}} para {{starts_at_br}}. Aguarde a confirmação.', true),
+  ('appointment_confirmed', 'whatsapp', 'Olá, {{customer_name}}! Seu agendamento de {{service_name}} com {{professional_name}} foi confirmado para {{starts_at_br}}.', true),
+  ('appointment_cancelled', 'whatsapp', 'Olá, {{customer_name}}. Seu agendamento de {{service_name}} para {{starts_at_br}} foi cancelado. Motivo: {{reason}}', true),
+  ('appointment_completed', 'whatsapp', 'Olá, {{customer_name}}! Obrigado por realizar {{service_name}} com a gente. Até a próxima!', true),
+  ('appointment_no_show', 'whatsapp', 'Olá, {{customer_name}}. Registramos ausência no agendamento de {{service_name}} previsto para {{starts_at_br}}.', true),
+  ('appointment_reminder_24h', 'whatsapp', 'Lembrete: {{customer_name}}, seu atendimento de {{service_name}} com {{professional_name}} é amanhã, {{starts_at_br}}.', true),
+  ('appointment_reminder_2h', 'whatsapp', 'Lembrete: {{customer_name}}, faltam 2 horas para seu atendimento de {{service_name}} com {{professional_name}} às {{starts_at_br}}.', true)
+on conflict (key) do update
+set channel = excluded.channel,
+    body = excluded.body,
+    active = excluded.active;
+
 create table if not exists notification_jobs (
   id uuid primary key default uuid_generate_v4(),
   appointment_id uuid references appointments(id) on delete cascade,
@@ -64,6 +77,7 @@ create table if not exists notification_jobs (
 );
 
 create index if not exists ix_notification_jobs_due on notification_jobs(status, scheduled_at);
+create unique index if not exists ux_notification_jobs_appointment_template on notification_jobs(appointment_id, channel, template_key) where appointment_id is not null;
 
 create table if not exists whatsapp_integrations (
   id uuid primary key default uuid_generate_v4(),
