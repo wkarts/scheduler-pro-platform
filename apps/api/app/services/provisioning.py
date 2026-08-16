@@ -87,7 +87,7 @@ class ProvisioningService:
                   tenant_id, database_name, database_user, storage_bucket,
                   storage_prefix, artifact_prefix, isolation_status, details
                 ) values(
-                  :tenant_id::uuid, :database_name, :database_user, :storage_bucket,
+                  cast(:tenant_id as uuid), :database_name, :database_user, :storage_bucket,
                   :storage_prefix, :artifact_prefix, 'PENDING', cast(:details as jsonb)
                 )
                 on conflict (tenant_id) do update set
