@@ -11,6 +11,7 @@ from app.core.config import settings
 from app.core.responses import success
 from app.core.tenant_context import TenantContext
 from app.services.whatsapp_provider import WhatsAppProvider, WhatsAppProviderFactory
+from app.workers.celery_app import celery_app
 
 router = APIRouter()
 
@@ -87,6 +88,7 @@ async def webhook(
     integration_key: str,
     request: Request,
     session: AsyncSession = Depends(get_tenant_session),
+    context: TenantContext = Depends(get_tenant_context),
 ) -> dict[str, Any]:
     payload = cast(dict[str, Any], await request.json())
     key_value = payload.get("key")
@@ -123,4 +125,10 @@ async def webhook(
             {"aggregate_id": inserted, "payload": json.dumps({"integration_key": integration_key, "provider_event_id": provider_event_id})},
         )
     await session.commit()
-    return success({"accepted": True, "duplicate": inserted is None, "integration_key": integration_key, "provider_event_id": provider_event_id})
+    if inserted:
+        celery_app.send_task(
+            "app.workers.tasks.process_whatsapp_webhook",
+            args=[context.tenant_id, str(inserted), f"whatsapp-{inserted}"],
+            queue="whatsapp",
+        )
+    return success({"accepted": True, "duplicate": inserted is None, "queued": inserted is not None, "integration_key": integration_key, "provider_event_id": provider_event_id})
