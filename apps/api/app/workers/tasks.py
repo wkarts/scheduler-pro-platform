@@ -1,14 +1,12 @@
 import asyncio
-import json
 import re
 from typing import Any
 
 from sqlalchemy import text
 
-from app.core.config import settings
 from app.db.session import platform_session, tenant_session
 from app.services.appointment_service import AppointmentService
-from app.services.notification_service import NotificationService
+from app.services.notification_dispatcher import TenantNotificationDispatcher
 from app.services.provisioning_runtime import ProvisioningRuntime
 from app.services.tenant_resolver import TenantResolver
 from app.workers.celery_app import typed_task
@@ -121,7 +119,7 @@ async def _process_due_notifications(tenant_id: str) -> dict[str, object]:
     else:
         return {"tenant_id": tenant_id, "processed": False}
     async for session in tenant_session(context):
-        result = await NotificationService(session).process_due(limit=100)
+        result = await TenantNotificationDispatcher(session).process_due(limit=100)
         return {"tenant_id": tenant_id, "processed": True, **result}
     return {"tenant_id": tenant_id, "processed": False}
 
