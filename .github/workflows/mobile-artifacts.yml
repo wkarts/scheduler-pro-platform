@@ -69,7 +69,6 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          yes | sdkmanager --licenses >/dev/null
           sdkmanager "platform-tools" "platforms;android-35" "build-tools;35.0.0" "ndk;27.0.12077973"
           echo "ANDROID_NDK_HOME=${ANDROID_HOME}/ndk/27.0.12077973" >> "$GITHUB_ENV"
           echo "NDK_HOME=${ANDROID_HOME}/ndk/27.0.12077973" >> "$GITHUB_ENV"
@@ -158,10 +157,10 @@ jobs:
               /usr/bin/zip -qry artifacts/scheduler-pro-ios-unsigned-${{ github.sha }}.ipa Payload
             else
               cat > artifacts/IOS_UNSIGNED_STATUS.txt <<'TXT'
-          Nenhum .ipa/.app foi gerado pelo runner macOS.
-          O workflow manteve diagnóstico para não mascarar exigência Apple/Xcode/provisioning.
-          Para IPA instalável em aparelho físico, rode com certificado Apple Developer ou perfil de provisionamento local.
-          TXT
+Nenhum .ipa/.app foi gerado pelo runner macOS.
+O workflow manteve diagnóstico para não mascarar exigência Apple/Xcode/provisioning.
+Para IPA instalável em aparelho físico, rode com certificado Apple Developer ou perfil de provisionamento local.
+TXT
             fi
           fi
           find artifacts -type f -maxdepth 1 -print
