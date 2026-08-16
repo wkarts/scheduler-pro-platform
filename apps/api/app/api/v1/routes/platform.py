@@ -1,7 +1,7 @@
 from typing import Any
 
 from fastapi import APIRouter, Depends
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -16,7 +16,8 @@ router = APIRouter()
 class TenantCreateRequest(BaseModel):
     name: str = Field(min_length=2, max_length=160)
     slug: str | None = Field(default=None, min_length=2, max_length=80, pattern=r"^[a-z0-9-]+$")
-    admin_email: str
+    admin_email: EmailStr
+    admin_password: str | None = Field(default=None, min_length=12, max_length=128)
 
 
 class CustomDomainRequest(BaseModel):
@@ -31,7 +32,12 @@ async def create_tenant(
     session: AsyncSession = Depends(get_platform_session),
 ) -> dict[str, Any]:
     service = ProvisioningService(session)
-    job = await service.enqueue_tenant(payload.name, payload.slug, payload.admin_email)
+    job = await service.enqueue_tenant(
+        payload.name,
+        payload.slug,
+        str(payload.admin_email),
+        payload.admin_password,
+    )
     return success(job)
 
 
