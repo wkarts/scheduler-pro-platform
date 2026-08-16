@@ -1,13 +1,14 @@
 name: Desktop Artifacts
+run-name: Desktop ${{ inputs.correlation_id || github.sha }}
 
 on:
   push:
-    branches:
-      - main
+    branches: [main]
     paths:
       - 'apps/desktop/**'
       - 'apps/admin-desktop/**'
       - 'scripts/build/configure-desktop-webview.mjs'
+      - 'scripts/build/validate-desktop-webview.mjs'
       - 'package.json'
       - 'package-lock.json'
       - '.github/workflows/desktop-artifacts.yml'
@@ -29,6 +30,10 @@ on:
         description: 'Nome visível do Desktop cliente'
         required: false
         default: 'Scheduler Pro'
+      correlation_id:
+        description: 'Correlação do Build Manager'
+        required: false
+        default: ''
   release:
     types: [published]
 
@@ -43,43 +48,17 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: ubuntu-24.04
-            label: linux
-            app_path: apps/desktop
-            app_name: client
-            bundles: deb
-          - os: windows-latest
-            label: windows
-            app_path: apps/desktop
-            app_name: client
-            bundles: msi,nsis
-          - os: macos-15
-            label: macos
-            app_path: apps/desktop
-            app_name: client
-            bundles: dmg
-          - os: ubuntu-24.04
-            label: linux
-            app_path: apps/admin-desktop
-            app_name: admin
-            bundles: deb
-          - os: windows-latest
-            label: windows
-            app_path: apps/admin-desktop
-            app_name: admin
-            bundles: msi,nsis
-          - os: macos-15
-            label: macos
-            app_path: apps/admin-desktop
-            app_name: admin
-            bundles: dmg
+          - { os: ubuntu-24.04, label: linux, app_path: apps/desktop, app_name: client, bundles: deb }
+          - { os: windows-latest, label: windows, app_path: apps/desktop, app_name: client, bundles: 'msi,nsis' }
+          - { os: macos-15, label: macos, app_path: apps/desktop, app_name: client, bundles: dmg }
+          - { os: ubuntu-24.04, label: linux, app_path: apps/admin-desktop, app_name: admin, bundles: deb }
+          - { os: windows-latest, label: windows, app_path: apps/admin-desktop, app_name: admin, bundles: 'msi,nsis' }
+          - { os: macos-15, label: macos, app_path: apps/admin-desktop, app_name: admin, bundles: dmg }
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
-        with:
-          node-version: '24'
-          cache: npm
+        with: { node-version: '24', cache: npm }
       - uses: dtolnay/rust-toolchain@stable
       - name: Linux dependencies
         if: matrix.label == 'linux'
@@ -97,16 +76,12 @@ jobs:
           INPUT_CLIENT_NAME: ${{ github.event_name == 'workflow_dispatch' && inputs.client_product_name || 'Scheduler Pro' }}
         run: |
           set -euo pipefail
-          slug="$(printf '%s' "$INPUT_SLUG" | tr '[:upper:]' '[:lower:]' | tr -cd 'a-z0-9-')"
-          slug="${slug:-platform}"
+          slug="$(printf '%s' "$INPUT_SLUG" | tr '[:upper:]' '[:lower:]' | tr -cd 'a-z0-9-')"; slug="${slug:-platform}"
           if [ "${{ matrix.app_name }}" = "client" ]; then
-            web_url="$INPUT_CLIENT_URL"
-            product_name="$INPUT_CLIENT_NAME"
+            web_url="$INPUT_CLIENT_URL"; product_name="$INPUT_CLIENT_NAME"
             if [ "$slug" = "platform" ]; then identifier="br.com.argws.schedulerpro"; else identifier="br.com.argws.schedulerpro.$(printf '%s' "$slug" | tr -d '-')"; fi
           else
-            web_url="$INPUT_ADMIN_URL"
-            product_name="Scheduler Pro Admin"
-            identifier="br.com.argws.schedulerpro.admin"
+            web_url="$INPUT_ADMIN_URL"; product_name="Scheduler Pro Admin"; identifier="br.com.argws.schedulerpro.admin"
           fi
           node scripts/build/configure-desktop-webview.mjs "${{ matrix.app_path }}" "$web_url" "$product_name" "$identifier"
           echo "DISTRIBUTION_SLUG=$slug" >> "$GITHUB_ENV"
@@ -120,10 +95,7 @@ jobs:
           suffix="${{ github.event.release.tag_name || github.sha }}"
           mkdir -p artifacts/installers artifacts/output
           find "${{ matrix.app_path }}/src-tauri/target/release/bundle" -type f \( -name '*.msi' -o -name '*setup*.exe' -o -name '*Setup*.exe' -o -name '*.dmg' -o -name '*.deb' \) -print0 | while IFS= read -r -d '' file; do cp "$file" artifacts/installers/; done
-          if [ -z "$(find artifacts/installers -type f -print -quit)" ]; then
-            echo 'Nenhum instalador final foi gerado. Portables não são aceitos.' >&2
-            exit 1
-          fi
+          if [ -z "$(find artifacts/installers -type f -print -quit)" ]; then echo 'Nenhum instalador final foi gerado.' >&2; exit 1; fi
           tar -C artifacts/installers -czf "artifacts/output/scheduler-pro-${{ matrix.app_name }}-desktop-${{ matrix.label }}-${DISTRIBUTION_SLUG}-${suffix}.tar.gz" .
           (cd artifacts/output && sha256sum * > "scheduler-pro-${{ matrix.app_name }}-desktop-${{ matrix.label }}-${DISTRIBUTION_SLUG}-${suffix}.sha256")
       - uses: actions/upload-artifact@v4
@@ -134,7 +106,6 @@ jobs:
           retention-days: 30
       - name: Attach desktop artifact to release
         if: github.event_name == 'release'
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        env: { GH_TOKEN: '${{ secrets.GITHUB_TOKEN }}' }
         shell: bash
         run: gh release upload "${{ github.event.release.tag_name }}" artifacts/output/* --clobber
