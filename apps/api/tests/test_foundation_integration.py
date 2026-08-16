@@ -12,6 +12,8 @@ from app.core.security import hash_password
 
 pytestmark = pytest.mark.integration
 
+TENANT_MIGRATION_HEAD = "tenant_0003_scheduler_engine"
+
 
 async def tenant_login(client: httpx.AsyncClient, host: str = "localhost") -> dict:
     response = await client.post(
@@ -63,7 +65,7 @@ async def test_bootstrap_created_platform_tenant_migrations_and_bucket() -> None
     )
     try:
         tenant_revision = await tenant.fetchval("select version_num from alembic_version")
-        assert tenant_revision == "tenant_0002"
+        assert tenant_revision == TENANT_MIGRATION_HEAD
     finally:
         await tenant.close()
 
@@ -178,9 +180,7 @@ async def test_rbac_is_loaded_from_database_not_from_jwt(client: httpx.AsyncClie
             """,
             f"readonly-{uuid4().hex}",
         )
-        permission_id = await conn.fetchval(
-            "select id::text from permissions where key='customers.read'"
-        )
+        permission_id = await conn.fetchval("select id::text from permissions where key='customers.read'")
         await conn.execute(
             "insert into user_roles(user_id, role_id) values($1::uuid, $2::uuid)",
             user_id,
@@ -230,9 +230,7 @@ async def _prepare_second_tenant() -> tuple[str, str, str, str]:
     )
     try:
         literal = await admin.fetchval("select quote_literal($1)", db_password)
-        role_exists = await admin.fetchval(
-            "select exists(select 1 from pg_roles where rolname=$1)", db_user
-        )
+        role_exists = await admin.fetchval("select exists(select 1 from pg_roles where rolname=$1)", db_user)
         if role_exists:
             await admin.execute(f'alter role "{db_user}" with login password {literal}')
         else:
@@ -395,9 +393,7 @@ async def test_tenant_isolation_and_unknown_hostname(client: httpx.AsyncClient) 
     )
     created_b = await client.post(
         "/api/v1/customers",
-        headers={
-            "host": domain,
-            "authorization": f"Bearer {tenant_b['access_token']}"},
+        headers={"host": domain, "authorization": f"Bearer {tenant_b['access_token']}"},
         json={"name": name_b},
     )
     assert created_a.status_code == 200
@@ -426,9 +422,7 @@ async def test_suspended_tenant_cannot_open_session(client: httpx.AsyncClient) -
         database=settings.postgres_db,
     )
     try:
-        await conn.execute(
-            "update tenants set status='SUSPENDED' where slug=$1", settings.dev_tenant_slug
-        )
+        await conn.execute("update tenants set status='SUSPENDED' where slug=$1", settings.dev_tenant_slug)
         response = await client.post(
             "/api/v1/auth/login",
             json={
@@ -439,9 +433,7 @@ async def test_suspended_tenant_cannot_open_session(client: httpx.AsyncClient) -
         assert response.status_code == 403
         assert response.json()["error"]["code"] == "TENANT_SUSPENDED"
     finally:
-        await conn.execute(
-            "update tenants set status='ACTIVE' where slug=$1", settings.dev_tenant_slug
-        )
+        await conn.execute("update tenants set status='ACTIVE' where slug=$1", settings.dev_tenant_slug)
         await conn.close()
 
 

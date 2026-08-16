@@ -1,25 +1,28 @@
-from datetime import datetime, timedelta
+from datetime import date
 from typing import Any
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Depends, Query
+from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.deps import get_tenant_session
 from app.core.responses import success
+from app.services.appointment_service import AppointmentService
 
 router = APIRouter()
 
 
 @router.get("")
 async def availability(
-    date: datetime = Query(...), professional_id: str | None = None
+    day: date = Query(...),
+    professional_id: str = Query(...),
+    service_id: str | None = Query(default=None),
+    slot_minutes: int = Query(default=30, ge=5, le=240),
+    session: AsyncSession = Depends(get_tenant_session),
 ) -> dict[str, Any]:
-    slots = []
-    start = date.replace(hour=8, minute=0, second=0, microsecond=0)
-    for idx in range(20):
-        slots.append(
-            {
-                "starts_at": (start + timedelta(minutes=30 * idx)).isoformat(),
-                "available": True,
-                "professional_id": professional_id,
-            }
-        )
+    slots = await AppointmentService(session).availability(
+        day=day,
+        professional_id=professional_id,
+        service_id=service_id,
+        slot_minutes=slot_minutes,
+    )
     return success(slots)

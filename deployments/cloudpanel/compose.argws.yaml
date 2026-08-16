@@ -1,0 +1,194 @@
+name: ${COMPOSE_PROJECT_NAME:-argws-scheduler-pro}
+
+x-api-env: &api-env
+  APP_NAME: ${APP_NAME:-Scheduler Pro}
+  APP_ENV: ${APP_ENV:-production}
+  APP_DEBUG: ${APP_DEBUG:-false}
+  APP_SECRET_KEY: ${APP_SECRET_KEY:?APP_SECRET_KEY obrigatória}
+  PUBLIC_PLATFORM_DOMAIN: ${PUBLIC_PLATFORM_DOMAIN:-scheduler.argws.com.br}
+  PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-https://scheduler.argws.com.br}
+  ADMIN_PLATFORM_DOMAINS: ${ADMIN_PLATFORM_DOMAINS:-admin.scheduler.argws.com.br,api.scheduler.argws.com.br}
+  TENANT_DEFAULT_DOMAIN_ROOT: ${TENANT_DEFAULT_DOMAIN_ROOT:-scheduler.argws.com.br}
+  PLATFORM_ADMIN_EMAIL: ${PLATFORM_ADMIN_EMAIL:?PLATFORM_ADMIN_EMAIL obrigatória}
+  PLATFORM_ADMIN_PASSWORD: ${PLATFORM_ADMIN_PASSWORD:?PLATFORM_ADMIN_PASSWORD obrigatória}
+  POSTGRES_HOST: scheduler-postgres
+  POSTGRES_PORT: 5432
+  POSTGRES_DB: ${POSTGRES_DB:-platform}
+  POSTGRES_USER: ${POSTGRES_USER:-scheduler}
+  POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD obrigatória}
+  POSTGRES_ADMIN_USER: ${POSTGRES_ADMIN_USER:-postgres}
+  POSTGRES_ADMIN_PASSWORD: ${POSTGRES_ADMIN_PASSWORD:?POSTGRES_ADMIN_PASSWORD obrigatória}
+  REDIS_URL: redis://scheduler-redis:6379/0
+  RABBITMQ_URL: amqp://${RABBITMQ_USER:-scheduler}:${RABBITMQ_PASSWORD:?RABBITMQ_PASSWORD obrigatória}@scheduler-rabbitmq:5672//
+  CELERY_BROKER_URL: amqp://${RABBITMQ_USER:-scheduler}:${RABBITMQ_PASSWORD:?RABBITMQ_PASSWORD obrigatória}@scheduler-rabbitmq:5672//
+  CELERY_RESULT_BACKEND: redis://scheduler-redis:6379/1
+  S3_ENDPOINT: http://scheduler-minio:9000
+  S3_ACCESS_KEY: ${S3_ACCESS_KEY:?S3_ACCESS_KEY obrigatória}
+  S3_SECRET_KEY: ${S3_SECRET_KEY:?S3_SECRET_KEY obrigatória}
+  S3_REGION: ${S3_REGION:-sa-east-1}
+  S3_PUBLIC_BUCKET: ${S3_PUBLIC_BUCKET:-scheduler-public}
+  CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-https://scheduler.argws.com.br,https://admin.scheduler.argws.com.br,https://api.scheduler.argws.com.br}
+  CLOUDFLARE_API_BASE_URL: ${CLOUDFLARE_API_BASE_URL:-https://api.cloudflare.com/client/v4}
+  CLOUDFLARE_API_TOKEN: ${CLOUDFLARE_API_TOKEN:-}
+  CLOUDFLARE_ZONE_ID: ${CLOUDFLARE_ZONE_ID:-}
+  CLOUDFLARE_DRY_RUN: ${CLOUDFLARE_DRY_RUN:-false}
+  CLOUDFLARE_CUSTOM_HOSTNAME_ORIGIN: ${CLOUDFLARE_CUSTOM_HOSTNAME_ORIGIN:-proxy.scheduler.argws.com.br}
+  CLOUDFLARE_TEMPORARY_RECORD_TYPE: ${CLOUDFLARE_TEMPORARY_RECORD_TYPE:-CNAME}
+  CLOUDFLARE_TEMPORARY_RECORD_TARGET: ${CLOUDFLARE_TEMPORARY_RECORD_TARGET:-proxy.scheduler.argws.com.br}
+  WHATSAPP_PROVIDER: ${WHATSAPP_PROVIDER:-evolution}
+  EVOLUTION_API_URL: ${EVOLUTION_API_URL:-}
+  EVOLUTION_API_TOKEN: ${EVOLUTION_API_TOKEN:-}
+  EVOLUTION_INSTANCE_NAME: ${EVOLUTION_INSTANCE_NAME:-scheduler-pro}
+
+x-api-image: &api-image ${IMAGE_REGISTRY:-ghcr.io}/${IMAGE_NAMESPACE:-wkarts/scheduler-pro-platform}/api:${APP_IMAGE_TAG:-latest}
+x-worker-image: &worker-image ${IMAGE_REGISTRY:-ghcr.io}/${IMAGE_NAMESPACE:-wkarts/scheduler-pro-platform}/worker:${APP_IMAGE_TAG:-latest}
+x-web-image: &web-image ${IMAGE_REGISTRY:-ghcr.io}/${IMAGE_NAMESPACE:-wkarts/scheduler-pro-platform}/web:${APP_IMAGE_TAG:-latest}
+x-admin-image: &admin-image ${IMAGE_REGISTRY:-ghcr.io}/${IMAGE_NAMESPACE:-wkarts/scheduler-pro-platform}/admin:${APP_IMAGE_TAG:-latest}
+x-proxy-image: &proxy-image ${IMAGE_REGISTRY:-ghcr.io}/${IMAGE_NAMESPACE:-wkarts/scheduler-pro-platform}/proxy:${APP_IMAGE_TAG:-latest}
+
+services:
+  scheduler-storage-init:
+    image: alpine:3.22
+    restart: "no"
+    user: "0:0"
+    volumes:
+      - ${SCHEDULER_PRO_DATA_ROOT:-./scheduler-pro-data}:/data
+    command: ["/bin/sh", "-ec", "mkdir -p /data/postgres /data/redis /data/rabbitmq /data/minio /data/backups && chmod 0777 /data/postgres /data/redis /data/rabbitmq /data/minio"]
+
+  scheduler-postgres:
+    image: ${POSTGRES_IMAGE:-postgres:17-alpine}
+    restart: unless-stopped
+    depends_on:
+      scheduler-storage-init:
+        condition: service_completed_successfully
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-platform}
+      POSTGRES_USER: ${POSTGRES_USER:-scheduler}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD obrigatória}
+      TZ: ${APP_TIMEZONE:-America/Bahia}
+    volumes:
+      - ${SCHEDULER_PRO_DATA_ROOT:-./scheduler-pro-data}/postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\""]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+
+  scheduler-redis:
+    image: ${REDIS_IMAGE:-redis:8-alpine}
+    restart: unless-stopped
+    volumes:
+      - ${SCHEDULER_PRO_DATA_ROOT:-./scheduler-pro-data}/redis:/data
+    command: ["redis-server", "--appendonly", "yes", "--appendfsync", "everysec"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+
+  scheduler-rabbitmq:
+    image: ${RABBITMQ_IMAGE:-rabbitmq:4-management-alpine}
+    restart: unless-stopped
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-scheduler}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:?RABBITMQ_PASSWORD obrigatória}
+      TZ: ${APP_TIMEZONE:-America/Bahia}
+    volumes:
+      - ${SCHEDULER_PRO_DATA_ROOT:-./scheduler-pro-data}/rabbitmq:/var/lib/rabbitmq
+      - ./rabbitmq.conf:/etc/rabbitmq/rabbitmq.conf:ro
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 15s
+      timeout: 10s
+      retries: 20
+      start_period: 30s
+
+  scheduler-minio:
+    image: ${MINIO_IMAGE:-minio/minio:RELEASE.2025-09-07T16-13-09Z}
+    restart: unless-stopped
+    command: ["server", "/data", "--console-address", ":9001"]
+    environment:
+      MINIO_ROOT_USER: ${S3_ACCESS_KEY:?S3_ACCESS_KEY obrigatória}
+      MINIO_ROOT_PASSWORD: ${S3_SECRET_KEY:?S3_SECRET_KEY obrigatória}
+      MINIO_REGION_NAME: ${S3_REGION:-sa-east-1}
+    volumes:
+      - ${SCHEDULER_PRO_DATA_ROOT:-./scheduler-pro-data}/minio:/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl --fail --silent http://127.0.0.1:9000/minio/health/live >/dev/null || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 20
+
+  scheduler-migrate:
+    image: *api-image
+    pull_policy: always
+    restart: "no"
+    environment: *api-env
+    depends_on:
+      scheduler-postgres:
+        condition: service_healthy
+    command: ["/bin/sh", "-ec", "python -m app.cli migrate-platform && python -m app.bootstrap platform-admin"]
+
+  scheduler-api:
+    image: *api-image
+    pull_policy: always
+    restart: unless-stopped
+    environment: *api-env
+    depends_on:
+      scheduler-migrate:
+        condition: service_completed_successfully
+      scheduler-redis:
+        condition: service_healthy
+      scheduler-rabbitmq:
+        condition: service_healthy
+      scheduler-minio:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl --fail --silent -H 'Host: ${PUBLIC_PLATFORM_DOMAIN:-scheduler.argws.com.br}' http://127.0.0.1:8000/api/v1/health/ready >/dev/null || exit 1"]
+      interval: 20s
+      timeout: 5s
+      retries: 20
+
+  scheduler-worker-default:
+    image: *worker-image
+    pull_policy: always
+    restart: unless-stopped
+    environment: *api-env
+    depends_on:
+      scheduler-api:
+        condition: service_healthy
+    command: ["celery", "-A", "app.workers.celery_app.celery_app", "worker", "-Q", "default,provisioning,domains,builds,maintenance", "--loglevel=INFO", "--concurrency=2", "--without-gossip", "--without-mingle", "--without-heartbeat"]
+
+  scheduler-worker-whatsapp:
+    image: *worker-image
+    pull_policy: always
+    restart: unless-stopped
+    environment: *api-env
+    depends_on:
+      scheduler-api:
+        condition: service_healthy
+    command: ["celery", "-A", "app.workers.celery_app.celery_app", "worker", "-Q", "whatsapp,notifications,webhooks", "--loglevel=INFO", "--concurrency=2", "--without-gossip", "--without-mingle", "--without-heartbeat"]
+
+  scheduler-web:
+    image: *web-image
+    pull_policy: always
+    restart: unless-stopped
+
+  scheduler-admin:
+    image: *admin-image
+    pull_policy: always
+    restart: unless-stopped
+
+  scheduler-proxy:
+    image: *proxy-image
+    pull_policy: always
+    restart: unless-stopped
+    depends_on:
+      scheduler-api:
+        condition: service_healthy
+      scheduler-web:
+        condition: service_started
+      scheduler-admin:
+        condition: service_started
+    ports:
+      - "${APP_BIND_HOST:-127.0.0.1}:${APP_PORT:-18080}:80"

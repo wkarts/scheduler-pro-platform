@@ -18,6 +18,9 @@ from app.services.tenant_resolver import TenantResolver
 
 router = APIRouter()
 
+PLATFORM_MIGRATION_HEAD = "platform_0004"
+TENANT_MIGRATION_HEAD = "tenant_0003_scheduler_engine"
+
 
 @router.get("/health")
 async def health() -> dict[str, Any]:
@@ -32,20 +35,14 @@ async def live() -> dict[str, Any]:
 async def _check_platform() -> tuple[str, str | None]:
     async with PlatformSession() as session:
         await session.execute(text("select 1"))
-        revision = (
-            await session.execute(text("select version_num from alembic_version"))
-        ).scalar_one_or_none()
-        if revision != "platform_0004":
+        revision = (await session.execute(text("select version_num from alembic_version"))).scalar_one_or_none()
+        if revision != PLATFORM_MIGRATION_HEAD:
             return "failed", f"migration:{revision or 'missing'}"
     return "ok", None
 
 
 async def _check_redis() -> tuple[str, str | None]:
-    client = redis.from_url(  # type: ignore[no-untyped-call]
-        settings.redis_url,
-        socket_connect_timeout=2,
-        socket_timeout=2,
-    )
+    client = redis.from_url(settings.redis_url, socket_connect_timeout=2, socket_timeout=2)  # type: ignore[no-untyped-call]
     try:
         if not await client.ping():
             return "failed", "ping"
@@ -67,11 +64,7 @@ def _s3_list_buckets() -> None:
         aws_access_key_id=settings.s3_access_key,
         aws_secret_access_key=settings.s3_secret_key,
         region_name=settings.s3_region,
-        config=BotoConfig(
-            connect_timeout=2,
-            read_timeout=2,
-            retries={"max_attempts": 1},
-        ),
+        config=BotoConfig(connect_timeout=2, read_timeout=2, retries={"max_attempts": 1}),
     )
     client.list_buckets()
 
@@ -88,20 +81,10 @@ def resolve_request_hostname_from_value(value: str) -> str:
 
 
 def _tenant_probe_required(hostname: str) -> bool:
-    # Development intentionally resolves localhost to tenant_dev so the integration
-    # suite exercises a real tenant database. In production, readiness probes made
-    # from inside the container arrive as localhost/loopback and must validate the
-    # control plane only; treating the loopback Host as a tenant makes an otherwise
-    # healthy API permanently unhealthy and prevents the reverse proxy from starting.
     if settings.app_env == "development":
         return True
     platform_hostname = resolve_request_hostname_from_value(settings.public_platform_domain)
-    return hostname not in {
-        platform_hostname,
-        "localhost",
-        "127.0.0.1",
-        "::1",
-    }
+    return hostname not in {platform_hostname, "localhost", "127.0.0.1", "::1"}
 
 
 async def _check_tenant(request: Request) -> tuple[str, str | None]:
@@ -113,10 +96,8 @@ async def _check_tenant(request: Request) -> tuple[str, str | None]:
     engine = await get_tenant_engine(context)
     factory = async_sessionmaker(engine, expire_on_commit=False, class_=AsyncSession)
     async with factory() as session:
-        revision = (
-            await session.execute(text("select version_num from alembic_version"))
-        ).scalar_one_or_none()
-        if revision != "tenant_0002":
+        revision = (await session.execute(text("select version_num from alembic_version"))).scalar_one_or_none()
+        if revision != TENANT_MIGRATION_HEAD:
             return "failed", f"migration:{revision or 'missing'}"
         await session.execute(text("select 1"))
     return "ok", None
@@ -125,12 +106,7 @@ async def _check_tenant(request: Request) -> tuple[str, str | None]:
 @router.get("/health/ready")
 async def ready(request: Request) -> ORJSONResponse:
     checks: dict[str, dict[str, str]] = {}
-    probes = {
-        "postgres_platform": _check_platform,
-        "redis": _check_redis,
-        "rabbitmq": _check_rabbitmq,
-        "storage": _check_s3,
-    }
+    probes = {"postgres_platform": _check_platform, "redis": _check_redis, "rabbitmq": _check_rabbitmq, "storage": _check_s3}
     ready_state = True
     for name, probe in probes.items():
         try:
@@ -149,8 +125,4 @@ async def ready(request: Request) -> ORJSONResponse:
     if detail:
         checks["tenant"]["detail"] = detail
     ready_state = ready_state and state in {"ok", "not_applicable"}
-    payload = success({"ready": ready_state, "checks": checks})
-    return ORJSONResponse(
-        status_code=200 if ready_state else 503,
-        content=payload,
-    )
+    return ORJSONResponse(status_code=200 if ready_state else 503, content=success({"ready": ready_state, "checks": checks}))
