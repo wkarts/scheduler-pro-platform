@@ -43,6 +43,12 @@ type SessionState = {
   userEmail: string
 }
 
+type AdminPwaState = {
+  canInstall?: boolean
+  isInstalled?: boolean
+  install?: () => Promise<unknown>
+}
+
 const storageKey = 'scheduler-pro-admin-session'
 const email = ref('')
 const password = ref('')
@@ -50,6 +56,8 @@ const authenticating = ref(false)
 const loadingDashboard = ref(false)
 const errorMessage = ref('')
 const installMessage = ref('')
+const installReady = ref(false)
+const installedPwa = ref(false)
 const session = ref<SessionState | null>(null)
 const dashboard = ref<DashboardResponse | null>(null)
 const activeModule = ref('overview')
@@ -75,6 +83,7 @@ const activeTenantsRatio = computed(() => {
   if (!totals.value?.tenants) return '0%'
   return `${Math.round((totals.value.active_tenants / totals.value.tenants) * 100)}%`
 })
+const canInstallPwa = computed(() => installReady.value && !installedPwa.value)
 
 function restoreSession() {
   const raw = localStorage.getItem(storageKey)
@@ -132,13 +141,30 @@ async function loadDashboard() {
   }
 }
 
-function installPwa() {
-  const installer = (window as any).schedulerProAdminPwa
-  if (installer?.install) {
-    installer.install()
+function browserStandalone(): boolean {
+  const navigatorWithStandalone = navigator as Navigator & { standalone?: boolean }
+  return window.matchMedia('(display-mode: standalone)').matches || Boolean(navigatorWithStandalone.standalone)
+}
+
+function syncInstallState() {
+  const state = (window as Window & { schedulerProAdminPwa?: AdminPwaState }).schedulerProAdminPwa
+  installedPwa.value = Boolean(state?.isInstalled) || browserStandalone()
+  installReady.value = Boolean(state?.canInstall) && !installedPwa.value
+}
+
+async function installPwa() {
+  syncInstallState()
+  if (installedPwa.value) {
+    installMessage.value = 'WebApp administrativo já instalado neste dispositivo.'
     return
   }
-  installMessage.value = 'Instalação indisponível neste navegador neste momento. Use o menu do navegador e escolha instalar aplicativo.'
+  const installer = (window as Window & { schedulerProAdminPwa?: AdminPwaState }).schedulerProAdminPwa
+  if (installer?.canInstall && installer.install) {
+    await installer.install()
+    syncInstallState()
+    return
+  }
+  installMessage.value = 'Instalação indisponível neste navegador neste momento.'
 }
 
 function selectModule(key: string) {
@@ -148,9 +174,16 @@ function selectModule(key: string) {
 
 onMounted(() => {
   restoreSession()
+  syncInstallState()
   if (session.value?.accessToken) loadDashboard()
+  window.addEventListener('scheduler-pro-admin-install-state', syncInstallState)
   window.addEventListener('scheduler-pro-admin-install-ready', () => {
-    installMessage.value = 'WebApp administrativo pronto para instalação.'
+    syncInstallState()
+    if (canInstallPwa.value) installMessage.value = 'WebApp administrativo pronto para instalação.'
+  })
+  window.addEventListener('scheduler-pro-admin-installed', () => {
+    syncInstallState()
+    installMessage.value = 'WebApp administrativo instalado.'
   })
 })
 </script>
@@ -201,7 +234,8 @@ onMounted(() => {
             {{ authenticating ? 'Validando...' : 'Entrar' }}
           </button>
 
-          <button class="mt-3 w-full rounded-xl border border-slate-200 px-5 py-3 text-sm font-bold text-slate-600 transition hover:bg-slate-50" type="button" @click="installPwa">Instalar WebApp administrativo</button>
+          <button v-if="canInstallPwa" class="mt-3 w-full rounded-xl border border-slate-200 px-5 py-3 text-sm font-bold text-slate-600 transition hover:bg-slate-50" type="button" @click="installPwa">Instalar WebApp administrativo</button>
+          <p v-else-if="installedPwa" class="mt-3 text-xs text-slate-500">WebApp administrativo já instalado.</p>
           <p v-if="installMessage" class="mt-3 text-xs text-slate-500">{{ installMessage }}</p>
         </form>
       </section>
@@ -226,7 +260,7 @@ onMounted(() => {
           </nav>
 
           <div class="border-t border-white/10 p-4">
-            <button class="mb-3 w-full rounded-xl bg-white/10 px-4 py-3 text-sm font-bold text-white transition hover:bg-white/15" type="button" @click="installPwa">Instalar PWA Admin</button>
+            <button v-if="canInstallPwa" class="mb-3 w-full rounded-xl bg-white/10 px-4 py-3 text-sm font-bold text-white transition hover:bg-white/15" type="button" @click="installPwa">Instalar PWA Admin</button>
             <button class="w-full rounded-xl px-4 py-3 text-left text-sm font-semibold text-blue-100 transition hover:bg-white/10" type="button" @click="clearSession">Sair</button>
           </div>
         </div>

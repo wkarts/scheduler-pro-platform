@@ -88,7 +88,7 @@ onUnmounted(() => { window.removeEventListener('hashchange', onHashChange); wind
     <aside class="auth-visual">
       <div class="auth-brand"><div class="brand-mark"><CalendarClock :size="28" /></div><div><strong>{{ appName }}</strong><span>{{ slogan }}</span></div></div>
       <h1>Agendamentos, clientes e confirmação por WhatsApp em uma plataforma escalável.</h1>
-      <p>Entre com o usuário criado no bootstrap do tenant. Sem login automático e sem dados fictícios como autoridade.</p>
+      <p>Acesse o painel da empresa para administrar agenda, clientes, serviços e confirmações.</p>
     </aside>
     <form class="auth-card" @submit.prevent="login">
       <h2>Entrar na plataforma</h2><p>Acesse o painel gerencial da sua empresa.</p>
