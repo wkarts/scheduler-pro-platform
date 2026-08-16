@@ -142,6 +142,8 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf
       - name: Install JS deps
         run: npm install
+      - name: Ensure Tauri desktop icons
+        run: node scripts/build/ensure-tauri-icons.mjs apps/desktop/src-tauri/icons --ico
       - name: Build Tauri desktop unsigned
         working-directory: apps/desktop
         run: npm run tauri:build
@@ -161,7 +163,7 @@ jobs:
             -name '*.msi' -o \
             -name '*.exe' \
           \) -print0 | while IFS= read -r -d '' file; do cp "$file" desktop-collect/; done
-          if [ ! -s "$(find desktop-collect -type f -print -quit)" ]; then
+          if [ -z "$(find desktop-collect -type f -print -quit)" ]; then
             echo "Nenhum binário desktop foi encontrado." >&2
             find apps/desktop/src-tauri/target -maxdepth 5 -type f | sed -n '1,120p'
             exit 1
@@ -203,12 +205,13 @@ jobs:
         run: |
           set -euo pipefail
           sdk_root="${ANDROID_SDK_ROOT:-${ANDROID_HOME}}"
-          yes | sdkmanager --licenses >/dev/null || true
           sdkmanager "platform-tools" "platforms;android-35" "build-tools;35.0.0" "ndk;27.2.12479018"
           echo "ANDROID_NDK_HOME=${sdk_root}/ndk/27.2.12479018" >> "$GITHUB_ENV"
           echo "NDK_HOME=${sdk_root}/ndk/27.2.12479018" >> "$GITHUB_ENV"
       - name: Install JS deps
         run: npm install
+      - name: Ensure Tauri mobile icon
+        run: node scripts/build/ensure-tauri-icons.mjs apps/mobile/src-tauri/icons
       - name: Initialize Android project
         working-directory: apps/mobile
         run: npm run tauri:android:init || true
@@ -228,7 +231,7 @@ jobs:
             base="$(basename "$file")"
             cp "$file" "artifacts/scheduler-pro-${base%.*}-${TAG}.${base##*.}"
           done
-          if [ ! -s "$(find artifacts -type f -print -quit)" ]; then
+          if [ -z "$(find artifacts -type f -print -quit)" ]; then
             echo "Nenhum APK/AAB foi gerado." >&2
             find apps/mobile/src-tauri -maxdepth 7 -type f | sed -n '1,160p'
             exit 1
@@ -246,7 +249,7 @@ jobs:
         run: gh release upload "${{ needs.prepare-release.outputs.tag }}" artifacts/* --clobber
 
   ios-artifacts:
-    name: iOS unsigned IPA
+    name: iOS unsigned attempt
     needs: prepare-release
     runs-on: macos-15
     timeout-minutes: 120
@@ -261,26 +264,36 @@ jobs:
           targets: aarch64-apple-ios
       - name: Install JS deps
         run: npm install
+      - name: Ensure Tauri mobile icon
+        run: node scripts/build/ensure-tauri-icons.mjs apps/mobile/src-tauri/icons
       - name: Initialize iOS project
         working-directory: apps/mobile
         run: npm run tauri:ios:init || true
-      - name: Build iOS unsigned app bundle
+      - name: Try build iOS app bundle
         working-directory: apps/mobile
-        run: npm run tauri:ios:build
-      - name: Package unsigned IPA
+        shell: bash
+        run: |
+          set +e
+          npm run tauri:ios:build
+          echo "IOS_BUILD_EXIT=$?" >> "$GITHUB_ENV"
+          exit 0
+      - name: Package unsigned IPA or diagnostics
         shell: bash
         run: |
           set -euo pipefail
           TAG="${{ needs.prepare-release.outputs.tag }}"
           mkdir -p artifacts ipa-work/Payload
-          app_path="$(find apps/mobile/src-tauri -type d -name '*.app' -print -quit)"
-          if [ -z "${app_path}" ]; then
-            echo "Nenhum .app iOS foi gerado." >&2
-            find apps/mobile/src-tauri -maxdepth 8 -type d | sed -n '1,160p'
-            exit 1
+          app_path="$(find apps/mobile/src-tauri -type d -name '*.app' -print -quit || true)"
+          if [ -n "${app_path}" ]; then
+            cp -R "$app_path" ipa-work/Payload/
+            (cd ipa-work && zip -qry "../artifacts/scheduler-pro-ios-arm64-${TAG}-unsigned.ipa" Payload)
+          else
+            cat > "artifacts/IOS_UNSIGNED_STATUS-${TAG}.txt" <<TXT
+          Nenhum .app/.ipa foi gerado no runner macOS.
+          Saída do build iOS: ${IOS_BUILD_EXIT:-unknown}.
+          Para IPA instalável em aparelho físico, configure Apple Developer Team, certificado e perfil de provisionamento.
+          TXT
           fi
-          cp -R "$app_path" ipa-work/Payload/
-          (cd ipa-work && zip -qry "../artifacts/scheduler-pro-ios-arm64-${TAG}-unsigned.ipa" Payload)
           (cd artifacts && shasum -a 256 * > "scheduler-pro-ios-${TAG}.sha256")
       - uses: actions/upload-artifact@v4
         with:
