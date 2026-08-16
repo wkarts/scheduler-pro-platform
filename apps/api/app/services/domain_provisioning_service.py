@@ -67,6 +67,16 @@ class DomainProvisioningService:
             details=error_details,
         )
 
+    async def _mark_temporary_dns_active(self, domain: Domain, dns_result: dict[str, Any]) -> None:
+        domain.status = "ACTIVE"
+        domain.validation = {
+            **(domain.validation or {}),
+            "mode": "temporary_dns",
+            "record_exists": True,
+            "target": settings.tenant_domain_target,
+            "dns": dns_result,
+        }
+
     async def create_temporary_domain(self, tenant_id: str) -> dict[str, Any]:
         tenant = await self._tenant(tenant_id)
         hostname = f"{tenant.slug}.{settings.tenant_domain_root}".lower()
@@ -83,19 +93,19 @@ class DomainProvisioningService:
             self.session.add(domain)
             await self.session.flush()
         try:
-            result = await self.cloudflare.create_dns_record(
+            result = await self.cloudflare.ensure_dns_record(
                 hostname,
                 settings.tenant_domain_target,
                 record_type=settings.cloudflare_temporary_record_type,
                 proxied=True,
             )
-            domain.status = "ACTIVE" if result.get("dry_run") else "CONFIGURING"
-            domain.validation = {"mode": "temporary", "cloudflare": result}
+            await self._mark_temporary_dns_active(domain, result)
         except APIError as exc:
             domain.status = "PENDING_VALIDATION"
             domain.validation = {
                 **(domain.validation or {}),
-                "mode": "temporary",
+                "mode": "temporary_dns",
+                "record_exists": False,
                 "cloudflare_error": {
                     "code": exc.code,
                     "message": exc.message,
@@ -106,7 +116,7 @@ class DomainProvisioningService:
             await self._record_cloudflare_failure(
                 tenant_id=str(tenant.id),
                 event="temporary_domain_dns_failed",
-                message="Falha ao criar DNS temporário na Cloudflare.",
+                message="Falha ao criar ou confirmar DNS temporário na Cloudflare.",
                 error=exc,
                 hostname=hostname,
             )
@@ -165,9 +175,7 @@ class DomainProvisioningService:
             )
         if make_primary:
             await self.session.execute(
-                update(Domain)
-                .where(Domain.tenant_id == tenant_id)
-                .values(is_primary=False)
+                update(Domain).where(Domain.tenant_id == tenant_id).values(is_primary=False)
             )
             domain.is_primary = True
         await self.session.commit()
@@ -175,19 +183,28 @@ class DomainProvisioningService:
 
     async def check_domain(self, domain_id: str) -> dict[str, Any]:
         domain = await self._domain_by_id(domain_id)
-        hostname_id = domain.validation.get("custom_hostname_id") if domain.validation else None
         try:
-            if hostname_id:
-                result = await self.cloudflare.get_custom_hostname_status(str(hostname_id))
+            if domain.is_temporary:
+                result = await self.cloudflare.ensure_dns_record(
+                    domain.hostname,
+                    settings.tenant_domain_target,
+                    record_type=settings.cloudflare_temporary_record_type,
+                    proxied=True,
+                )
+                await self._mark_temporary_dns_active(domain, {**result, "check": True})
             else:
-                result = await self.cloudflare.get_validation_status(domain.hostname)
-            cf_result = result.get("result", {}) if isinstance(result.get("result"), dict) else {}
-            ssl_status = cf_result.get("ssl", {}).get("status") if isinstance(cf_result.get("ssl"), dict) else None
-            if result.get("dry_run") or cf_result.get("status") == "active" or ssl_status == "active":
-                domain.status = "ACTIVE"
-            else:
-                domain.status = "PENDING_VALIDATION"
-            domain.validation = {**(domain.validation or {}), "last_check": result}
+                hostname_id = domain.validation.get("custom_hostname_id") if domain.validation else None
+                if hostname_id:
+                    result = await self.cloudflare.get_custom_hostname_status(str(hostname_id))
+                else:
+                    result = await self.cloudflare.create_custom_hostname(domain.hostname)
+                cf_result = result.get("result", {}) if isinstance(result.get("result"), dict) else {}
+                ssl_status = cf_result.get("ssl", {}).get("status") if isinstance(cf_result.get("ssl"), dict) else None
+                if result.get("dry_run") or cf_result.get("status") == "active" or ssl_status == "active":
+                    domain.status = "ACTIVE"
+                else:
+                    domain.status = "PENDING_VALIDATION"
+                domain.validation = {**(domain.validation or {}), "last_check": result}
         except APIError as exc:
             domain.status = "PENDING_VALIDATION"
             domain.validation = {
