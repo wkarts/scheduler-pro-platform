@@ -11,6 +11,19 @@ def test_scheduler_engine_routes_are_real() -> None:
     assert "notification_jobs" in (ROOT / "app/services/notification_service.py").read_text(encoding="utf-8")
 
 
+def test_notification_engine_uses_tenant_templates_and_reminders() -> None:
+    notification_service = (ROOT / "app/services/notification_service.py").read_text(encoding="utf-8")
+    tenant_sql = (ROOT / "migrations/tenant/002_scheduler_engine.sql").read_text(encoding="utf-8")
+    routes = (ROOT / "app/api/v1/routes/notifications.py").read_text(encoding="utf-8")
+    assert "notification_templates" in notification_service
+    assert "appointment_reminder_24h" in notification_service
+    assert "appointment_reminder_2h" in notification_service
+    assert "{{customer_name}}" in tenant_sql
+    assert "ux_notification_jobs_appointment_template" in tenant_sql
+    assert '@router.get("/templates")' in routes
+    assert '@router.put("/templates/{template_key}")' in routes
+
+
 def test_no_web_auto_login() -> None:
     app_vue = (ROOT.parents[1] / "apps/web/src/App.vue").read_text(encoding="utf-8")
     assert "const logged = ref(!location.pathname" not in app_vue
