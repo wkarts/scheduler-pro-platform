@@ -9,6 +9,103 @@ class ObservabilityService:
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
 
+    async def ensure_platform_schema(self) -> None:
+        await self.session.execute(
+            text(
+                """
+                create table if not exists platform_log_entries (
+                  id uuid primary key default uuid_generate_v4(),
+                  tenant_id uuid references tenants(id) on delete set null,
+                  source varchar(80) not null,
+                  service varchar(120) not null,
+                  level varchar(20) not null default 'INFO',
+                  event varchar(160) not null,
+                  message text not null,
+                  correlation_id varchar(120),
+                  request_id varchar(120),
+                  actor varchar(180),
+                  hostname varchar(255),
+                  container_name varchar(180),
+                  integration varchar(80),
+                  error_code varchar(120),
+                  details jsonb not null default '{}'::jsonb,
+                  created_at timestamptz not null default now()
+                )
+                """
+            )
+        )
+        await self.session.execute(text("create index if not exists ix_platform_log_entries_created on platform_log_entries(created_at desc)"))
+        await self.session.execute(text("create index if not exists ix_platform_log_entries_tenant on platform_log_entries(tenant_id, created_at desc)"))
+        await self.session.execute(text("create index if not exists ix_platform_log_entries_source_level on platform_log_entries(source, level, created_at desc)"))
+        await self.session.execute(text("create index if not exists ix_platform_log_entries_integration on platform_log_entries(integration, created_at desc)"))
+        await self.session.execute(
+            text(
+                """
+                create table if not exists tenant_resource_boundaries (
+                  tenant_id uuid primary key references tenants(id) on delete cascade,
+                  database_name varchar(128) not null,
+                  database_user varchar(128) not null,
+                  storage_bucket varchar(160) not null,
+                  storage_prefix text not null,
+                  artifact_prefix text not null,
+                  log_retention_days integer not null default 90,
+                  isolation_status varchar(32) not null default 'ACTIVE',
+                  details jsonb not null default '{}'::jsonb,
+                  created_at timestamptz not null default now(),
+                  updated_at timestamptz not null default now()
+                )
+                """
+            )
+        )
+        await self.session.execute(
+            text(
+                """
+                insert into tenant_resource_boundaries(
+                  tenant_id, database_name, database_user, storage_bucket, storage_prefix, artifact_prefix, details
+                )
+                select t.id,
+                       coalesce(td.database_name, 'tenant_' || replace(t.id::text, '-', '')),
+                       coalesce(td.database_user, 'tenant_' || replace(t.id::text, '-', '')),
+                       coalesce(ts.bucket, 'scheduler-tenant-' || t.slug),
+                       'tenants/' || t.id::text || '/',
+                       'tenants/' || t.id::text || '/artifacts/',
+                       jsonb_build_object('slug', t.slug, 'created_from_runtime_repair', true)
+                from tenants t
+                left join tenant_databases td on td.tenant_id=t.id
+                left join tenant_storage ts on ts.tenant_id=t.id
+                on conflict (tenant_id) do nothing
+                """
+            )
+        )
+        await self.session.commit()
+
+    async def ensure_tenant_schema(self) -> None:
+        await self.session.execute(
+            text(
+                """
+                create table if not exists tenant_log_entries (
+                  id uuid primary key default uuid_generate_v4(),
+                  source varchar(80) not null,
+                  service varchar(120) not null,
+                  level varchar(20) not null default 'INFO',
+                  event varchar(160) not null,
+                  message text not null,
+                  correlation_id varchar(120),
+                  request_id varchar(120),
+                  actor varchar(180),
+                  integration varchar(80),
+                  error_code varchar(120),
+                  details jsonb not null default '{}'::jsonb,
+                  created_at timestamptz not null default now()
+                )
+                """
+            )
+        )
+        await self.session.execute(text("create index if not exists ix_tenant_log_entries_created on tenant_log_entries(created_at desc)"))
+        await self.session.execute(text("create index if not exists ix_tenant_log_entries_source_level on tenant_log_entries(source, level, created_at desc)"))
+        await self.session.execute(text("create index if not exists ix_tenant_log_entries_integration on tenant_log_entries(integration, created_at desc)"))
+        await self.session.commit()
+
     async def record_platform_log(
         self,
         *,
@@ -28,6 +125,7 @@ class ObservabilityService:
         details: dict[str, Any] | None = None,
         commit: bool = False,
     ) -> None:
+        await self.ensure_platform_schema()
         await self.session.execute(
             text(
                 """
@@ -64,18 +162,19 @@ class ObservabilityService:
     async def list_platform_logs(
         self,
         *,
-        tenant_id: str | None = None,
+        tenant_filter: str | None = None,
         source: str | None = None,
         level: str | None = None,
         integration: str | None = None,
         search: str | None = None,
         limit: int = 200,
     ) -> list[dict[str, Any]]:
+        await self.ensure_platform_schema()
         where: list[str] = []
         params: dict[str, Any] = {"limit": limit}
-        if tenant_id:
-            where.append("tenant_id = cast(:tenant_id as uuid)")
-            params["tenant_id"] = tenant_id
+        if tenant_filter:
+            where.append("tenant_id = cast(:tenant_filter as uuid)")
+            params["tenant_filter"] = tenant_filter
         if source:
             where.append("source = :source")
             params["source"] = source
@@ -110,6 +209,7 @@ class ObservabilityService:
         return [dict(row) for row in rows]
 
     async def summary(self) -> dict[str, Any]:
+        await self.ensure_platform_schema()
         counts = (
             await self.session.execute(
                 text(
@@ -170,6 +270,7 @@ class ObservabilityService:
         search: str | None = None,
         limit: int = 200,
     ) -> list[dict[str, Any]]:
+        await self.ensure_tenant_schema()
         where: list[str] = []
         params: dict[str, Any] = {"limit": limit}
         if source:
