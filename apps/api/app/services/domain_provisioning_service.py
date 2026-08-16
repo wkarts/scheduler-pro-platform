@@ -1,6 +1,6 @@
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
@@ -97,7 +97,7 @@ class DomainProvisioningService:
             domain.status = "ACTIVE"
         if make_primary:
             await self.session.execute(
-                Domain.__table__.update()
+                update(Domain)
                 .where(Domain.tenant_id == tenant_id)
                 .values(is_primary=False)
             )
