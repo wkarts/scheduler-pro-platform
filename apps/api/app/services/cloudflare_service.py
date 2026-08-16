@@ -1,4 +1,4 @@
-from typing import Any
+from typing import Any, cast
 
 import httpx
 
@@ -46,7 +46,7 @@ class CloudflareService:
                 headers=headers,
                 json=payload,
             )
-        data = response.json()
+        data = cast(dict[str, Any], response.json())
         if response.status_code >= 400 or not data.get("success", False):
             raise APIError(
                 "CLOUDFLARE_API_ERROR",
