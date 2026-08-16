@@ -1,240 +1,116 @@
 name: Mobile Artifacts
+run-name: Mobile ${{ inputs.correlation_id || github.sha }}
 
 on:
   push:
-    branches:
-      - main
-    paths:
-      - 'apps/mobile/**'
-      - 'package.json'
-      - 'package-lock.json'
-      - '.github/workflows/mobile-artifacts.yml'
+    branches: [main]
+    paths: ['apps/mobile/**','apps/admin-mobile/**','scripts/build/ensure-tauri-icons.mjs','package.json','package-lock.json','.github/workflows/mobile-artifacts.yml']
   workflow_dispatch:
     inputs:
-      build_profile:
-        description: 'Build profile id or slug'
-        required: false
-        default: 'default'
+      build_profile: { description: 'Build profile id or slug', required: false, default: 'default' }
+      target: { description: 'android|ios|admin-android|admin-ios|all', required: false, default: 'all' }
+      correlation_id: { description: 'Correlação do Build Manager', required: false, default: '' }
   release:
     types: [published]
 
-permissions:
-  contents: write
-  actions: write
+permissions: { contents: write, actions: write }
 
 jobs:
-  mobile-shell:
-    runs-on: ubuntu-latest
+  android:
+    if: github.event_name != 'workflow_dispatch' || inputs.target == 'all' || contains(inputs.target, 'android')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { app_path: apps/mobile, app_name: client }
+          - { app_path: apps/admin-mobile, app_name: admin }
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-      - name: Install JS deps
-        run: npm install
-      - name: Build mobile shell
-        run: npm --workspace apps/mobile run build
-      - name: Pack mobile shell artifact
-        shell: bash
-        run: |
-          set -euo pipefail
-          suffix="${{ github.event.release.tag_name || github.sha }}"
-          mkdir -p artifacts
-          tar -C apps/mobile/dist -czf "artifacts/scheduler-pro-mobile-shell-${suffix}.tar.gz" .
-      - uses: actions/upload-artifact@v4
-        with:
-          name: scheduler-pro-mobile-shell-${{ github.event.release.tag_name || github.sha }}
-          path: artifacts/*
-          if-no-files-found: error
-          retention-days: 30
-      - name: Attach mobile shell to release
-        if: github.event_name == 'release'
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        shell: bash
-        run: gh release upload "${{ github.event.release.tag_name }}" artifacts/* --clobber
-
-  android-apk-unsigned:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '22'
+        with: { node-version: '24', cache: npm }
       - uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: '17'
-      - uses: dtolnay/rust-toolchain@stable
+        with: { distribution: temurin, java-version: '17' }
       - uses: android-actions/setup-android@v3
-      - name: Install Android SDK packages
+      - uses: dtolnay/rust-toolchain@stable
+        with: { targets: aarch64-linux-android }
+      - name: Install Android SDK/NDK
         shell: bash
         run: |
           set -euo pipefail
-          sdkmanager "platform-tools" "platforms;android-35" "build-tools;35.0.0" "ndk;27.0.12077973"
-          echo "ANDROID_NDK_HOME=${ANDROID_HOME}/ndk/27.0.12077973" >> "$GITHUB_ENV"
-          echo "NDK_HOME=${ANDROID_HOME}/ndk/27.0.12077973" >> "$GITHUB_ENV"
-      - name: Install Rust Android targets
-        run: rustup target add aarch64-linux-android armv7-linux-androideabi i686-linux-android x86_64-linux-android
-      - name: Install JS deps
-        run: npm install
-      - name: Ensure Tauri icon
-        working-directory: apps/mobile
+          sdk_root="${ANDROID_SDK_ROOT:-${ANDROID_HOME}}"
+          sdkmanager "platform-tools" "platforms;android-35" "build-tools;35.0.0" "ndk;27.2.12479018"
+          echo "ANDROID_NDK_HOME=${sdk_root}/ndk/27.2.12479018" >> "$GITHUB_ENV"
+          echo "NDK_HOME=${sdk_root}/ndk/27.2.12479018" >> "$GITHUB_ENV"
+      - run: npm install
+      - name: Validate dedicated UI
+        run: npm --workspace ${{ matrix.app_path }} run build
+      - run: node scripts/build/ensure-tauri-icons.mjs ${{ matrix.app_path }}/src-tauri/icons
+      - name: Initialize Android
+        working-directory: ${{ matrix.app_path }}
+        shell: bash
+        run: if [ ! -d src-tauri/gen/android ]; then npm run tauri:android:init; fi
+      - name: Build debug installable arm64 APK
+        working-directory: ${{ matrix.app_path }}
+        run: npm run tauri:android:apk:debug
+      - name: Collect APK
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p src-tauri/icons
-          node <<'NODE'
-          const fs = require('fs');
-          const zlib = require('zlib');
-          const out = 'src-tauri/icons/icon.png';
-          const table = new Uint32Array(256);
-          for (let n = 0; n < 256; n++) {
-            let c = n;
-            for (let k = 0; k < 8; k++) c = (c & 1) ? (0xedb88320 ^ (c >>> 1)) : (c >>> 1);
-            table[n] = c >>> 0;
-          }
-          function crc32(buf) { let c = 0xffffffff; for (const b of buf) c = table[(c ^ b) & 0xff] ^ (c >>> 8); return (c ^ 0xffffffff) >>> 0; }
-          function chunk(type, data) { const t = Buffer.from(type); const len = Buffer.alloc(4); len.writeUInt32BE(data.length); const crc = Buffer.alloc(4); crc.writeUInt32BE(crc32(Buffer.concat([t, data]))); return Buffer.concat([len, t, data, crc]); }
-          const w = 512, h = 512;
-          const rows = [];
-          for (let y = 0; y < h; y++) {
-            const row = Buffer.alloc(1 + w * 4); row[0] = 0;
-            for (let x = 0; x < w; x++) {
-              const i = 1 + x * 4;
-              const grad = Math.round(48 + 80 * (x / w));
-              row[i] = 20; row[i+1] = grad; row[i+2] = 220; row[i+3] = 255;
-              const s1 = x > 145 && x < 367 && y > 120 && y < 175;
-              const s2 = x > 145 && x < 367 && y > 230 && y < 285;
-              const s3 = x > 145 && x < 367 && y > 340 && y < 395;
-              const s4 = x > 145 && x < 205 && y > 120 && y < 285;
-              const s5 = x > 307 && x < 367 && y > 230 && y < 395;
-              if (s1 || s2 || s3 || s4 || s5) { row[i]=255; row[i+1]=255; row[i+2]=255; }
-            }
-            rows.push(row);
-          }
-          const ihdr = Buffer.alloc(13); ihdr.writeUInt32BE(w,0); ihdr.writeUInt32BE(h,4); ihdr[8]=8; ihdr[9]=6; ihdr[10]=0; ihdr[11]=0; ihdr[12]=0;
-          const png = Buffer.concat([Buffer.from([137,80,78,71,13,10,26,10]), chunk('IHDR', ihdr), chunk('IDAT', zlib.deflateSync(Buffer.concat(rows))), chunk('IEND', Buffer.alloc(0))]);
-          fs.writeFileSync(out, png);
-          NODE
-          test -s src-tauri/icons/icon.png
-      - name: Initialize Android project when absent
-        working-directory: apps/mobile
-        shell: bash
-        run: |
-          set -euo pipefail
-          if [ ! -d src-tauri/gen/android ]; then
-            npm run tauri:android:init
-          fi
-      - name: Build unsigned Android APK
-        working-directory: apps/mobile
-        run: npm run tauri:android:apk
-      - name: Collect APK artifacts
-        shell: bash
-        run: |
-          set -euo pipefail
-          mkdir -p artifacts
-          find apps/mobile/src-tauri -type f -name '*.apk' -print -exec cp {} artifacts/ \;
-          if [ -z "$(find artifacts -type f -name '*.apk' -print -quit)" ]; then
-            echo 'Nenhum APK foi gerado.' >&2
-            exit 1
-          fi
-          sha256sum artifacts/*.apk > artifacts/SHA256SUMS-android.txt
+          suffix="${{ github.event.release.tag_name || github.sha }}"; mkdir -p artifacts
+          apk="$(find '${{ matrix.app_path }}/src-tauri' -type f -name '*debug*.apk' -print -quit)"; test -n "$apk"
+          cp "$apk" "artifacts/scheduler-pro-${{ matrix.app_name }}-android-${suffix}-debug-installable.apk"
+          (cd artifacts && sha256sum *.apk > SHA256SUMS.txt)
       - uses: actions/upload-artifact@v4
-        with:
-          name: scheduler-pro-android-apk-unsigned-${{ github.event.release.tag_name || github.sha }}
-          path: artifacts/*
-          if-no-files-found: error
-          retention-days: 30
-      - name: Attach Android APK to release
+        with: { name: 'scheduler-pro-${{ matrix.app_name }}-android-debug-installable-${{ github.event.release.tag_name || github.sha }}', path: 'artifacts/*', if-no-files-found: error, retention-days: 30 }
+      - name: Attach to release
         if: github.event_name == 'release'
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        shell: bash
+        env: { GH_TOKEN: '${{ secrets.GITHUB_TOKEN }}' }
         run: gh release upload "${{ github.event.release.tag_name }}" artifacts/* --clobber
 
-  ios-unsigned-attempt:
-    runs-on: macos-latest
+  ios:
+    if: github.event_name != 'workflow_dispatch' || inputs.target == 'all' || contains(inputs.target, 'ios')
+    runs-on: macos-15
+    timeout-minutes: 120
     continue-on-error: true
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { app_path: apps/mobile, app_name: client }
+          - { app_path: apps/admin-mobile, app_name: admin }
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
-        with:
-          node-version: '22'
+        with: { node-version: '24', cache: npm }
       - uses: dtolnay/rust-toolchain@stable
-      - name: Install Rust iOS targets
-        run: rustup target add aarch64-apple-ios aarch64-apple-ios-sim x86_64-apple-ios
-      - name: Install JS deps
-        run: npm install
-      - name: Ensure Tauri icon
-        working-directory: apps/mobile
+        with: { targets: 'aarch64-apple-ios,aarch64-apple-ios-sim' }
+      - run: npm install
+      - name: Validate dedicated UI
+        run: npm --workspace ${{ matrix.app_path }} run build
+      - run: node scripts/build/ensure-tauri-icons.mjs ${{ matrix.app_path }}/src-tauri/icons
+      - name: Initialize iOS
+        working-directory: ${{ matrix.app_path }}
+        shell: bash
+        run: if [ ! -d src-tauri/gen/apple ]; then npm run tauri:ios:init || true; fi
+      - name: Build iOS app
+        working-directory: ${{ matrix.app_path }}
+        shell: bash
+        run: npm run tauri:ios:build || true
+      - name: Package IPA or status
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p src-tauri/icons
-          node <<'NODE'
-          const fs = require('fs');
-          const zlib = require('zlib');
-          const out = 'src-tauri/icons/icon.png';
-          const table = new Uint32Array(256);
-          for (let n = 0; n < 256; n++) { let c = n; for (let k = 0; k < 8; k++) c = (c & 1) ? (0xedb88320 ^ (c >>> 1)) : (c >>> 1); table[n] = c >>> 0; }
-          function crc32(buf) { let c = 0xffffffff; for (const b of buf) c = table[(c ^ b) & 0xff] ^ (c >>> 8); return (c ^ 0xffffffff) >>> 0; }
-          function chunk(type, data) { const t = Buffer.from(type); const len = Buffer.alloc(4); len.writeUInt32BE(data.length); const crc = Buffer.alloc(4); crc.writeUInt32BE(crc32(Buffer.concat([t, data]))); return Buffer.concat([len, t, data, crc]); }
-          const w = 512, h = 512, rows = [];
-          for (let y = 0; y < h; y++) { const row = Buffer.alloc(1 + w * 4); row[0] = 0; for (let x = 0; x < w; x++) { const i = 1 + x * 4; const grad = Math.round(48 + 80 * (x / w)); row[i]=20; row[i+1]=grad; row[i+2]=220; row[i+3]=255; const s1=x>145&&x<367&&y>120&&y<175, s2=x>145&&x<367&&y>230&&y<285, s3=x>145&&x<367&&y>340&&y<395, s4=x>145&&x<205&&y>120&&y<285, s5=x>307&&x<367&&y>230&&y<395; if (s1||s2||s3||s4||s5) { row[i]=255; row[i+1]=255; row[i+2]=255; } } rows.push(row); }
-          const ihdr = Buffer.alloc(13); ihdr.writeUInt32BE(w,0); ihdr.writeUInt32BE(h,4); ihdr[8]=8; ihdr[9]=6; ihdr[10]=0; ihdr[11]=0; ihdr[12]=0;
-          fs.writeFileSync(out, Buffer.concat([Buffer.from([137,80,78,71,13,10,26,10]), chunk('IHDR', ihdr), chunk('IDAT', zlib.deflateSync(Buffer.concat(rows))), chunk('IEND', Buffer.alloc(0))]));
-          NODE
-          test -s src-tauri/icons/icon.png
-      - name: Initialize iOS project when absent
-        working-directory: apps/mobile
-        shell: bash
-        run: |
-          set -euo pipefail
-          if [ ! -d src-tauri/gen/apple ]; then
-            npm run tauri:ios:init
-          fi
-      - name: Try build unsigned iOS app
-        working-directory: apps/mobile
-        shell: bash
-        run: |
-          set +e
-          npm run tauri:ios:build
-          echo "ios_build_exit=$?" >> "$GITHUB_ENV"
-          exit 0
-      - name: Package IPA or diagnostics
-        shell: bash
-        run: |
-          set -euo pipefail
-          mkdir -p artifacts
-          ipa_file=$(find apps/mobile/src-tauri -type f -name '*.ipa' -print -quit || true)
-          if [ -n "$ipa_file" ]; then
-            cp "$ipa_file" artifacts/
-          else
-            app_bundle=$(find apps/mobile/src-tauri -type d -name '*.app' -print -quit || true)
-            if [ -n "$app_bundle" ]; then
-              rm -rf Payload
-              mkdir -p Payload
-              cp -R "$app_bundle" Payload/
-              /usr/bin/zip -qry artifacts/scheduler-pro-ios-unsigned-${{ github.sha }}.ipa Payload
-            else
-              printf '%s\n' \
-                'Nenhum .ipa/.app foi gerado pelo runner macOS.' \
-                'O workflow manteve diagnóstico para não mascarar exigência Apple/Xcode/provisioning.' \
-                'Para IPA instalável em aparelho físico, rode com certificado Apple Developer ou perfil de provisionamento local.' \
-                > artifacts/IOS_UNSIGNED_STATUS.txt
-            fi
-          fi
-          find artifacts -maxdepth 1 -type f -print
+          suffix="${{ github.event.release.tag_name || github.sha }}"; mkdir -p artifacts
+          ipa="$(find '${{ matrix.app_path }}/src-tauri' -type f -name '*.ipa' -print -quit || true)"
+          app="$(find '${{ matrix.app_path }}/src-tauri' -type d -name '*.app' -print -quit || true)"
+          if [ -n "$ipa" ]; then cp "$ipa" "artifacts/scheduler-pro-${{ matrix.app_name }}-ios-${suffix}-unsigned.ipa";
+          elif [ -n "$app" ]; then rm -rf Payload; mkdir Payload; cp -R "$app" Payload/; /usr/bin/zip -qry "artifacts/scheduler-pro-${{ matrix.app_name }}-ios-${suffix}-unsigned.ipa" Payload;
+          else printf '%s\n' 'Nenhum .app/.ipa foi gerado.' 'Instalação em aparelho físico exige assinatura Apple/ad-hoc.' > "artifacts/scheduler-pro-${{ matrix.app_name }}-ios-${suffix}-STATUS.txt"; fi
       - uses: actions/upload-artifact@v4
-        with:
-          name: scheduler-pro-ios-unsigned-attempt-${{ github.event.release.tag_name || github.sha }}
-          path: artifacts/*
-          if-no-files-found: error
-          retention-days: 30
-      - name: Attach iOS attempt to release
+        with: { name: 'scheduler-pro-${{ matrix.app_name }}-ios-${{ github.event.release.tag_name || github.sha }}', path: 'artifacts/*', if-no-files-found: error, retention-days: 30 }
+      - name: Attach to release
         if: github.event_name == 'release'
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        shell: bash
+        env: { GH_TOKEN: '${{ secrets.GITHUB_TOKEN }}' }
         run: gh release upload "${{ github.event.release.tag_name }}" artifacts/* --clobber
