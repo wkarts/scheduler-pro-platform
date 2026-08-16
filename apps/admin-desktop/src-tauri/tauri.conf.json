@@ -4,15 +4,26 @@
   "version": "0.1.0",
   "identifier": "br.com.argws.schedulerpro.admin",
   "build": {
-    "beforeDevCommand": "npm run dev",
-    "devUrl": "http://localhost:5176",
-    "beforeBuildCommand": "npm run build",
+    "devUrl": "https://admin.scheduler.argws.com.br",
+    "frontendDist": "https://admin.scheduler.argws.com.br",
     "features": ["desktop"],
-    "frontendDist": "../dist"
+    "removeUnusedCommands": true
   },
   "app": {
     "windows": [
-      { "label": "main", "title": "Scheduler Pro Admin", "width": 1440, "height": 900, "minWidth": 1100, "minHeight": 720, "resizable": true, "maximized": true, "visible": true, "center": true }
+      {
+        "label": "main",
+        "title": "Scheduler Pro Admin",
+        "url": "https://admin.scheduler.argws.com.br",
+        "width": 1440,
+        "height": 900,
+        "minWidth": 1024,
+        "minHeight": 640,
+        "resizable": true,
+        "maximized": true,
+        "visible": true,
+        "center": true
+      }
     ],
     "security": { "csp": null }
   },
@@ -23,6 +34,6 @@
     "publisher": "ARGWS Sistemas",
     "category": "Business",
     "shortDescription": "Scheduler Pro Admin",
-    "longDescription": "Aplicativo desktop administrativo do Scheduler Pro Control Plane."
+    "longDescription": "Aplicativo desktop administrativo conectado ao Control Plane web do Scheduler Pro."
   }
 }
