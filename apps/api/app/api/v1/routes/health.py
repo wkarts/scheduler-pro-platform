@@ -18,8 +18,8 @@ from app.services.tenant_resolver import TenantResolver
 
 router = APIRouter()
 
-PLATFORM_MIGRATION_HEAD = "platform_0005_observability_logs"
-TENANT_MIGRATION_HEAD = "tenant_0004_observability_logs"
+PLATFORM_MIGRATION_HEAD = "platform_0004"
+TENANT_MIGRATION_HEAD = "tenant_0003_scheduler_engine"
 
 
 @router.get("/health")
