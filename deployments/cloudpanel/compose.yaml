@@ -9,6 +9,8 @@ x-api-environment: &api-environment
   PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-https://scheduler.argws.com.br}
   ADMIN_PLATFORM_DOMAINS: ${ADMIN_PLATFORM_DOMAINS:-admin.scheduler.argws.com.br,api.scheduler.argws.com.br}
   TENANT_DEFAULT_DOMAIN_ROOT: ${TENANT_DEFAULT_DOMAIN_ROOT:-scheduler.argws.com.br}
+  PLATFORM_ADMIN_EMAIL: ${PLATFORM_ADMIN_EMAIL:?PLATFORM_ADMIN_EMAIL obrigatório}
+  PLATFORM_ADMIN_PASSWORD: ${PLATFORM_ADMIN_PASSWORD:?PLATFORM_ADMIN_PASSWORD obrigatória}
   POSTGRES_HOST: scheduler-postgres
   POSTGRES_PORT: 5432
   POSTGRES_DB: ${POSTGRES_DB:-platform}
@@ -37,6 +39,9 @@ x-api-environment: &api-environment
   EVOLUTION_API_URL: ${EVOLUTION_API_URL:-}
   EVOLUTION_API_TOKEN: ${EVOLUTION_API_TOKEN:-}
   EVOLUTION_INSTANCE_NAME: ${EVOLUTION_INSTANCE_NAME:-scheduler-pro}
+  GITHUB_ACTIONS_API_BASE_URL: ${GITHUB_ACTIONS_API_BASE_URL:-https://api.github.com}
+  GITHUB_ACTIONS_REPOSITORY: ${GITHUB_ACTIONS_REPOSITORY:-wkarts/scheduler-pro-platform}
+  GITHUB_ACTIONS_TOKEN: ${GITHUB_ACTIONS_TOKEN:-}
 
 services:
   scheduler-storage-init:
@@ -51,8 +56,7 @@ services:
     image: ${POSTGRES_IMAGE:-postgres:17-alpine}
     restart: unless-stopped
     depends_on:
-      scheduler-storage-init:
-        condition: service_completed_successfully
+      scheduler-storage-init: {condition: service_completed_successfully}
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-platform}
       POSTGRES_USER: ${POSTGRES_USER:-scheduler}
@@ -70,24 +74,14 @@ services:
   scheduler-redis:
     image: ${REDIS_IMAGE:-redis:8-alpine}
     restart: unless-stopped
-    depends_on:
-      scheduler-storage-init:
-        condition: service_completed_successfully
     command: ["redis-server", "--appendonly", "yes", "--appendfsync", "everysec"]
     volumes:
       - ${SCHEDULER_PRO_DATA_ROOT:-./scheduler-pro-data}/redis:/data
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 10s
-      timeout: 5s
-      retries: 20
+    healthcheck: {test: ["CMD", "redis-cli", "ping"], interval: 10s, timeout: 5s, retries: 20}
 
   scheduler-rabbitmq:
     image: ${RABBITMQ_IMAGE:-rabbitmq:4-management-alpine}
     restart: unless-stopped
-    depends_on:
-      scheduler-storage-init:
-        condition: service_completed_successfully
     environment:
       RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-scheduler}
       RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:?RABBITMQ_PASSWORD obrigatória}
@@ -95,19 +89,11 @@ services:
     volumes:
       - ${SCHEDULER_PRO_DATA_ROOT:-./scheduler-pro-data}/rabbitmq:/var/lib/rabbitmq
       - ./rabbitmq.conf:/etc/rabbitmq/rabbitmq.conf:ro
-    healthcheck:
-      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
-      interval: 15s
-      timeout: 10s
-      retries: 20
-      start_period: 30s
+    healthcheck: {test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"], interval: 15s, timeout: 10s, retries: 20, start_period: 30s}
 
   scheduler-minio:
     image: ${MINIO_IMAGE:-minio/minio:RELEASE.2025-09-07T16-13-09Z}
     restart: unless-stopped
-    depends_on:
-      scheduler-storage-init:
-        condition: service_completed_successfully
     command: ["server", "/data", "--console-address", ":9001"]
     environment:
       MINIO_ROOT_USER: ${S3_ACCESS_KEY:?S3_ACCESS_KEY obrigatória}
@@ -116,12 +102,7 @@ services:
       TZ: ${APP_TIMEZONE:-America/Bahia}
     volumes:
       - ${SCHEDULER_PRO_DATA_ROOT:-./scheduler-pro-data}/minio:/data
-    healthcheck:
-      test: ["CMD-SHELL", "curl --fail --silent http://127.0.0.1:9000/minio/health/live >/dev/null || exit 1"]
-      interval: 15s
-      timeout: 5s
-      retries: 20
-      start_period: 20s
+    healthcheck: {test: ["CMD-SHELL", "curl --fail --silent http://127.0.0.1:9000/minio/health/live >/dev/null || exit 1"], interval: 15s, timeout: 5s, retries: 20, start_period: 20s}
 
   scheduler-migrate:
     image: ${IMAGE_REGISTRY:-ghcr.io}/${IMAGE_NAMESPACE:-wkarts/scheduler-pro-platform}/api:${APP_IMAGE_TAG:-latest}
@@ -129,9 +110,17 @@ services:
     restart: "no"
     environment: *api-environment
     depends_on:
-      scheduler-postgres:
-        condition: service_healthy
+      scheduler-postgres: {condition: service_healthy}
     command: ["python", "-m", "app.cli", "migrate-platform"]
+
+  scheduler-platform-bootstrap:
+    image: ${IMAGE_REGISTRY:-ghcr.io}/${IMAGE_NAMESPACE:-wkarts/scheduler-pro-platform}/api:${APP_IMAGE_TAG:-latest}
+    pull_policy: always
+    restart: "no"
+    environment: *api-environment
+    depends_on:
+      scheduler-migrate: {condition: service_completed_successfully}
+    command: ["python", "-m", "app.platform_bootstrap"]
 
   scheduler-api:
     image: ${IMAGE_REGISTRY:-ghcr.io}/${IMAGE_NAMESPACE:-wkarts/scheduler-pro-platform}/api:${APP_IMAGE_TAG:-latest}
@@ -139,14 +128,10 @@ services:
     restart: unless-stopped
     environment: *api-environment
     depends_on:
-      scheduler-migrate:
-        condition: service_completed_successfully
-      scheduler-redis:
-        condition: service_healthy
-      scheduler-rabbitmq:
-        condition: service_healthy
-      scheduler-minio:
-        condition: service_healthy
+      scheduler-platform-bootstrap: {condition: service_completed_successfully}
+      scheduler-redis: {condition: service_healthy}
+      scheduler-rabbitmq: {condition: service_healthy}
+      scheduler-minio: {condition: service_healthy}
     healthcheck:
       test: ["CMD-SHELL", "curl --fail --silent -H 'Host: ${PUBLIC_PLATFORM_DOMAIN:-scheduler.argws.com.br}' http://127.0.0.1:8000/api/v1/health/ready >/dev/null || exit 1"]
       interval: 20s
@@ -159,9 +144,7 @@ services:
     pull_policy: always
     restart: unless-stopped
     environment: *api-environment
-    depends_on:
-      scheduler-api:
-        condition: service_healthy
+    depends_on: {scheduler-api: {condition: service_healthy}}
     command: ["celery", "-A", "app.workers.celery_app.celery_app", "worker", "-Q", "default,provisioning,domains,builds,maintenance", "--loglevel=INFO", "--concurrency=2", "--without-gossip", "--without-mingle", "--without-heartbeat"]
 
   scheduler-worker-whatsapp:
@@ -169,9 +152,7 @@ services:
     pull_policy: always
     restart: unless-stopped
     environment: *api-environment
-    depends_on:
-      scheduler-api:
-        condition: service_healthy
+    depends_on: {scheduler-api: {condition: service_healthy}}
     command: ["celery", "-A", "app.workers.celery_app.celery_app", "worker", "-Q", "whatsapp,notifications,webhooks", "--loglevel=INFO", "--concurrency=2", "--without-gossip", "--without-mingle", "--without-heartbeat"]
 
   scheduler-beat:
@@ -179,9 +160,7 @@ services:
     pull_policy: always
     restart: unless-stopped
     environment: *api-environment
-    depends_on:
-      scheduler-api:
-        condition: service_healthy
+    depends_on: {scheduler-api: {condition: service_healthy}}
     volumes:
       - ${SCHEDULER_PRO_DATA_ROOT:-./scheduler-pro-data}/celery:/var/lib/celery
     command: ["celery", "-A", "app.workers.celery_app.celery_app", "beat", "--loglevel=INFO", "--schedule=/var/lib/celery/celerybeat-schedule"]
@@ -201,11 +180,8 @@ services:
     pull_policy: always
     restart: unless-stopped
     depends_on:
-      scheduler-api:
-        condition: service_healthy
-      scheduler-web:
-        condition: service_started
-      scheduler-admin:
-        condition: service_started
+      scheduler-api: {condition: service_healthy}
+      scheduler-web: {condition: service_started}
+      scheduler-admin: {condition: service_started}
     ports:
       - "${APP_BIND_HOST:-127.0.0.1}:${APP_PORT:-18080}:80"
