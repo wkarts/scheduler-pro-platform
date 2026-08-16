@@ -1,4 +1,4 @@
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api/v1'
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'https://scheduler.argws.com.br/api/v1'
 
 export type BrandingManifest = {
   tenant: { id: string; slug: string | null; hostname: string | null }
