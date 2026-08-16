@@ -1,3 +1,4 @@
+import json
 from typing import Any
 
 from fastapi import APIRouter, Depends, Request
@@ -41,9 +42,17 @@ async def webhook(
     session: AsyncSession = Depends(get_tenant_session),
 ) -> dict[str, Any]:
     payload: dict[str, Any] = await request.json()
-    provider_event_id = str(payload.get("id") or payload.get("event_id") or payload.get("key", {}).get("id") or request.headers.get("x-provider-event-id") or "")
+    key = payload.get("key") if isinstance(payload.get("key"), dict) else {}
+    provider_event_id = str(
+        payload.get("id")
+        or payload.get("event_id")
+        or key.get("id")
+        or request.headers.get("x-provider-event-id")
+        or ""
+    )
     if not provider_event_id:
         provider_event_id = f"missing-{integration_key}-{abs(hash(str(payload)))}"
+    payload_json = json.dumps(payload, ensure_ascii=False, default=str)
     inserted = await session.scalar(
         text(
             """
@@ -53,7 +62,7 @@ async def webhook(
             returning id::text
             """
         ),
-        {"provider_event_id": provider_event_id, "integration_key": integration_key, "payload": request.scope.get("body_json", None) or __import__("json").dumps(payload)},
+        {"provider_event_id": provider_event_id, "integration_key": integration_key, "payload": payload_json},
     )
     if inserted:
         await session.execute(
@@ -63,7 +72,7 @@ async def webhook(
                 values('whatsapp.webhook.received', :aggregate_id, cast(:payload as jsonb))
                 """
             ),
-            {"aggregate_id": inserted, "payload": __import__("json").dumps({"integration_key": integration_key, "provider_event_id": provider_event_id})},
+            {"aggregate_id": inserted, "payload": json.dumps({"integration_key": integration_key, "provider_event_id": provider_event_id})},
         )
     await session.commit()
     return success({"accepted": True, "duplicate": inserted is None, "integration_key": integration_key, "provider_event_id": provider_event_id})
