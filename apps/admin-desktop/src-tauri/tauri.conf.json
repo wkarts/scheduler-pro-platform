@@ -1,0 +1,27 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Scheduler Pro Admin",
+  "version": "0.1.0-alpha.1",
+  "identifier": "br.com.argws.schedulerpro.admin",
+  "build": {
+    "beforeDevCommand": "npm run dev",
+    "devUrl": "http://localhost:5176",
+    "beforeBuildCommand": "npm run build",
+    "features": ["desktop"],
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      { "label": "main", "title": "Scheduler Pro Admin", "width": 1440, "height": 900, "minWidth": 1100, "minHeight": 720, "resizable": true, "maximized": true, "visible": true, "center": true }
+    ],
+    "security": { "csp": null }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["msi", "nsis", "dmg", "appimage", "deb"],
+    "publisher": "ARGWS Sistemas",
+    "category": "Business",
+    "shortDescription": "Scheduler Pro Admin",
+    "longDescription": "Aplicativo desktop administrativo do Scheduler Pro Control Plane."
+  }
+}
