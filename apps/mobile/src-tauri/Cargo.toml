@@ -21,3 +21,12 @@ mobile = ["tauri/wry", "tauri/custom-protocol"]
 tauri = { version = "2", default-features = false }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+
+# O APK continua sendo Android debug (debuggable + debug keystore), mas não
+# carrega centenas de MB de símbolos DWARF do Rust. Isso reduz drasticamente
+# o artefato sem convertê-lo em release/Play Store.
+[profile.dev]
+debug = 0
+strip = "debuginfo"
+incremental = false
+opt-level = 1
