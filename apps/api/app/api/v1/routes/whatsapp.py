@@ -1,5 +1,5 @@
 import json
-from typing import Any
+from typing import Any, cast
 
 from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel, Field
@@ -41,8 +41,9 @@ async def webhook(
     request: Request,
     session: AsyncSession = Depends(get_tenant_session),
 ) -> dict[str, Any]:
-    payload: dict[str, Any] = await request.json()
-    key = payload.get("key") if isinstance(payload.get("key"), dict) else {}
+    payload = cast(dict[str, Any], await request.json())
+    key_value = payload.get("key")
+    key: dict[str, Any] = key_value if isinstance(key_value, dict) else {}
     provider_event_id = str(
         payload.get("id")
         or payload.get("event_id")
