@@ -13,7 +13,7 @@ tenant_router = APIRouter()
 
 
 class LogIngestRequest(BaseModel):
-    tenant_id: str | None = None
+    tenant: str | None = None
     source: str = Field(min_length=2, max_length=80)
     service: str = Field(min_length=2, max_length=120)
     level: str = Field(default="INFO", max_length=20)
@@ -31,7 +31,7 @@ class LogIngestRequest(BaseModel):
 
 @router.get("/logs")
 async def platform_logs(
-    tenant_id: str | None = Query(default=None),
+    tenant: str | None = Query(default=None),
     source: str | None = Query(default=None),
     level: str | None = Query(default=None),
     integration: str | None = Query(default=None),
@@ -43,7 +43,7 @@ async def platform_logs(
     service = ObservabilityService(session)
     return success(
         await service.list_platform_logs(
-            tenant_id=tenant_id,
+            tenant_id=tenant,
             source=source,
             level=level,
             integration=integration,
@@ -68,7 +68,7 @@ async def ingest_platform_log(
     session: AsyncSession = Depends(get_platform_session),
 ) -> dict[str, Any]:
     await ObservabilityService(session).record_platform_log(
-        tenant_id=payload.tenant_id,
+        tenant_id=payload.tenant,
         source=payload.source,
         service=payload.service,
         level=payload.level,
