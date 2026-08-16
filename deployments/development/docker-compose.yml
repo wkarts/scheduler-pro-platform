@@ -13,6 +13,18 @@ x-api-env: &api-env
   POSTGRES_PASSWORD: scheduler_dev_password
   POSTGRES_ADMIN_USER: scheduler
   POSTGRES_ADMIN_PASSWORD: scheduler_dev_password
+  DEV_TENANT_DATABASE: tenant_dev
+  DEV_TENANT_DATABASE_USER: tenant_dev_user
+  DEV_TENANT_DATABASE_PASSWORD: tenant_dev_password
+  DEV_TENANT_DATABASE_PASSWORD_REF: secret://env/TENANT_DEV_DATABASE_PASSWORD
+  TENANT_DEV_DATABASE_PASSWORD: tenant_dev_password
+  DEV_TENANT_SLUG: dev
+  DEV_TENANT_NAME: Scheduler Pro Development
+  DEV_TENANT_BUCKET: tenant-dev
+  DEV_TENANT_ADMIN_EMAIL: admin@tenant.example
+  DEV_TENANT_ADMIN_PASSWORD: ChangeMe-Tenant-2026!
+  DEV_PLATFORM_ADMIN_EMAIL: admin@platform.example
+  DEV_PLATFORM_ADMIN_PASSWORD: ChangeMe-Platform-2026!
   REDIS_URL: redis://redis:6379/0
   RABBITMQ_URL: amqp://scheduler:scheduler@rabbitmq:5672//
   CELERY_BROKER_URL: amqp://scheduler:scheduler@rabbitmq:5672//
