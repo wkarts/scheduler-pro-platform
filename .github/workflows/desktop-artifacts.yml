@@ -1,6 +1,12 @@
 name: Desktop Artifacts
 
 on:
+  pull_request:
+    paths:
+      - 'apps/desktop/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/desktop-artifacts.yml'
   workflow_dispatch:
     inputs:
       build_profile:
@@ -38,21 +44,32 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf
       - name: Install JS deps
         run: npm install
-      - name: Build desktop frontend
-        run: npm --workspace apps/desktop run build
-      - name: Build Tauri unsigned
+      - name: Typecheck desktop frontend
+        run: npm --workspace apps/desktop run typecheck
+      - name: Build Tauri desktop unsigned
         working-directory: apps/desktop
         run: npm run tauri:build
-      - name: Pack desktop target
+      - name: Collect desktop binaries
         shell: bash
         run: |
-          mkdir -p artifacts
-          tar -czf artifacts/scheduler-pro-desktop-${{ matrix.label }}-${{ github.event.release.tag_name || github.sha }}.tar.gz -C apps/desktop/src-tauri/target . || true
+          set -euo pipefail
+          suffix="${{ github.event.release.tag_name || github.sha }}"
+          mkdir -p artifacts/stage
+          if [ -d apps/desktop/src-tauri/target/release/bundle ]; then
+            cp -R apps/desktop/src-tauri/target/release/bundle artifacts/stage/bundle
+          fi
+          find apps/desktop/src-tauri/target/release -maxdepth 1 -type f \( -perm -111 -o -name '*.exe' \) -print -exec cp {} artifacts/stage/ \; || true
+          if [ ! -d artifacts/stage/bundle ] && [ -z "$(find artifacts/stage -type f -print -quit)" ]; then
+            echo 'Nenhum binário desktop foi gerado.' >&2
+            exit 1
+          fi
+          tar -czf "artifacts/scheduler-pro-desktop-${{ matrix.label }}-${suffix}.tar.gz" -C artifacts/stage .
       - uses: actions/upload-artifact@v4
         with:
           name: scheduler-pro-desktop-${{ matrix.label }}-${{ github.event.release.tag_name || github.sha }}
-          path: artifacts/*
+          path: artifacts/*.tar.gz
           if-no-files-found: error
+          retention-days: 30
       - name: Attach desktop artifact to release
         if: github.event_name == 'release'
         env:
