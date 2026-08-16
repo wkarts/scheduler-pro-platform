@@ -9,6 +9,7 @@ from app.api.deps import get_platform_session, require_super_admin
 from app.core.responses import success
 from app.services.domain_provisioning_service import DomainProvisioningService
 from app.services.provisioning import ProvisioningService
+from app.workers.celery_app import celery_app
 
 router = APIRouter()
 
@@ -37,6 +38,11 @@ async def create_tenant(
         payload.slug,
         str(payload.admin_email),
         payload.admin_password,
+    )
+    celery_app.send_task(
+        "app.workers.tasks.run_provisioning",
+        args=[job["job_id"], job["tenant_id"], f"provision-{job['job_id']}"],
+        queue="provisioning",
     )
     return success(job)
 
@@ -152,53 +158,19 @@ async def dashboard(
     ).mappings().one()
 
     recent_tenants = (
-        await session.execute(
-            text(
-                """
-                select id::text, name, slug, status, created_at
-                from tenants
-                order by created_at desc
-                limit 6
-                """
-            )
-        )
+        await session.execute(text("select id::text, name, slug, status, created_at from tenants order by created_at desc limit 6"))
     ).mappings().all()
-
     recent_builds = (
-        await session.execute(
-            text(
-                """
-                select id::text, target, status, created_at
-                from build_jobs
-                order by created_at desc
-                limit 6
-                """
-            )
-        )
+        await session.execute(text("select id::text, target, status, created_at from build_jobs order by created_at desc limit 6"))
     ).mappings().all()
-
     recent_provisioning = (
-        await session.execute(
-            text(
-                """
-                select id::text, status, correlation_id, created_at
-                from provisioning_jobs
-                order by created_at desc
-                limit 6
-                """
-            )
-        )
+        await session.execute(text("select id::text, status, correlation_id, created_at from provisioning_jobs order by created_at desc limit 6"))
     ).mappings().all()
 
     return success(
         {
             "totals": dict(totals),
-            "health": {
-                "platform": "online",
-                "queue": "configured",
-                "storage": "configured",
-                "release": "available",
-            },
+            "health": {"platform": "online", "queue": "configured", "storage": "configured", "release": "available"},
             "recent_tenants": [dict(row) for row in recent_tenants],
             "recent_builds": [dict(row) for row in recent_builds],
             "recent_provisioning": [dict(row) for row in recent_provisioning],
