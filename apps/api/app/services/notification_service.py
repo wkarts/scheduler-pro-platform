@@ -1,3 +1,4 @@
+import json
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -60,7 +61,7 @@ class NotificationService:
                 "appointment_id": appointment_id,
                 "recipient": row["customer_phone"],
                 "template_key": event_name,
-                "payload": '{"message": ' + repr(message).replace("'", '"') + "}",
+                "payload": json.dumps({"message": message}, ensure_ascii=False),
                 "scheduled_at": send_at,
             },
         )
@@ -115,7 +116,7 @@ class NotificationService:
                     {"id": row["id"]},
                 )
                 sent += 1
-            except Exception as exc:  # provider failure must not kill the whole worker batch
+            except Exception as exc:
                 await self.session.execute(
                     text("update notification_jobs set status='FAILED', error=:error where id=:id::uuid"),
                     {"id": row["id"], "error": str(exc)[:1000]},
