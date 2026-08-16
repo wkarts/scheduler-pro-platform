@@ -15,9 +15,7 @@ class Settings(BaseSettings):
     app_debug: bool = True
     app_secret_key: str = "change-me"
     public_platform_domain: str = "localhost"
-    admin_platform_domains: Annotated[list[str], NoDecode] = Field(
-        default_factory=lambda: ["admin.localhost", "localhost"]
-    )
+    admin_platform_domains: Annotated[list[str], NoDecode] = Field(default_factory=lambda: ["admin.localhost", "localhost"])
     tenant_default_domain_root: str | None = None
     public_base_url: str | None = None
 
@@ -28,6 +26,9 @@ class Settings(BaseSettings):
     postgres_password: str = "scheduler_dev_password"
     postgres_admin_user: str = "scheduler"
     postgres_admin_password: str = "scheduler_dev_password"
+
+    platform_admin_email: str | None = None
+    platform_admin_password: str | None = None
 
     dev_tenant_database: str = "tenant_dev"
     dev_tenant_database_user: str = "tenant_dev_user"
@@ -47,9 +48,7 @@ class Settings(BaseSettings):
     login_lock_minutes: int = 15
     tenant_engine_cache_max: int = 64
     tenant_engine_cache_ttl_seconds: int = 900
-    trusted_proxy_hosts: Annotated[list[str], NoDecode] = Field(
-        default_factory=lambda: ["127.0.0.1", "::1"]
-    )
+    trusted_proxy_hosts: Annotated[list[str], NoDecode] = Field(default_factory=lambda: ["127.0.0.1", "::1"])
 
     redis_url: str = "redis://localhost:6379/0"
     rabbitmq_url: str = "amqp://scheduler:scheduler@localhost:5672//"
@@ -72,14 +71,9 @@ class Settings(BaseSettings):
     whatsapp_provider: str = "evolution"
     evolution_api_url: str | None = None
     evolution_api_token: str | None = None
+    evolution_instance_name: str = "scheduler-pro"
 
-    cors_allowed_origins: Annotated[list[str], NoDecode] = Field(
-        default_factory=lambda: [
-            "http://localhost:5173",
-            "http://localhost:5174",
-            "http://localhost:1420",
-        ]
-    )
+    cors_allowed_origins: Annotated[list[str], NoDecode] = Field(default_factory=lambda: ["http://localhost:5173", "http://localhost:5174", "http://localhost:1420"])
 
     @field_validator("cors_allowed_origins", "trusted_proxy_hosts", "admin_platform_domains", mode="before")
     @classmethod
@@ -94,6 +88,14 @@ class Settings(BaseSettings):
             if len(self.app_secret_key) < 64 or self.app_secret_key.startswith("change-me"):
                 raise ValueError("APP_SECRET_KEY must contain at least 64 non-placeholder characters")
         return self
+
+    @property
+    def effective_platform_admin_email(self) -> str:
+        return (self.platform_admin_email or self.dev_platform_admin_email).lower()
+
+    @property
+    def effective_platform_admin_password(self) -> str:
+        return self.platform_admin_password or self.dev_platform_admin_password
 
     @property
     def tenant_domain_root(self) -> str:
@@ -112,50 +114,22 @@ class Settings(BaseSettings):
         return f"https://{self.public_platform_domain}"
 
     @staticmethod
-    def _database_url(
-        driver: str,
-        user: str,
-        password: str,
-        host: str,
-        port: int,
-        database: str,
-    ) -> str:
-        return (
-            f"postgresql+{driver}://{quote_plus(user)}:{quote_plus(password)}"
-            f"@{host}:{port}/{database}"
-        )
+    def _database_url(driver: str, user: str, password: str, host: str, port: int, database: str) -> str:
+        return f"postgresql+{driver}://{quote_plus(user)}:{quote_plus(password)}@{host}:{port}/{database}"
 
     @property
     def platform_database_url(self) -> str:
-        return self._database_url(
-            "asyncpg",
-            self.postgres_user,
-            self.postgres_password,
-            self.postgres_host,
-            self.postgres_port,
-            self.postgres_db,
-        )
+        return self._database_url("asyncpg", self.postgres_user, self.postgres_password, self.postgres_host, self.postgres_port, self.postgres_db)
 
     @property
     def platform_database_url_sync(self) -> str:
-        return self._database_url(
-            "psycopg",
-            self.postgres_user,
-            self.postgres_password,
-            self.postgres_host,
-            self.postgres_port,
-            self.postgres_db,
-        )
+        return self._database_url("psycopg", self.postgres_user, self.postgres_password, self.postgres_host, self.postgres_port, self.postgres_db)
 
     def tenant_database_url(self, database: str, user: str, password: str) -> str:
-        return self._database_url(
-            "asyncpg", user, password, self.postgres_host, self.postgres_port, database
-        )
+        return self._database_url("asyncpg", user, password, self.postgres_host, self.postgres_port, database)
 
     def tenant_database_url_sync(self, database: str, user: str, password: str) -> str:
-        return self._database_url(
-            "psycopg", user, password, self.postgres_host, self.postgres_port, database
-        )
+        return self._database_url("psycopg", user, password, self.postgres_host, self.postgres_port, database)
 
     @staticmethod
     def new_id(prefix: str) -> str:
