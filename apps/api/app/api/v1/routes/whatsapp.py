@@ -6,9 +6,11 @@ from pydantic import BaseModel, Field
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_tenant_session
+from app.api.deps import get_tenant_context, get_tenant_session
+from app.core.config import settings
 from app.core.responses import success
-from app.services.whatsapp_provider import WhatsAppProviderFactory
+from app.core.tenant_context import TenantContext
+from app.services.whatsapp_provider import WhatsAppProvider, WhatsAppProviderFactory
 
 router = APIRouter()
 
@@ -18,21 +20,66 @@ class SendTextRequest(BaseModel):
     message: str = Field(min_length=1, max_length=4096)
 
 
+async def _tenant_provider(session: AsyncSession, context: TenantContext) -> tuple[str, WhatsAppProvider]:
+    instance_name = await session.scalar(text("select instance_name from whatsapp_integrations where name='default' limit 1"))
+    if not instance_name:
+        instance_name = f"{settings.evolution_instance_name}-{context.slug}"[:160]
+        await session.execute(
+            text(
+                """
+                insert into whatsapp_integrations(name, provider, instance_name, status, settings)
+                values('default', 'evolution', :instance_name, 'DISCONNECTED', '{}'::jsonb)
+                on conflict(name) do update set instance_name=excluded.instance_name
+                """
+            ),
+            {"instance_name": instance_name},
+        )
+        await session.commit()
+    return str(instance_name), WhatsAppProviderFactory.make(str(instance_name))
+
+
 @router.post("/connect")
-async def connect() -> dict[str, Any]:
-    provider = WhatsAppProviderFactory.make()
-    return success(await provider.connect_instance())
+async def connect(
+    session: AsyncSession = Depends(get_tenant_session),
+    context: TenantContext = Depends(get_tenant_context),
+) -> dict[str, Any]:
+    instance_name, provider = await _tenant_provider(session, context)
+    result = await provider.connect_instance()
+    await session.execute(
+        text("update whatsapp_integrations set status='CONNECTING', settings=cast(:settings as jsonb), updated_at=now() where name='default'"),
+        {"settings": json.dumps({"last_connect": result}, ensure_ascii=False, default=str)},
+    )
+    await session.commit()
+    return success({"instance_name": instance_name, **result})
 
 
 @router.get("/status")
-async def status() -> dict[str, Any]:
-    provider = WhatsAppProviderFactory.make()
-    return success(await provider.connection_status())
+async def status(
+    session: AsyncSession = Depends(get_tenant_session),
+    context: TenantContext = Depends(get_tenant_context),
+) -> dict[str, Any]:
+    instance_name, provider = await _tenant_provider(session, context)
+    result = await provider.connection_status()
+    instance_data = result.get("instance") if isinstance(result.get("instance"), dict) else {}
+    state = str(instance_data.get("state") or "unknown").lower()
+    db_status = "CONNECTED" if state in {"open", "connected"} else "DISCONNECTED" if state in {"close", "closed", "disconnected"} else "CONNECTING"
+    await session.execute(
+        text("update whatsapp_integrations set status=:status, settings=cast(:settings as jsonb), updated_at=now() where name='default'"),
+        {"status": db_status, "settings": json.dumps({"last_status": result}, ensure_ascii=False, default=str)},
+    )
+    await session.commit()
+    return success({"instance_name": instance_name, "status": db_status, "provider": result})
 
 
 @router.post("/send-text")
-async def send_text(payload: SendTextRequest) -> dict[str, Any]:
-    return success(await WhatsAppProviderFactory.make().send_text(payload.to, payload.message))
+async def send_text(
+    payload: SendTextRequest,
+    session: AsyncSession = Depends(get_tenant_session),
+    context: TenantContext = Depends(get_tenant_context),
+) -> dict[str, Any]:
+    instance_name, provider = await _tenant_provider(session, context)
+    result = await provider.send_text(payload.to, payload.message)
+    return success({"instance_name": instance_name, "message": result})
 
 
 @router.post("/webhook/{integration_key}")
