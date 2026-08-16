@@ -2,10 +2,12 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel, Field
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_platform_session, get_tenant_session, require_super_admin
+from app.api.deps import get_platform_session, get_tenant_session, require_platform_permission
 from app.core.responses import success
+from app.services.docker_console_service import DockerConsoleService
 from app.services.observability_service import ObservabilityService
 
 router = APIRouter()
@@ -33,20 +35,29 @@ class LogIngestRequest(BaseModel):
 async def platform_logs(
     tenant: str | None = Query(default=None),
     source: str | None = Query(default=None),
+    service: str | None = Query(default=None),
     level: str | None = Query(default=None),
     integration: str | None = Query(default=None),
+    container: str | None = Query(default=None),
+    actor: str | None = Query(default=None),
+    correlation_id: str | None = Query(default=None),
+    request_id: str | None = Query(default=None),
     search: str | None = Query(default=None),
-    limit: int = Query(default=200, ge=1, le=1000),
-    _: Any = Depends(require_super_admin),
+    limit: int = Query(default=300, ge=1, le=5000),
+    _: Any = Depends(require_platform_permission("observability.read")),
     session: AsyncSession = Depends(get_platform_session),
 ) -> dict[str, Any]:
-    service = ObservabilityService(session)
     return success(
-        await service.list_platform_logs(
+        await ObservabilityService(session).list_platform_logs(
             tenant_filter=tenant,
             source=source,
+            service=service,
             level=level,
             integration=integration,
+            container_name=container,
+            actor=actor,
+            correlation_id=correlation_id,
+            request_id=request_id,
             search=search,
             limit=limit,
         )
@@ -55,7 +66,7 @@ async def platform_logs(
 
 @router.get("/logs/summary")
 async def platform_log_summary(
-    _: Any = Depends(require_super_admin),
+    _: Any = Depends(require_platform_permission("observability.read")),
     session: AsyncSession = Depends(get_platform_session),
 ) -> dict[str, Any]:
     return success(await ObservabilityService(session).summary())
@@ -64,7 +75,7 @@ async def platform_log_summary(
 @router.post("/logs/ingest")
 async def ingest_platform_log(
     payload: LogIngestRequest,
-    _: Any = Depends(require_super_admin),
+    _: Any = Depends(require_platform_permission("observability.read")),
     session: AsyncSession = Depends(get_platform_session),
 ) -> dict[str, Any]:
     await ObservabilityService(session).record_platform_log(
@@ -87,21 +98,73 @@ async def ingest_platform_log(
     return success({"accepted": True})
 
 
+@router.get("/docker/health")
+async def docker_console_health(_: Any = Depends(require_platform_permission("observability.read"))) -> dict[str, Any]:
+    return success(await DockerConsoleService().health())
+
+
+@router.get("/docker/containers")
+async def docker_containers(_: Any = Depends(require_platform_permission("observability.read"))) -> dict[str, Any]:
+    return success(await DockerConsoleService().containers())
+
+
+@router.get("/docker/logs")
+async def docker_logs(
+    container: str = Query(min_length=1, max_length=180),
+    tail: int = Query(default=500, ge=1, le=5000),
+    since: int | None = Query(default=None, ge=0),
+    search: str | None = Query(default=None, max_length=300),
+    _: Any = Depends(require_platform_permission("observability.read")),
+) -> dict[str, Any]:
+    return success(await DockerConsoleService().logs(container, tail=tail, since=since, search=search))
+
+
 @tenant_router.get("/logs")
 async def tenant_logs(
     source: str | None = Query(default=None),
+    service: str | None = Query(default=None),
     level: str | None = Query(default=None),
     integration: str | None = Query(default=None),
+    actor: str | None = Query(default=None),
+    correlation_id: str | None = Query(default=None),
+    request_id: str | None = Query(default=None),
     search: str | None = Query(default=None),
-    limit: int = Query(default=200, ge=1, le=1000),
+    limit: int = Query(default=300, ge=1, le=5000),
     session: AsyncSession = Depends(get_tenant_session),
 ) -> dict[str, Any]:
     return success(
         await ObservabilityService(session).list_tenant_logs(
             source=source,
+            service=service,
             level=level,
             integration=integration,
+            actor=actor,
+            correlation_id=correlation_id,
+            request_id=request_id,
             search=search,
             limit=limit,
         )
     )
+
+
+@tenant_router.get("/audit")
+async def tenant_audit(
+    limit: int = Query(default=300, ge=1, le=5000),
+    session: AsyncSession = Depends(get_tenant_session),
+) -> dict[str, Any]:
+    rows = (
+        await session.execute(
+            text(
+                """
+                select a.id::text, a.user_id::text, u.email, a.action, a.result,
+                       a.ip_address, a.correlation_id, a.metadata, a.created_at
+                from audit_logs a
+                left join users u on u.id=a.user_id
+                order by a.created_at desc
+                limit :limit
+                """
+            ),
+            {"limit": limit},
+        )
+    ).mappings().all()
+    return success([dict(row) for row in rows])
