@@ -24,6 +24,20 @@ class CloudflareService:
     def _dry_result(self, action: str, payload: dict[str, Any]) -> dict[str, Any]:
         return {"success": True, "dry_run": True, "action": action, "result": payload}
 
+    @staticmethod
+    def _cloudflare_error_code(data: dict[str, Any]) -> int | None:
+        errors = data.get("errors")
+        if not isinstance(errors, list) or not errors:
+            return None
+        first = errors[0]
+        if not isinstance(first, dict):
+            return None
+        code = first.get("code")
+        return int(code) if isinstance(code, int) else None
+
+    async def verify_token(self) -> dict[str, Any]:
+        return await self._request("GET", "/user/tokens/verify")
+
     async def _request(
         self,
         method: str,
@@ -34,7 +48,12 @@ class CloudflareService:
         if self.dry_run:
             return self._dry_result(f"{method} {path}", payload or {})
         if not self.api_token:
-            raise APIError("CLOUDFLARE_TOKEN_MISSING", "Token Cloudflare não configurado.", 500)
+            raise APIError(
+                "CLOUDFLARE_TOKEN_MISSING",
+                "Token Cloudflare não configurado.",
+                424,
+                {"hint": "Configure CLOUDFLARE_API_TOKEN no .env do CloudPanel/Dockge."},
+            )
         headers = {
             "Authorization": f"Bearer {self.api_token}",
             "Content-Type": "application/json",
@@ -48,17 +67,29 @@ class CloudflareService:
             )
         data = cast(dict[str, Any], response.json())
         if response.status_code >= 400 or not data.get("success", False):
+            cf_code = self._cloudflare_error_code(data)
+            if response.status_code in {401, 403} or cf_code == 10000:
+                raise APIError(
+                    "CLOUDFLARE_AUTH_ERROR",
+                    "Token Cloudflare inválido, expirado, revogado ou sem acesso à Zone ID configurada.",
+                    424,
+                    {
+                        "status_code": response.status_code,
+                        "response": data,
+                        "hint": "Verifique /user/tokens/verify, confira se CLOUDFLARE_ZONE_ID pertence ao domínio correto e crie token com Zone:DNS:Edit e permissões de Custom Hostnames/SSL necessárias.",
+                    },
+                )
             raise APIError(
                 "CLOUDFLARE_API_ERROR",
                 "Falha na integração Cloudflare.",
-                502,
+                424,
                 {"status_code": response.status_code, "response": data},
             )
         return data
 
     def _zone_path(self, suffix: str) -> str:
         if not self.zone_id:
-            raise APIError("CLOUDFLARE_ZONE_MISSING", "Zone ID Cloudflare não configurado.", 500)
+            raise APIError("CLOUDFLARE_ZONE_MISSING", "Zone ID Cloudflare não configurado.", 424)
         return f"/zones/{self.zone_id}{suffix}"
 
     async def create_dns_record(

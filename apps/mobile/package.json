@@ -11,8 +11,9 @@
     "tauri": "tauri",
     "tauri:android:init": "tauri android init",
     "tauri:android:build": "tauri android build --features mobile",
-    "tauri:android:apk": "tauri android build --features mobile --apk",
+    "tauri:android:apk": "tauri android build --features mobile --apk --debug",
     "tauri:android:apk:debug": "tauri android build --features mobile --apk --debug",
+    "tauri:android:apk:release": "tauri android build --features mobile --apk",
     "tauri:android:aab": "tauri android build --features mobile --aab",
     "tauri:ios:init": "tauri ios init",
     "tauri:ios:build": "tauri ios build --features mobile"
