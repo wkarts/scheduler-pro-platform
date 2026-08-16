@@ -4,7 +4,15 @@ run-name: Mobile ${{ inputs.correlation_id || github.sha }}
 on:
   push:
     branches: [main]
-    paths: ['apps/mobile/**','apps/admin-mobile/**','scripts/build/ensure-tauri-icons.mjs','package.json','package-lock.json','.github/workflows/mobile-artifacts.yml']
+    paths:
+      - 'apps/mobile/**'
+      - 'apps/admin-mobile/**'
+      - 'scripts/build/ensure-tauri-icons.mjs'
+      - 'scripts/mobile/build-ios-unsigned.sh'
+      - 'scripts/release/package-ios-unsigned.sh'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/mobile-artifacts.yml'
   workflow_dispatch:
     inputs:
       build_profile: { description: 'Build profile id or slug', required: false, default: 'default' }
@@ -14,6 +22,11 @@ on:
     types: [published]
 
 permissions: { contents: write, actions: write }
+
+env:
+  NODE_VERSION: '24'
+  CARGO_INCREMENTAL: '0'
+  CARGO_TERM_COLOR: always
 
 jobs:
   android:
@@ -29,7 +42,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
-        with: { node-version: '24', cache: npm }
+        with: { node-version: '${{ env.NODE_VERSION }}', cache: npm }
       - uses: actions/setup-java@v4
         with: { distribution: temurin, java-version: '17' }
       - uses: android-actions/setup-android@v3
@@ -58,12 +71,19 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          suffix="${{ github.event.release.tag_name || github.sha }}"; mkdir -p artifacts
-          apk="$(find '${{ matrix.app_path }}/src-tauri' -type f -name '*debug*.apk' -print -quit)"; test -n "$apk"
+          suffix="${{ github.event.release.tag_name || github.sha }}"
+          mkdir -p artifacts
+          apk="$(find '${{ matrix.app_path }}/src-tauri' -type f -name '*debug*.apk' -print -quit)"
+          test -n "$apk"
           cp "$apk" "artifacts/scheduler-pro-${{ matrix.app_name }}-android-${suffix}-debug-installable.apk"
           (cd artifacts && sha256sum *.apk > SHA256SUMS.txt)
       - uses: actions/upload-artifact@v4
-        with: { name: 'scheduler-pro-${{ matrix.app_name }}-android-debug-installable-${{ github.event.release.tag_name || github.sha }}', path: 'artifacts/*', if-no-files-found: error, retention-days: 30 }
+        with:
+          name: scheduler-pro-${{ matrix.app_name }}-android-debug-installable-${{ github.event.release.tag_name || github.sha }}
+          path: artifacts/*
+          if-no-files-found: error
+          retention-days: 30
+          compression-level: 0
       - name: Attach to release
         if: github.event_name == 'release'
         env: { GH_TOKEN: '${{ secrets.GITHUB_TOKEN }}' }
@@ -73,7 +93,6 @@ jobs:
     if: github.event_name != 'workflow_dispatch' || inputs.target == 'all' || contains(inputs.target, 'ios')
     runs-on: macos-15
     timeout-minutes: 120
-    continue-on-error: true
     strategy:
       fail-fast: false
       matrix:
@@ -83,34 +102,44 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
-        with: { node-version: '24', cache: npm }
+        with: { node-version: '${{ env.NODE_VERSION }}', cache: npm }
       - uses: dtolnay/rust-toolchain@stable
-        with: { targets: 'aarch64-apple-ios,aarch64-apple-ios-sim' }
+        with: { targets: aarch64-apple-ios }
       - run: npm install
-      - name: Validate dedicated UI
-        run: npm --workspace ${{ matrix.app_path }} run build
-      - run: node scripts/build/ensure-tauri-icons.mjs ${{ matrix.app_path }}/src-tauri/icons
-      - name: Initialize iOS
-        working-directory: ${{ matrix.app_path }}
-        shell: bash
-        run: if [ ! -d src-tauri/gen/apple ]; then npm run tauri:ios:init || true; fi
-      - name: Build iOS app
-        working-directory: ${{ matrix.app_path }}
-        shell: bash
-        run: npm run tauri:ios:build || true
-      - name: Package IPA or status
+      - name: Validate Xcode and CocoaPods
         shell: bash
         run: |
           set -euo pipefail
-          suffix="${{ github.event.release.tag_name || github.sha }}"; mkdir -p artifacts
-          ipa="$(find '${{ matrix.app_path }}/src-tauri' -type f -name '*.ipa' -print -quit || true)"
-          app="$(find '${{ matrix.app_path }}/src-tauri' -type d -name '*.app' -print -quit || true)"
-          if [ -n "$ipa" ]; then cp "$ipa" "artifacts/scheduler-pro-${{ matrix.app_name }}-ios-${suffix}-unsigned.ipa";
-          elif [ -n "$app" ]; then rm -rf Payload; mkdir Payload; cp -R "$app" Payload/; /usr/bin/zip -qry "artifacts/scheduler-pro-${{ matrix.app_name }}-ios-${suffix}-unsigned.ipa" Payload;
-          else printf '%s\n' 'Nenhum .app/.ipa foi gerado.' 'Instalação em aparelho físico exige assinatura Apple/ad-hoc.' > "artifacts/scheduler-pro-${{ matrix.app_name }}-ios-${suffix}-STATUS.txt"; fi
+          xcodebuild -version
+          if ! command -v pod >/dev/null 2>&1; then brew install cocoapods; fi
+          pod --version
+      - name: Validate dedicated UI
+        run: npm --workspace ${{ matrix.app_path }} run build
+      - run: node scripts/build/ensure-tauri-icons.mjs ${{ matrix.app_path }}/src-tauri/icons
+      - name: Build real unsigned iOS ARM64 application bundle
+        shell: bash
+        run: bash scripts/mobile/build-ios-unsigned.sh "${{ matrix.app_path }}" "release/${{ matrix.app_name }}-ios-app" "${{ matrix.app_name }}"
+      - name: Package and validate real unsigned IPA
+        shell: bash
+        run: |
+          set -euo pipefail
+          suffix="${{ github.event.release.tag_name || github.sha }}"
+          app_path="$(cat release/${{ matrix.app_name }}-ios-app/app-path.txt)"
+          mkdir -p artifacts
+          bash scripts/release/package-ios-unsigned.sh \
+            "$app_path" \
+            "artifacts/scheduler-pro-${{ matrix.app_name }}-ios-arm64-${suffix}-unsigned.ipa"
       - uses: actions/upload-artifact@v4
-        with: { name: 'scheduler-pro-${{ matrix.app_name }}-ios-${{ github.event.release.tag_name || github.sha }}', path: 'artifacts/*', if-no-files-found: error, retention-days: 30 }
+        with:
+          name: scheduler-pro-${{ matrix.app_name }}-ios-arm64-unsigned-${{ github.event.release.tag_name || github.sha }}
+          path: |
+            artifacts/*.ipa
+            artifacts/*.ipa.sha256
+          if-no-files-found: error
+          retention-days: 30
+          compression-level: 0
       - name: Attach to release
         if: github.event_name == 'release'
         env: { GH_TOKEN: '${{ secrets.GITHUB_TOKEN }}' }
+        shell: bash
         run: gh release upload "${{ github.event.release.tag_name }}" artifacts/* --clobber
