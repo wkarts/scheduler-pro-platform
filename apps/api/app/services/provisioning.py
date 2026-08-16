@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
 from app.core.enums import TenantStatus
 from app.core.errors import APIError
+from app.core.secrets import seal_secret
 from app.db.models_platform import (
     BuildProfile,
     Domain,
@@ -59,9 +60,25 @@ class ProvisioningService:
                 return candidate
         raise APIError("TENANT_SLUG_EXHAUSTED", "Não foi possível gerar código único do cliente.", 500)
 
-    async def enqueue_tenant(self, name: str, slug: str | None, admin_email: str) -> dict[str, str]:
+    async def enqueue_tenant(
+        self,
+        name: str,
+        slug: str | None,
+        admin_email: str,
+        admin_password: str | None = None,
+    ) -> dict[str, str]:
         reserved_slug = await self._reserve_slug(name, slug)
-        tenant = Tenant(name=name, slug=reserved_slug, status=TenantStatus.pending.value)
+        initial_admin_password = admin_password or secrets.token_urlsafe(18)
+        database_password = secrets.token_urlsafe(32)
+        tenant = Tenant(
+            name=name,
+            slug=reserved_slug,
+            status=TenantStatus.pending.value,
+            settings={
+                "admin_email": admin_email.lower(),
+                "admin_password_ref": seal_secret(initial_admin_password),
+            },
+        )
         self.session.add(tenant)
         await self.session.flush()
 
@@ -76,7 +93,7 @@ class ProvisioningService:
                 tenant_id=tenant.id,
                 database_name=database_name,
                 database_user=database_user,
-                password_ref=f"secret://postgres/{database_name}",
+                password_ref=seal_secret(database_password),
             )
         )
         self.session.add(TenantStorage(tenant_id=tenant.id, bucket=storage_bucket))
@@ -108,7 +125,7 @@ class ProvisioningService:
                 "storage_bucket": storage_bucket,
                 "storage_prefix": storage_prefix,
                 "artifact_prefix": artifact_prefix,
-                "details": '{"database_per_tenant":true,"storage_per_tenant":true,"artifacts_per_tenant":true,"logs_per_tenant":true}',
+                "details": '{"database_per_tenant":true,"storage_per_tenant":true,"artifacts_per_tenant":true,"logs_per_tenant":true,"unique_database_credential":true}',
             },
         )
 
@@ -130,7 +147,7 @@ class ProvisioningService:
             app_name=name,
             public_name=name,
             slogan="Agendamento online simples, profissional e conectado.",
-            settings={"admin_email": admin_email, "tenant_slug": reserved_slug},
+            settings={"admin_email": admin_email.lower(), "tenant_slug": reserved_slug},
         )
         self.session.add(branding)
         await self.session.flush()
@@ -147,10 +164,11 @@ class ProvisioningService:
                     bundle_identifier=f"br.com.argws.schedulerpro.{package_slug}.{target.replace('-', '')}",
                     package_name=f"br.com.argws.schedulerpro.{package_slug}.{target.replace('-', '')}" if target in {"android", "ios", "admin-android", "admin-ios"} else None,
                     api_url=api_url,
-                    features=["appointments", "customers", "whatsapp", "landing", "branding"],
+                    features=["appointments", "customers", "services", "professionals", "whatsapp", "notifications", "landing", "branding"],
                     config={
                         "tenant_slug": reserved_slug,
                         "hostname": hostname,
+                        "web_url": f"https://{hostname}",
                         "storage_prefix": storage_prefix,
                         "artifact_prefix": artifact_prefix,
                         "admin_target": target.startswith("admin-"),
@@ -173,7 +191,7 @@ class ProvisioningService:
             service="control-plane",
             level="INFO",
             event="tenant_enqueued",
-            message="Tenant criado com recursos isolados e job de provisionamento enfileirado.",
+            message="Tenant criado com credenciais e recursos isolados; job de provisionamento enfileirado.",
             correlation_id=job.correlation_id,
             details={
                 "database_name": database_name,
@@ -188,7 +206,8 @@ class ProvisioningService:
             "tenant_id": str(tenant.id),
             "tenant_code": reserved_slug,
             "job_id": str(job.id),
-            "admin_email": admin_email,
+            "admin_email": admin_email.lower(),
+            "initial_admin_password": initial_admin_password,
             "hostname": hostname,
             "status": job.status,
         }

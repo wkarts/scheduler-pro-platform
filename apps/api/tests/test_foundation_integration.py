@@ -12,7 +12,7 @@ from app.core.security import hash_password
 
 pytestmark = pytest.mark.integration
 
-TENANT_MIGRATION_HEAD = "tenant_0003_scheduler_engine"
+TENANT_MIGRATION_HEAD = "tenant_0004_product_complete"
 
 
 async def tenant_login(client: httpx.AsyncClient, host: str = "localhost") -> dict:

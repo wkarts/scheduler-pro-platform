@@ -1,12 +1,100 @@
-from typing import Any
+from collections.abc import Iterator
+from typing import Any, Literal
+from urllib.parse import quote
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends, File, Form, Query, UploadFile
+from pydantic import BaseModel, Field
+from starlette.responses import StreamingResponse
 
+from app.api.deps import get_tenant_context
 from app.core.responses import success
+from app.core.tenant_context import TenantContext
+from app.services.file_service import TenantFileService
 
 router = APIRouter()
 
 
+class FileAccessRequest(BaseModel):
+    key: str = Field(min_length=1, max_length=500)
+    operation: Literal["download", "upload"] = "download"
+
+
+def _stream(body: Any) -> Iterator[bytes]:
+    try:
+        yield from body.iter_chunks(chunk_size=64 * 1024)
+    finally:
+        body.close()
+
+
 @router.post("/signed-url")
-async def signed_url() -> dict[str, Any]:
-    return success({"url": None, "message": "URLs assinadas serão emitidas pelo FileService/S3"})
+async def signed_url(
+    payload: FileAccessRequest,
+    context: TenantContext = Depends(get_tenant_context),
+) -> dict[str, Any]:
+    service = TenantFileService(context)
+    key = service.normalize_key(payload.key)
+    if payload.operation == "upload":
+        return success(
+            {
+                "mode": "api-proxy",
+                "method": "POST",
+                "url": "/api/v1/files/upload",
+                "fields": {"key": key},
+                "bucket": context.storage_bucket,
+            }
+        )
+    return success(
+        {
+            "mode": "api-proxy",
+            "method": "GET",
+            "url": f"/api/v1/files/content/{quote(key, safe='/')}",
+            "bucket": context.storage_bucket,
+        }
+    )
+
+
+@router.post("/upload")
+async def upload_file(
+    key: str = Form(...),
+    file: UploadFile = File(...),
+    context: TenantContext = Depends(get_tenant_context),
+) -> dict[str, Any]:
+    try:
+        result = await TenantFileService(context).upload(key, file.file, file.content_type)
+        return success(result)
+    finally:
+        await file.close()
+
+
+@router.get("")
+async def list_files(
+    prefix: str = Query(default="", max_length=500),
+    limit: int = Query(default=200, ge=1, le=1000),
+    context: TenantContext = Depends(get_tenant_context),
+) -> dict[str, Any]:
+    return success(await TenantFileService(context).list(prefix=prefix, limit=limit))
+
+
+@router.get("/content/{key:path}")
+async def download_file(
+    key: str,
+    context: TenantContext = Depends(get_tenant_context),
+) -> StreamingResponse:
+    result = await TenantFileService(context).get_object(key)
+    headers = {
+        "Content-Disposition": f'inline; filename="{TenantFileService.normalize_key(key).split("/")[-1]}"',
+        "ETag": str(result.get("ETag", "")),
+    }
+    return StreamingResponse(
+        _stream(result["Body"]),
+        media_type=str(result.get("ContentType") or "application/octet-stream"),
+        headers=headers,
+    )
+
+
+@router.delete("/{key:path}")
+async def delete_file(
+    key: str,
+    context: TenantContext = Depends(get_tenant_context),
+) -> dict[str, Any]:
+    return success(await TenantFileService(context).delete(key))

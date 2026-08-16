@@ -11,6 +11,7 @@ redis==6.4.0
 celery==5.5.3
 aio-pika==9.5.5
 python-jose[cryptography]==3.5.0
+cryptography>=45.0.0,<47
 passlib[argon2]==1.7.4
 orjson==3.11.1
 structlog==25.4.0

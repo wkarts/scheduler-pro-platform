@@ -13,7 +13,7 @@ router = APIRouter()
 
 class BuildRequestCreate(BaseModel):
     tenant: str = Field(min_length=8)
-    target: str = Field(pattern="^(web|pwa|desktop|android|ios)$")
+    target: str = Field(pattern="^(web|pwa|desktop|android|ios|admin-desktop|admin-android|admin-ios)$")
     profile: str | None = None
     requested_by: str | None = None
     source_ref: str = "main"
@@ -31,67 +31,32 @@ class ArtifactRegisterRequest(BaseModel):
 
 
 @router.get("/profiles")
-async def list_profiles(
-    tenant: str | None = None,
-    session: AsyncSession = Depends(get_platform_session),
-) -> dict[str, Any]:
-    manager = BuildManagerService(session)
-    return success({"profiles": await manager.list_profiles(tenant)})
+async def list_profiles(tenant: str | None = None, session: AsyncSession = Depends(get_platform_session)) -> dict[str, Any]:
+    return success({"profiles": await BuildManagerService(session).list_profiles(tenant)})
 
 
 @router.post("/requests")
-async def create_request(
-    payload: BuildRequestCreate,
-    session: AsyncSession = Depends(get_platform_session),
-) -> dict[str, Any]:
-    manager = BuildManagerService(session)
-    job = await manager.create_build_request(
-        BuildRequestInput(
-            tenant=payload.tenant,
-            target=payload.target,
-            profile=payload.profile,
-            requested_by=payload.requested_by,
-            source_ref=payload.source_ref,
-            source_sha=payload.source_sha,
-            payload=payload.payload,
-        )
-    )
+async def create_request(payload: BuildRequestCreate, session: AsyncSession = Depends(get_platform_session)) -> dict[str, Any]:
+    job = await BuildManagerService(session).create_build_request(BuildRequestInput(tenant=payload.tenant,target=payload.target,profile=payload.profile,requested_by=payload.requested_by,source_ref=payload.source_ref,source_sha=payload.source_sha,payload=payload.payload))
     return success(job)
 
 
 @router.get("/jobs")
-async def list_jobs(
-    tenant: str | None = None,
-    limit: int = 50,
-    session: AsyncSession = Depends(get_platform_session),
-) -> dict[str, Any]:
-    manager = BuildManagerService(session)
-    return success({"jobs": await manager.list_jobs(tenant, limit)})
+async def list_jobs(tenant: str | None = None, limit: int = 50, session: AsyncSession = Depends(get_platform_session)) -> dict[str, Any]:
+    return success({"jobs": await BuildManagerService(session).list_jobs(tenant, limit)})
 
 
 @router.get("/jobs/{job_id}")
-async def get_job(
-    job_id: str,
-    session: AsyncSession = Depends(get_platform_session),
-) -> dict[str, Any]:
-    manager = BuildManagerService(session)
-    return success(await manager.get_job(job_id))
+async def get_job(job_id: str, session: AsyncSession = Depends(get_platform_session)) -> dict[str, Any]:
+    return success(await BuildManagerService(session).get_job(job_id))
+
+
+@router.post("/jobs/{job_id}/refresh")
+async def refresh_job(job_id: str, session: AsyncSession = Depends(get_platform_session)) -> dict[str, Any]:
+    return success(await BuildManagerService(session).refresh_job(job_id))
 
 
 @router.post("/jobs/{job_id}/artifacts")
-async def register_artifact(
-    job_id: str,
-    payload: ArtifactRegisterRequest,
-    session: AsyncSession = Depends(get_platform_session),
-) -> dict[str, Any]:
-    manager = BuildManagerService(session)
-    artifact = await manager.register_artifact(
-        job_id,
-        payload.artifact_type,
-        payload.name,
-        payload.download_url,
-        payload.checksum_sha256,
-        payload.size_bytes,
-        payload.metadata,
-    )
+async def register_artifact(job_id: str, payload: ArtifactRegisterRequest, session: AsyncSession = Depends(get_platform_session)) -> dict[str, Any]:
+    artifact = await BuildManagerService(session).register_artifact(job_id,payload.artifact_type,payload.name,payload.download_url,payload.checksum_sha256,payload.size_bytes,payload.metadata)
     return success(artifact)

@@ -39,6 +39,9 @@ x-api-env: &api-env
   EVOLUTION_API_URL: ${EVOLUTION_API_URL:-}
   EVOLUTION_API_TOKEN: ${EVOLUTION_API_TOKEN:-}
   EVOLUTION_INSTANCE_NAME: ${EVOLUTION_INSTANCE_NAME:-scheduler-pro}
+  GITHUB_ACTIONS_API_BASE_URL: ${GITHUB_ACTIONS_API_BASE_URL:-https://api.github.com}
+  GITHUB_ACTIONS_REPOSITORY: ${GITHUB_ACTIONS_REPOSITORY:-wkarts/scheduler-pro-platform}
+  GITHUB_ACTIONS_TOKEN: ${GITHUB_ACTIONS_TOKEN:-}
 
 x-api-image: &api-image ${IMAGE_REGISTRY:-ghcr.io}/${IMAGE_NAMESPACE:-wkarts/scheduler-pro-platform}/api:${APP_IMAGE_TAG:-latest}
 x-worker-image: &worker-image ${IMAGE_REGISTRY:-ghcr.io}/${IMAGE_NAMESPACE:-wkarts/scheduler-pro-platform}/worker:${APP_IMAGE_TAG:-latest}
@@ -48,43 +51,30 @@ x-proxy-image: &proxy-image ${IMAGE_REGISTRY:-ghcr.io}/${IMAGE_NAMESPACE:-wkarts
 
 services:
   scheduler-storage-init:
-    image: alpine:3.22
+    image: ${STORAGE_INIT_IMAGE:-alpine:3.22}
     restart: "no"
     user: "0:0"
-    volumes:
-      - ${SCHEDULER_PRO_DATA_ROOT:-./scheduler-pro-data}:/data
-    command: ["/bin/sh", "-ec", "mkdir -p /data/postgres /data/redis /data/rabbitmq /data/minio /data/backups && chmod 0777 /data/postgres /data/redis /data/rabbitmq /data/minio"]
+    volumes: ["${SCHEDULER_PRO_DATA_ROOT:-./scheduler-pro-data}:/data"]
+    command: ["/bin/sh", "-ec", "mkdir -p /data/postgres /data/redis /data/rabbitmq /data/minio /data/backups /data/celery && chmod 0777 /data/postgres /data/redis /data/rabbitmq /data/minio /data/celery"]
 
   scheduler-postgres:
     image: ${POSTGRES_IMAGE:-postgres:17-alpine}
     restart: unless-stopped
-    depends_on:
-      scheduler-storage-init:
-        condition: service_completed_successfully
+    depends_on: {scheduler-storage-init: {condition: service_completed_successfully}}
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-platform}
       POSTGRES_USER: ${POSTGRES_USER:-scheduler}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD obrigatória}
       TZ: ${APP_TIMEZONE:-America/Bahia}
-    volumes:
-      - ${SCHEDULER_PRO_DATA_ROOT:-./scheduler-pro-data}/postgres:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\""]
-      interval: 10s
-      timeout: 5s
-      retries: 20
+    volumes: ["${SCHEDULER_PRO_DATA_ROOT:-./scheduler-pro-data}/postgres:/var/lib/postgresql/data"]
+    healthcheck: {test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\""], interval: 10s, timeout: 5s, retries: 20}
 
   scheduler-redis:
     image: ${REDIS_IMAGE:-redis:8-alpine}
     restart: unless-stopped
-    volumes:
-      - ${SCHEDULER_PRO_DATA_ROOT:-./scheduler-pro-data}/redis:/data
+    volumes: ["${SCHEDULER_PRO_DATA_ROOT:-./scheduler-pro-data}/redis:/data"]
     command: ["redis-server", "--appendonly", "yes", "--appendfsync", "everysec"]
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 10s
-      timeout: 5s
-      retries: 20
+    healthcheck: {test: ["CMD", "redis-cli", "ping"], interval: 10s, timeout: 5s, retries: 20}
 
   scheduler-rabbitmq:
     image: ${RABBITMQ_IMAGE:-rabbitmq:4-management-alpine}
@@ -96,12 +86,7 @@ services:
     volumes:
       - ${SCHEDULER_PRO_DATA_ROOT:-./scheduler-pro-data}/rabbitmq:/var/lib/rabbitmq
       - ./rabbitmq.conf:/etc/rabbitmq/rabbitmq.conf:ro
-    healthcheck:
-      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
-      interval: 15s
-      timeout: 10s
-      retries: 20
-      start_period: 30s
+    healthcheck: {test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"], interval: 15s, timeout: 10s, retries: 20, start_period: 30s}
 
   scheduler-minio:
     image: ${MINIO_IMAGE:-minio/minio:RELEASE.2025-09-07T16-13-09Z}
@@ -111,23 +96,24 @@ services:
       MINIO_ROOT_USER: ${S3_ACCESS_KEY:?S3_ACCESS_KEY obrigatória}
       MINIO_ROOT_PASSWORD: ${S3_SECRET_KEY:?S3_SECRET_KEY obrigatória}
       MINIO_REGION_NAME: ${S3_REGION:-sa-east-1}
-    volumes:
-      - ${SCHEDULER_PRO_DATA_ROOT:-./scheduler-pro-data}/minio:/data
-    healthcheck:
-      test: ["CMD-SHELL", "curl --fail --silent http://127.0.0.1:9000/minio/health/live >/dev/null || exit 1"]
-      interval: 15s
-      timeout: 5s
-      retries: 20
+    volumes: ["${SCHEDULER_PRO_DATA_ROOT:-./scheduler-pro-data}/minio:/data"]
+    healthcheck: {test: ["CMD-SHELL", "curl --fail --silent http://127.0.0.1:9000/minio/health/live >/dev/null || exit 1"], interval: 15s, timeout: 5s, retries: 20}
 
   scheduler-migrate:
     image: *api-image
     pull_policy: always
     restart: "no"
     environment: *api-env
-    depends_on:
-      scheduler-postgres:
-        condition: service_healthy
-    command: ["/bin/sh", "-ec", "python -m app.cli migrate-platform && python -m app.bootstrap platform-admin"]
+    depends_on: {scheduler-postgres: {condition: service_healthy}}
+    command: ["python", "-m", "app.cli", "migrate-platform"]
+
+  scheduler-platform-bootstrap:
+    image: *api-image
+    pull_policy: always
+    restart: "no"
+    environment: *api-env
+    depends_on: {scheduler-migrate: {condition: service_completed_successfully}}
+    command: ["python", "-m", "app.platform_bootstrap"]
 
   scheduler-api:
     image: *api-image
@@ -135,28 +121,18 @@ services:
     restart: unless-stopped
     environment: *api-env
     depends_on:
-      scheduler-migrate:
-        condition: service_completed_successfully
-      scheduler-redis:
-        condition: service_healthy
-      scheduler-rabbitmq:
-        condition: service_healthy
-      scheduler-minio:
-        condition: service_healthy
-    healthcheck:
-      test: ["CMD-SHELL", "curl --fail --silent -H 'Host: ${PUBLIC_PLATFORM_DOMAIN:-scheduler.argws.com.br}' http://127.0.0.1:8000/api/v1/health/ready >/dev/null || exit 1"]
-      interval: 20s
-      timeout: 5s
-      retries: 20
+      scheduler-platform-bootstrap: {condition: service_completed_successfully}
+      scheduler-redis: {condition: service_healthy}
+      scheduler-rabbitmq: {condition: service_healthy}
+      scheduler-minio: {condition: service_healthy}
+    healthcheck: {test: ["CMD-SHELL", "curl --fail --silent -H 'Host: ${PUBLIC_PLATFORM_DOMAIN:-scheduler.argws.com.br}' http://127.0.0.1:8000/api/v1/health/ready >/dev/null || exit 1"], interval: 20s, timeout: 5s, retries: 20}
 
   scheduler-worker-default:
     image: *worker-image
     pull_policy: always
     restart: unless-stopped
     environment: *api-env
-    depends_on:
-      scheduler-api:
-        condition: service_healthy
+    depends_on: {scheduler-api: {condition: service_healthy}}
     command: ["celery", "-A", "app.workers.celery_app.celery_app", "worker", "-Q", "default,provisioning,domains,builds,maintenance", "--loglevel=INFO", "--concurrency=2", "--without-gossip", "--without-mingle", "--without-heartbeat"]
 
   scheduler-worker-whatsapp:
@@ -164,10 +140,17 @@ services:
     pull_policy: always
     restart: unless-stopped
     environment: *api-env
-    depends_on:
-      scheduler-api:
-        condition: service_healthy
+    depends_on: {scheduler-api: {condition: service_healthy}}
     command: ["celery", "-A", "app.workers.celery_app.celery_app", "worker", "-Q", "whatsapp,notifications,webhooks", "--loglevel=INFO", "--concurrency=2", "--without-gossip", "--without-mingle", "--without-heartbeat"]
+
+  scheduler-beat:
+    image: *worker-image
+    pull_policy: always
+    restart: unless-stopped
+    environment: *api-env
+    depends_on: {scheduler-api: {condition: service_healthy}}
+    volumes: ["${SCHEDULER_PRO_DATA_ROOT:-./scheduler-pro-data}/celery:/var/lib/celery"]
+    command: ["celery", "-A", "app.workers.celery_app.celery_app", "beat", "--loglevel=INFO", "--schedule=/var/lib/celery/celerybeat-schedule"]
 
   scheduler-web:
     image: *web-image
@@ -183,12 +166,5 @@ services:
     image: *proxy-image
     pull_policy: always
     restart: unless-stopped
-    depends_on:
-      scheduler-api:
-        condition: service_healthy
-      scheduler-web:
-        condition: service_started
-      scheduler-admin:
-        condition: service_started
-    ports:
-      - "${APP_BIND_HOST:-127.0.0.1}:${APP_PORT:-18080}:80"
+    depends_on: {scheduler-api: {condition: service_healthy}, scheduler-web: {condition: service_started}, scheduler-admin: {condition: service_started}}
+    ports: ["${APP_BIND_HOST:-127.0.0.1}:${APP_PORT:-18080}:80"]

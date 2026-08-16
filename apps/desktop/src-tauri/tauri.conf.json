@@ -4,15 +4,26 @@
   "version": "0.1.0",
   "identifier": "br.com.argws.schedulerpro",
   "build": {
-    "beforeDevCommand": "npm run dev",
-    "devUrl": "http://localhost:5174",
-    "beforeBuildCommand": "npm run build",
+    "devUrl": "https://scheduler.argws.com.br",
+    "frontendDist": "https://scheduler.argws.com.br",
     "features": ["desktop"],
-    "frontendDist": "../dist"
+    "removeUnusedCommands": true
   },
   "app": {
     "windows": [
-      { "label": "main", "title": "Scheduler Pro", "width": 1440, "height": 900, "minWidth": 1100, "minHeight": 720, "resizable": true, "maximized": true, "visible": true, "center": true }
+      {
+        "label": "main",
+        "title": "Scheduler Pro",
+        "url": "https://scheduler.argws.com.br",
+        "width": 1440,
+        "height": 900,
+        "minWidth": 1024,
+        "minHeight": 640,
+        "resizable": true,
+        "maximized": true,
+        "visible": true,
+        "center": true
+      }
     ],
     "security": { "csp": null }
   },
@@ -23,6 +34,6 @@
     "publisher": "ARGWS Sistemas",
     "category": "Business",
     "shortDescription": "Scheduler Pro",
-    "longDescription": "Aplicativo desktop do Scheduler Pro."
+    "longDescription": "Aplicativo desktop do Scheduler Pro conectado à aplicação web do cliente."
   }
 }

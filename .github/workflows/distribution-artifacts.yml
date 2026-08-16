@@ -1,4 +1,5 @@
 name: Distribution Artifacts
+run-name: Distribution ${{ inputs.correlation_id || github.sha }}
 
 on:
   push:
@@ -9,6 +10,10 @@ on:
         description: 'Sufixo dos artefatos'
         required: false
         default: 'manual'
+      correlation_id:
+        description: 'Correlação do Build Manager'
+        required: false
+        default: ''
 
 permissions:
   contents: read
@@ -19,42 +24,40 @@ env:
 
 jobs:
   package:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: '22'
+          node-version: '24'
+          cache: npm
       - name: Install workspaces
         run: npm install
-      - name: Build web/admin/desktop/mobile shells
+      - name: Build canonical web and dedicated mobile frontends
         run: |
           npm --workspace apps/web run build
           npm --workspace apps/admin run build
-          npm --workspace apps/desktop run build
           npm --workspace apps/mobile run build
+          npm --workspace apps/admin-mobile run build
+          npm --workspace apps/desktop run typecheck
+          npm --workspace apps/admin-desktop run typecheck
       - name: Pack artifacts
         run: |
+          set -euo pipefail
           mkdir -p artifacts/deploy artifacts/apps
           tar -C apps/web/dist -czf artifacts/apps/scheduler-pro-web-${ARTIFACT_SUFFIX}.tar.gz .
           tar -C apps/admin/dist -czf artifacts/apps/scheduler-pro-admin-${ARTIFACT_SUFFIX}.tar.gz .
-          tar -C apps/desktop/dist -czf artifacts/apps/scheduler-pro-desktop-shell-${ARTIFACT_SUFFIX}.tar.gz .
-          tar -C apps/mobile/dist -czf artifacts/apps/scheduler-pro-mobile-shell-${ARTIFACT_SUFFIX}.tar.gz .
+          tar -C apps/mobile/dist -czf artifacts/apps/scheduler-pro-mobile-client-ui-${ARTIFACT_SUFFIX}.tar.gz .
+          tar -C apps/admin-mobile/dist -czf artifacts/apps/scheduler-pro-mobile-admin-ui-${ARTIFACT_SUFFIX}.tar.gz .
           tar -C deployments/cloudpanel -czf artifacts/deploy/scheduler-pro-cloudpanel-${ARTIFACT_SUFFIX}.tar.gz .
           tar -C deployments/dockge -czf artifacts/deploy/scheduler-pro-dockge-${ARTIFACT_SUFFIX}.tar.gz .
           cat > artifacts/distribution-manifest.json <<JSON
           {
             "product": "Scheduler Pro",
             "source_sha": "${GITHUB_SHA}",
-            "source_ref": "${GITHUB_REF_NAME}",
-            "artifacts": [
-              "scheduler-pro-web-${ARTIFACT_SUFFIX}.tar.gz",
-              "scheduler-pro-admin-${ARTIFACT_SUFFIX}.tar.gz",
-              "scheduler-pro-desktop-shell-${ARTIFACT_SUFFIX}.tar.gz",
-              "scheduler-pro-mobile-shell-${ARTIFACT_SUFFIX}.tar.gz",
-              "scheduler-pro-cloudpanel-${ARTIFACT_SUFFIX}.tar.gz",
-              "scheduler-pro-dockge-${ARTIFACT_SUFFIX}.tar.gz"
-            ]
+            "desktop_architecture": "remote-webview",
+            "mobile_architecture": "dedicated-api-client",
+            "desktop_installers": "Desktop Artifacts workflow"
           }
           JSON
           sha256sum artifacts/apps/*.tar.gz artifacts/deploy/*.tar.gz > artifacts/SHA256SUMS.txt
