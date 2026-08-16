@@ -61,6 +61,17 @@ class CloudflareService:
         data = cast(dict[str, Any], response.json())
         if response.status_code >= 400 or not data.get("success", False):
             cf_code = self._cloudflare_error_code(data)
+            if "/purge_cache" in path and response.status_code in {401, 403}:
+                raise APIError(
+                    "CLOUDFLARE_CACHE_PURGE_PERMISSION_ERROR",
+                    "Token Cloudflare ativo, mas sem permissão para purge de cache nesta zone.",
+                    424,
+                    {
+                        "status_code": response.status_code,
+                        "response": data,
+                        "hint": "No token Cloudflare, adicione permissão de Cache Purge/Purge Cache para a zone argws.com.br, além de Zone:Read e DNS:Edit.",
+                    },
+                )
             if response.status_code in {401, 403} or cf_code == 10000:
                 raise APIError(
                     "CLOUDFLARE_AUTH_ERROR",
@@ -132,13 +143,7 @@ class CloudflareService:
                 continue
             content = str(record.get("content", "")).strip().lower().rstrip(".")
             if content == clean_target:
-                return {
-                    "success": True,
-                    "existing": True,
-                    "record_exists": True,
-                    "result": record,
-                    "lookup": existing,
-                }
+                return {"success": True, "existing": True, "record_exists": True, "result": record, "lookup": existing}
         try:
             created = await self.create_dns_record(clean_hostname, clean_target, record_type=record_type, proxied=proxied, ttl=ttl)
             return {"success": True, "existing": False, "record_exists": True, "result": created.get("result"), "cloudflare": created}
@@ -149,14 +154,7 @@ class CloudflareService:
             if isinstance(retry_result, list):
                 retry_records = retry_result
             if retry_records:
-                return {
-                    "success": True,
-                    "existing": True,
-                    "record_exists": True,
-                    "result": retry_records[0],
-                    "lookup": after_error,
-                    "recovered_after_create_error": True,
-                }
+                return {"success": True, "existing": True, "record_exists": True, "result": retry_records[0], "lookup": after_error, "recovered_after_create_error": True}
             raise
 
     async def delete_dns_record(self, record_id: str) -> dict[str, Any]:

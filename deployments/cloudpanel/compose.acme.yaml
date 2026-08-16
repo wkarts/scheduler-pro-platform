@@ -1,0 +1,27 @@
+# Optional ACME/Let's Encrypt DNS-01 profile for Scheduler Pro.
+# Usage:
+#   docker compose -f compose.yaml -f compose.acme.yaml --profile ssl up -d scheduler-acme
+#
+# This issues/renews a wildcard certificate for *.scheduler.argws.com.br using Cloudflare DNS.
+# CloudPanel can keep terminating TLS externally, or you can import/copy the generated certs
+# from ${SCHEDULER_PRO_DATA_ROOT}/certs into the front proxy/CloudPanel site.
+
+services:
+  scheduler-acme:
+    image: ${ACME_IMAGE:-neilpang/acme.sh:3.1.0}
+    restart: unless-stopped
+    profiles:
+      - ssl
+    environment:
+      CF_Token: ${CLOUDFLARE_API_TOKEN:?CLOUDFLARE_API_TOKEN obrigatória para DNS-01}
+      CF_Zone_ID: ${CLOUDFLARE_ZONE_ID:?CLOUDFLARE_ZONE_ID obrigatória para DNS-01}
+      ACME_EMAIL: ${ACME_EMAIL:?ACME_EMAIL obrigatória}
+      ACME_DOMAIN: ${ACME_DOMAIN:-scheduler.argws.com.br}
+      ACME_STAGING: ${ACME_STAGING:-false}
+    volumes:
+      - ${SCHEDULER_PRO_DATA_ROOT:-./scheduler-pro-data}/acme:/acme.sh
+      - ${SCHEDULER_PRO_DATA_ROOT:-./scheduler-pro-data}/certs:/certs
+      - ./scripts/acme-dns01-cloudflare.sh:/opt/scheduler-pro/acme-dns01-cloudflare.sh:ro
+    command:
+      - /bin/sh
+      - /opt/scheduler-pro/acme-dns01-cloudflare.sh
