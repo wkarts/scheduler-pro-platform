@@ -14,6 +14,7 @@ from app.api.v1.routes import (
     notifications,
     observability,
     platform,
+    platform_access,
     professionals,
     public,
     schedule,
@@ -40,5 +41,6 @@ api_router.include_router(settings.router, prefix="/settings", tags=["Settings"]
 api_router.include_router(observability.tenant_router, prefix="/observability", tags=["Tenant Observability"], dependencies=[Depends(require_permission("tenant.manage"))])
 api_router.include_router(branding.router, prefix="/branding", tags=["Branding"])
 api_router.include_router(platform.router, prefix="/platform", tags=["Platform"], dependencies=[Depends(require_super_admin)])
-api_router.include_router(observability.router, prefix="/platform/observability", tags=["Platform Observability"], dependencies=[Depends(require_super_admin)])
+api_router.include_router(platform_access.router, prefix="/platform/access", tags=["Platform IAM"])
+api_router.include_router(observability.router, prefix="/platform/observability", tags=["Platform Observability"])
 api_router.include_router(builds.router, prefix="/platform/builds", tags=["Build Manager"], dependencies=[Depends(require_super_admin)])
