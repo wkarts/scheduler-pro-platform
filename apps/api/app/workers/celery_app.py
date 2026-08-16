@@ -2,6 +2,7 @@ from collections.abc import Callable
 from typing import ParamSpec, TypeVar, cast
 
 from celery import Celery
+from celery.schedules import crontab
 from kombu import Exchange, Queue
 
 from app.core.config import settings
@@ -38,8 +39,17 @@ celery_app.conf.update(
         "app.workers.tasks.run_provisioning": {"queue": "provisioning", "routing_key": "provisioning"},
         "app.workers.tasks.process_whatsapp_webhook": {"queue": "whatsapp", "routing_key": "whatsapp"},
         "app.workers.tasks.process_due_notifications": {"queue": "notifications", "routing_key": "notifications"},
+        "app.workers.tasks.process_all_due_notifications": {"queue": "notifications", "routing_key": "notifications"},
         "app.workers.tasks.run_build_job": {"queue": "builds", "routing_key": "builds"},
     },
+    beat_schedule={
+        "notification-sweep-every-minute": {
+            "task": "app.workers.tasks.process_all_due_notifications",
+            "schedule": crontab(minute="*"),
+        },
+    },
+    timezone="America/Bahia",
+    enable_utc=True,
     worker_enable_remote_control=False,
     worker_cancel_long_running_tasks_on_connection_loss=True,
     worker_prefetch_multiplier=1,
