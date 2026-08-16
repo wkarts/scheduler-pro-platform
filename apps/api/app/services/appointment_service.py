@@ -185,7 +185,7 @@ class AppointmentService:
             raise APIError("APPOINTMENT_FINAL_STATUS", "Agendamento finalizado não pode voltar ao fluxo operacional.", 409)
         await self.session.execute(text("update appointments set status=:status where id=:id::uuid"), {"id": appointment_id, "status": status})
         await self._add_history(appointment_id, status, reason)
-        await NotificationService(self.session).schedule_for_appointment(appointment_id, f"appointment_{status.lower()}")
+        await NotificationService(self.session).schedule_for_appointment(appointment_id, f"appointment_{status.lower()}", reason=reason)
         await self.session.commit()
         return await self.get(appointment_id)
 
