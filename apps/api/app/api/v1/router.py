@@ -11,6 +11,7 @@ from app.api.v1.routes import (
     files,
     health,
     landing_pages,
+    notifications,
     platform,
     professionals,
     public,
@@ -47,6 +48,12 @@ api_router.include_router(
     prefix="/appointments",
     tags=["Appointments"],
     dependencies=[Depends(require_permission("appointments.create"))],
+)
+api_router.include_router(
+    notifications.router,
+    prefix="/notifications",
+    tags=["Notifications"],
+    dependencies=[Depends(require_permission("notifications.manage"))],
 )
 api_router.include_router(
     landing_pages.router,
