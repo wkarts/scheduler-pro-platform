@@ -3,20 +3,20 @@ import { computed, onMounted, ref } from 'vue'
 
 type ModuleKey = 'overview' | 'clientes' | 'dominios' | 'builds' | 'provisionamento' | 'logs' | 'integracoes' | 'auditoria'
 type ApiEnvelope<T> = { data: T }
+type Tenant = { id: string; name: string; slug: string; status: string; primary_hostname?: string | null; created_at?: string | null }
+type Domain = { id: string; tenant_id: string; tenant_name?: string | null; hostname: string; status: string; is_temporary: boolean; is_primary: boolean }
+type BuildJob = { id: string; target: string; status: string; source_ref?: string | null; created_at?: string | null }
+type LogEntry = { id: string; tenant_name?: string | null; tenant_slug?: string | null; source: string; service?: string | null; level: string; event: string; message: string; integration?: string | null; error_code?: string | null; created_at?: string | null }
+type LogSummary = { last_24h: { total: number; errors: number; docker: number; integrations: number; tenant_scoped: number } }
 type Dashboard = {
   totals: { tenants: number; active_tenants: number; domains_pending: number; builds: number; build_artifacts: number; provisioning_jobs: number }
   health?: Record<string, string>
-  recent_tenants: Array<{ id: string; name: string; slug: string; status: string }>
-  recent_builds: Array<{ id: string; target: string; status: string; source_ref?: string | null }>
-  recent_provisioning: Array<{ id: string; status: string; correlation_id: string }>
+  recent_tenants: Tenant[]
+  recent_builds: BuildJob[]
+  recent_provisioning: Array<{ id: string; status: string; correlation_id: string; created_at?: string | null }>
 }
-type Tenant = { id: string; name: string; slug: string; status: string; primary_hostname?: string | null }
-type Domain = { id: string; tenant_id: string; tenant_name?: string; hostname: string; status: string; is_temporary: boolean; is_primary: boolean }
-type BuildJob = { id: string; target: string; status: string; source_ref?: string | null; created_at?: string | null }
-type LogEntry = { id: string; tenant_name?: string | null; tenant_slug?: string | null; source: string; service?: string; level: string; event: string; message: string; integration?: string | null; error_code?: string | null; created_at?: string | null }
-type LogSummary = { last_24h: { total: number; errors: number; docker: number; integrations: number; tenant_scoped: number } }
-
 type ModuleItem = { key: ModuleKey; label: string; icon: string; description: string }
+
 const modules: ModuleItem[] = [
   { key: 'overview', label: 'Visão geral', icon: '▦', description: 'Indicadores globais e saúde operacional' },
   { key: 'clientes', label: 'Clientes SaaS', icon: '▤', description: 'Tenants, bancos e recursos isolados' },
@@ -47,12 +47,14 @@ const logSummary = ref<LogSummary | null>(null)
 const logged = computed(() => Boolean(token.value))
 const selectedModule = computed(() => modules.find((item) => item.key === active.value) || modules[0])
 const healthRows = computed(() => Object.entries(dashboard.value?.health || { platform: 'online', queue: 'configured', storage: 'configured', release: 'available' }))
-const recentTenants = computed(() => tenants.value.length ? tenants.value.slice(0, 8) : (dashboard.value?.recent_tenants || []))
-const visibleJobs = computed(() => buildJobs.value.length ? buildJobs.value.slice(0, 8) : (dashboard.value?.recent_builds || []))
+const recentTenants = computed<Tenant[]>(() => tenants.value.length ? tenants.value.slice(0, 8) : (dashboard.value?.recent_tenants || []))
+const visibleJobs = computed<BuildJob[]>(() => buildJobs.value.length ? buildJobs.value.slice(0, 8) : (dashboard.value?.recent_builds || []))
+const metricTotals = computed(() => dashboard.value?.totals || { tenants: 0, active_tenants: 0, domains_pending: 0, builds: 0, build_artifacts: 0, provisioning_jobs: 0 })
 
 function connectionError(): string {
   return 'Não foi possível conectar à API administrativa. Verifique HTTPS, proxy /api/v1, CORS nativo e se a imagem API foi atualizada.'
 }
+
 async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
   let response: Response
   try {
@@ -60,12 +62,18 @@ async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
       ...init,
       headers: { 'content-type': 'application/json', ...(token.value ? { authorization: `Bearer ${token.value}` } : {}), ...(init.headers || {}) },
     })
-  } catch { throw new Error(connectionError()) }
+  } catch {
+    throw new Error(connectionError())
+  }
   const body = await response.json().catch(() => ({})) as Partial<ApiEnvelope<T>> & { error?: { message?: string } }
   if (!response.ok) throw new Error(body.error?.message || `Falha HTTP ${response.status}`)
   return body.data as T
 }
-function setToast(message: string): void { toast.value = message; window.setTimeout(() => { if (toast.value === message) toast.value = '' }, 4500) }
+
+function setToast(message: string): void {
+  toast.value = message
+  window.setTimeout(() => { if (toast.value === message) toast.value = '' }, 4500)
+}
 function statusClass(value?: string | null): string { return String(value || '').toLowerCase().replace(/[^a-z0-9]+/g, '-') }
 function formatDate(value?: string | null): string { return value ? new Date(value).toLocaleString('pt-BR') : '—' }
 
@@ -79,10 +87,21 @@ async function login(): Promise<void> {
     localStorage.setItem('scheduler_admin_desktop_email', email.value)
     password.value = ''
     await refreshAll()
-  } catch (err) { error.value = err instanceof Error ? err.message : 'Não foi possível entrar.' }
-  finally { loading.value = false }
+  } catch (err) {
+    error.value = err instanceof Error ? err.message : 'Não foi possível entrar.'
+  } finally {
+    loading.value = false
+  }
 }
-function logout(): void { token.value = ''; dashboard.value = null; tenants.value = []; domains.value = []; buildJobs.value = []; logs.value = []; localStorage.removeItem('scheduler_admin_desktop_token') }
+function logout(): void {
+  token.value = ''
+  dashboard.value = null
+  tenants.value = []
+  domains.value = []
+  buildJobs.value = []
+  logs.value = []
+  localStorage.removeItem('scheduler_admin_desktop_token')
+}
 async function loadDashboard(): Promise<void> { dashboard.value = await api<Dashboard>('/platform/dashboard') }
 async function loadLists(): Promise<void> {
   const [tenantRows, domainRows, jobPayload] = await Promise.all([
@@ -94,11 +113,42 @@ async function loadLists(): Promise<void> {
   domains.value = domainRows
   buildJobs.value = jobPayload.jobs || []
 }
-async function loadLogs(): Promise<void> { const [rows, summary] = await Promise.all([api<LogEntry[]>('/platform/observability/logs?limit=200'), api<LogSummary>('/platform/observability/logs/summary')]); logs.value = rows; logSummary.value = summary }
-async function refreshAll(): Promise<void> { error.value = ''; loading.value = true; try { await loadDashboard(); await loadLists(); if (active.value === 'logs') await loadLogs() } catch (err) { error.value = err instanceof Error ? err.message : connectionError() } finally { loading.value = false } }
-async function openModule(key: ModuleKey): Promise<void> { active.value = key; if (key === 'logs') await loadLogs(); else if (!dashboard.value || !tenants.value.length) await refreshAll() }
-async function checkDomain(id: string): Promise<void> { await api(`/platform/domains/${id}/check`, { method: 'POST', body: '{}' }); setToast('Verificação executada.'); await refreshAll() }
-async function purgeDomain(id: string): Promise<void> { await api(`/platform/domains/${id}/purge-cache`, { method: 'POST', body: '{}' }); setToast('Purge solicitado.'); await loadLogs() }
+async function loadLogs(): Promise<void> {
+  const [rows, summary] = await Promise.all([
+    api<LogEntry[]>('/platform/observability/logs?limit=200'),
+    api<LogSummary>('/platform/observability/logs/summary'),
+  ])
+  logs.value = rows
+  logSummary.value = summary
+}
+async function refreshAll(): Promise<void> {
+  error.value = ''
+  loading.value = true
+  try {
+    await loadDashboard()
+    await loadLists()
+    if (active.value === 'logs') await loadLogs()
+  } catch (err) {
+    error.value = err instanceof Error ? err.message : connectionError()
+  } finally {
+    loading.value = false
+  }
+}
+async function openModule(key: ModuleKey): Promise<void> {
+  active.value = key
+  if (key === 'logs') await loadLogs()
+  else if (!dashboard.value || !tenants.value.length) await refreshAll()
+}
+async function checkDomain(id: string): Promise<void> {
+  await api(`/platform/domains/${id}/check`, { method: 'POST', body: '{}' })
+  setToast('Verificação executada.')
+  await refreshAll()
+}
+async function purgeDomain(id: string): Promise<void> {
+  await api(`/platform/domains/${id}/purge-cache`, { method: 'POST', body: '{}' })
+  setToast('Purge solicitado.')
+  await loadLogs()
+}
 
 onMounted(() => { if (token.value) void refreshAll() })
 </script>
@@ -138,10 +188,10 @@ onMounted(() => { if (token.value) void refreshAll() })
         <p v-if="error" class="error-box">{{ error }}</p><p v-if="toast" class="toast-box">{{ toast }}</p>
 
         <section class="metric-grid">
-          <article class="metric-card blue"><div><span>Clientes SaaS</span><strong>{{ dashboard?.totals.tenants ?? 0 }}</strong><small>{{ dashboard?.totals.active_tenants ?? 0 }} ativos</small></div><i>▤</i></article>
-          <article class="metric-card violet"><div><span>Provisionamentos</span><strong>{{ dashboard?.totals.provisioning_jobs ?? 0 }}</strong><small>jobs registrados</small></div><i>⚙</i></article>
-          <article class="metric-card green"><div><span>Domínios pendentes</span><strong>{{ dashboard?.totals.domains_pending ?? 0 }}</strong><small>DNS / SSL</small></div><i>◎</i></article>
-          <article class="metric-card orange"><div><span>Builds e artefatos</span><strong>{{ dashboard?.totals.builds ?? 0 }}/{{ dashboard?.totals.build_artifacts ?? 0 }}</strong><small>jobs / arquivos</small></div><i>⬢</i></article>
+          <article class="metric-card blue"><div><span>Clientes SaaS</span><strong>{{ metricTotals.tenants }}</strong><small>{{ metricTotals.active_tenants }} ativos</small></div><i>▤</i></article>
+          <article class="metric-card violet"><div><span>Provisionamentos</span><strong>{{ metricTotals.provisioning_jobs }}</strong><small>jobs registrados</small></div><i>⚙</i></article>
+          <article class="metric-card green"><div><span>Domínios pendentes</span><strong>{{ metricTotals.domains_pending }}</strong><small>DNS / SSL</small></div><i>◎</i></article>
+          <article class="metric-card orange"><div><span>Builds e artefatos</span><strong>{{ metricTotals.builds }}/{{ metricTotals.build_artifacts }}</strong><small>jobs / arquivos</small></div><i>⬢</i></article>
         </section>
 
         <section v-if="active === 'overview'" class="dashboard-grid">
@@ -155,7 +205,7 @@ onMounted(() => { if (token.value) void refreshAll() })
 
         <section v-else-if="active === 'logs'" class="panel"><div class="panel-title"><div><h3>Logs registrados</h3><p>{{ logs.length }} eventos carregados</p></div><button class="btn small" @click="loadLogs">Atualizar</button></div><div class="log-list"><details v-for="log in logs" :key="log.id" class="log-row"><summary><strong>{{ log.level }} • {{ log.source }} • {{ log.event }}</strong><small>{{ formatDate(log.created_at) }} • {{ log.tenant_name || log.tenant_slug || 'plataforma' }} • {{ log.message }}</small></summary><pre>{{ log.error_code || log.integration || log.service || 'sem detalhes' }}</pre></details><p v-if="!logs.length" class="empty-inline">Nenhum log carregado.</p></div></section>
 
-        <section v-else class="panel"><div class="panel-title"><div><h3>{{ selectedModule.label }}</h3><p>{{ selectedModule.description }}</p></div></div><div class="resource-grid"><article><strong>Operacional</strong><p>Superfície administrativa pronta para consumo dos endpoints do Control Plane, sem telas vazias e com status por módulo.</p></article><article><strong>Integrações</strong><p>Cloudflare, Evolution API, storage, filas, logs e artefatos são rastreados pela observabilidade.</p></article><article><strong>Isolamento</strong><p>Cada cliente mantém banco, storage, prefixos, logs e artefatos próprios.</p></article></div></section>
+        <section v-else class="panel"><div class="panel-title"><div><h3>{{ selectedModule.label }}</h3><p>{{ selectedModule.description }}</p></div></div><div class="ops-grid"><article><strong>Operação</strong><span>Conectada ao Control Plane por API absoluta.</span></article><article><strong>Segurança</strong><span>Sessão local, Bearer token e logs auditáveis.</span></article><article><strong>Entrega</strong><span>Mesmo padrão visual do painel web administrativo.</span></article></div></section>
       </main>
     </section>
   </main>
