@@ -5,17 +5,13 @@
   "type": "module",
   "scripts": {
     "dev": "tauri dev",
-    "build": "node ../../scripts/build/validate-desktop-webview.mjs apps/admin-desktop",
-    "typecheck": "node ../../scripts/build/validate-desktop-webview.mjs apps/admin-desktop",
-    "lint": "node ../../scripts/build/validate-desktop-webview.mjs apps/admin-desktop",
+    "build": "node ../../scripts/build/validate-desktop-webview.mjs .",
+    "typecheck": "node ../../scripts/build/validate-desktop-webview.mjs .",
+    "lint": "node ../../scripts/build/validate-desktop-webview.mjs .",
     "tauri": "tauri",
     "tauri:dev": "tauri dev",
     "tauri:build": "tauri build"
   },
-  "dependencies": {
-    "@tauri-apps/api": "^2.0.0"
-  },
-  "devDependencies": {
-    "@tauri-apps/cli": "^2.0.0"
-  }
+  "dependencies": {"@tauri-apps/api": "^2.0.0"},
+  "devDependencies": {"@tauri-apps/cli": "^2.0.0"}
 }
