@@ -1,0 +1,33 @@
+name: Native Apps Check
+
+on:
+  pull_request:
+    paths:
+      - 'apps/desktop/**'
+      - 'apps/mobile/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/native-apps-check.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  native-shells:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install JS deps
+        run: npm install
+      - name: Typecheck desktop
+        run: npm --workspace apps/desktop run typecheck
+      - name: Build desktop web shell only
+        run: npm --workspace apps/desktop run build
+      - name: Typecheck mobile
+        run: npm --workspace apps/mobile run typecheck
+      - name: Build mobile web shell only
+        run: npm --workspace apps/mobile run build

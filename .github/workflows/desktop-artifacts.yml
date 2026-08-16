@@ -1,7 +1,9 @@
 name: Desktop Artifacts
 
 on:
-  pull_request:
+  push:
+    branches:
+      - main
     paths:
       - 'apps/desktop/**'
       - 'package.json'
