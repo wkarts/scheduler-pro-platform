@@ -37,6 +37,7 @@ celery_app.conf.update(
     task_routes={
         "app.workers.tasks.run_provisioning": {"queue": "provisioning", "routing_key": "provisioning"},
         "app.workers.tasks.process_whatsapp_webhook": {"queue": "whatsapp", "routing_key": "whatsapp"},
+        "app.workers.tasks.process_due_notifications": {"queue": "notifications", "routing_key": "notifications"},
         "app.workers.tasks.run_build_job": {"queue": "builds", "routing_key": "builds"},
     },
     worker_enable_remote_control=False,
