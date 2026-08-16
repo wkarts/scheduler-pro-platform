@@ -16,7 +16,7 @@ const tabs = [
   { key: 'perfil', label: 'Perfil', icon: '⚙' },
 ] as const
 
-const apiBase = import.meta.env.VITE_ADMIN_API_BASE_URL || 'https://admin.scheduler.argws.com.br/api/v1'
+const apiBase = (import.meta.env.VITE_ADMIN_API_BASE_URL || 'https://admin.scheduler.argws.com.br/api/v1').replace(/\/$/, '')
 const tab = ref<TabKey>('home')
 const email = ref('')
 const password = ref('')
@@ -30,7 +30,12 @@ const logged = computed(() => Boolean(token.value))
 const title = computed(() => tabs.find((item) => item.key === tab.value)?.label || 'Início')
 
 async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
-  const response = await fetch(`${apiBase}${path}`, { ...init, headers: { 'content-type': 'application/json', ...(token.value ? { authorization: `Bearer ${token.value}` } : {}), ...(init.headers || {}) } })
+  let response: Response
+  try {
+    response = await fetch(`${apiBase}${path}`, { ...init, headers: { 'content-type': 'application/json', ...(token.value ? { authorization: `Bearer ${token.value}` } : {}), ...(init.headers || {}) } })
+  } catch {
+    throw new Error('Não foi possível conectar à API. Verifique internet, SSL, Cloudflare/proxy e liberação CORS para o aplicativo instalado.')
+  }
   const body = await response.json().catch(() => ({})) as Partial<ApiEnvelope<T>> & { error?: { message?: string } }
   if (!response.ok) throw new Error(body.error?.message || 'Falha ao comunicar com o Control Plane')
   return body.data as T
