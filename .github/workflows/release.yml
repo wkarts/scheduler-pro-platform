@@ -73,7 +73,7 @@ jobs:
           if gh release view "$TAG" >/dev/null 2>&1; then
             gh release upload "$TAG" artifacts/* --clobber
           else
-            gh release create "$TAG" artifacts/* --target "$GITHUB_SHA" --title "Scheduler Pro ${TAG}" --notes "Release automática do Scheduler Pro. Artefatos pesados nativos são anexados pelos jobs pós-merge desta execução." --latest
+            gh release create "$TAG" artifacts/* --target "$GITHUB_SHA" --title "Scheduler Pro ${TAG}" --notes "Release automática do Scheduler Pro. APKs Android publicados aqui são debug assinados para instalação direta em homologação. AAB/Play Store não roda por padrão." --latest
           fi
       - uses: actions/upload-artifact@v4
         with:
@@ -156,8 +156,8 @@ jobs:
         shell: bash
         run: gh release upload "${{ needs.prepare-release.outputs.tag }}" artifacts/* --clobber
 
-  android-artifacts:
-    name: Android release ${{ matrix.app_name }}
+  android-debug-apks:
+    name: Android debug installable ${{ matrix.app_name }}
     needs: prepare-release
     runs-on: ubuntu-24.04
     timeout-minutes: 120
@@ -198,34 +198,35 @@ jobs:
       - name: Initialize Android project
         working-directory: ${{ matrix.app_path }}
         run: npm run tauri:android:init || true
-      - name: Build release APK
+      - name: Build debug signed APK for direct install
         working-directory: ${{ matrix.app_path }}
-        run: npm run tauri:android:apk
-      - name: Build unsigned AAB
-        working-directory: ${{ matrix.app_path }}
-        run: npm run tauri:android:aab
-      - name: Collect Android artifacts
+        run: npm run tauri:android:apk:debug
+      - name: Collect installable debug APK only
         shell: bash
         run: |
           set -euo pipefail
           TAG="${{ needs.prepare-release.outputs.tag }}"
           mkdir -p artifacts
-          find "${{ matrix.app_path }}/src-tauri" -type f \( -name '*.apk' -o -name '*.aab' \) -print0 | while IFS= read -r -d '' file; do
-            base="$(basename "$file")"
-            cp "$file" "artifacts/scheduler-pro-${{ matrix.app_name }}-${base%.*}-${TAG}.${base##*.}"
+          find "${{ matrix.app_path }}/src-tauri" -type f -name '*debug*.apk' -print0 | while IFS= read -r -d '' file; do
+            cp "$file" "artifacts/scheduler-pro-${{ matrix.app_name }}-android-${TAG}-debug-installable.apk"
           done
-          if [ -z "$(find artifacts -type f -print -quit)" ]; then
-            echo "Nenhum APK/AAB release foi gerado." >&2
-            find "${{ matrix.app_path }}/src-tauri" -maxdepth 7 -type f | sed -n '1,160p'
+          if [ -z "$(find artifacts -type f -name '*.apk' -print -quit)" ]; then
+            echo "Nenhum APK debug instalável foi gerado." >&2
+            find "${{ matrix.app_path }}/src-tauri" -maxdepth 8 -type f | sed -n '1,180p'
             exit 1
           fi
+          cat > "artifacts/scheduler-pro-${{ matrix.app_name }}-android-${TAG}-README.txt" <<TXT
+          APK debug assinado automaticamente pelo Gradle/Tauri para instalação direta em homologação.
+          Não é artefato Play Store. Não precisa de keystore de produção.
+          Para instalar: adb install -r scheduler-pro-${{ matrix.app_name }}-android-${TAG}-debug-installable.apk
+          TXT
           (cd artifacts && sha256sum * > "scheduler-pro-${{ matrix.app_name }}-android-${TAG}.sha256")
       - uses: actions/upload-artifact@v4
         with:
-          name: scheduler-pro-${{ matrix.app_name }}-android-${{ needs.prepare-release.outputs.tag }}
+          name: scheduler-pro-${{ matrix.app_name }}-android-debug-installable-${{ needs.prepare-release.outputs.tag }}
           path: artifacts/*
           if-no-files-found: error
-      - name: Attach Android artifacts to release
+      - name: Attach Android debug APK to release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         shell: bash
