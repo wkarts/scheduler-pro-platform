@@ -42,6 +42,8 @@ x-api-environment: &api-environment
   GITHUB_ACTIONS_API_BASE_URL: ${GITHUB_ACTIONS_API_BASE_URL:-https://api.github.com}
   GITHUB_ACTIONS_REPOSITORY: ${GITHUB_ACTIONS_REPOSITORY:-wkarts/scheduler-pro-platform}
   GITHUB_ACTIONS_TOKEN: ${GITHUB_ACTIONS_TOKEN:-}
+  LOG_AGENT_URL: http://scheduler-log-agent:8090
+  LOG_AGENT_ENABLED: ${LOG_AGENT_ENABLED:-true}
 
 services:
   scheduler-storage-init:
@@ -122,6 +124,25 @@ services:
       scheduler-migrate: {condition: service_completed_successfully}
     command: ["python", "-m", "app.platform_bootstrap"]
 
+  scheduler-log-agent:
+    image: ${IMAGE_REGISTRY:-ghcr.io}/${IMAGE_NAMESPACE:-wkarts/scheduler-pro-platform}/api:${APP_IMAGE_TAG:-latest}
+    pull_policy: always
+    restart: unless-stopped
+    environment:
+      APP_ENV: ${APP_ENV:-production}
+      APP_SECRET_KEY: ${APP_SECRET_KEY:?APP_SECRET_KEY obrigatória}
+      LOG_AGENT_COMPOSE_PROJECT: ${COMPOSE_PROJECT_NAME:-scheduler-pro}
+      DOCKER_SOCKET: /var/run/docker.sock
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    command: ["uvicorn", "app.log_agent:app", "--host", "0.0.0.0", "--port", "8090"]
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import hmac,hashlib,os,urllib.request; t=hmac.new(os.environ['APP_SECRET_KEY'].encode(),b'scheduler-pro-log-agent',hashlib.sha256).hexdigest(); r=urllib.request.Request('http://127.0.0.1:8090/health',headers={'X-Log-Agent-Token':t}); urllib.request.urlopen(r,timeout=3).read()\""]
+      interval: 20s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
   scheduler-api:
     image: ${IMAGE_REGISTRY:-ghcr.io}/${IMAGE_NAMESPACE:-wkarts/scheduler-pro-platform}/api:${APP_IMAGE_TAG:-latest}
     pull_policy: always
@@ -129,6 +150,7 @@ services:
     environment: *api-environment
     depends_on:
       scheduler-platform-bootstrap: {condition: service_completed_successfully}
+      scheduler-log-agent: {condition: service_healthy}
       scheduler-redis: {condition: service_healthy}
       scheduler-rabbitmq: {condition: service_healthy}
       scheduler-minio: {condition: service_healthy}
