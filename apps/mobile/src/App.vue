@@ -19,7 +19,7 @@ const tabs: QuickAction[] = [
 
 const manifest = ref<BrandingManifest | null>(null)
 const activeTab = ref<TabKey>('home')
-const apiUrl = ref(localStorage.getItem('scheduler_pro_mobile_api') || import.meta.env.VITE_API_BASE_URL || 'https://scheduler.argws.com.br/api/v1')
+const apiUrl = (import.meta.env.VITE_API_BASE_URL || 'https://scheduler.argws.com.br/api/v1').replace(/\/$/, '')
 const email = ref(localStorage.getItem('scheduler_pro_mobile_email') || '')
 const password = ref('')
 const token = ref(localStorage.getItem('scheduler_pro_mobile_access_token') || '')
@@ -37,18 +37,23 @@ const nextAppointment = computed(() => appointments.value[0] || null)
 const confirmed = computed(() => appointments.value.filter((item) => item.status === 'CONFIRMED').length)
 const pending = computed(() => appointments.value.filter((item) => item.status.includes('PENDING') || item.status.includes('AWAITING')).length)
 
-function endpoint(path: string): string { return `${apiUrl.value.replace(/\/$/, '')}${path}` }
+function endpoint(path: string): string { return `${apiUrl}${path}` }
 function setTab(tab: TabKey): void { activeTab.value = tab }
 
 async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
-  const response = await fetch(endpoint(path), {
-    ...init,
-    headers: {
-      'content-type': 'application/json',
-      ...(token.value ? { authorization: `Bearer ${token.value}` } : {}),
-      ...(init.headers || {}),
-    },
-  })
+  let response: Response
+  try {
+    response = await fetch(endpoint(path), {
+      ...init,
+      headers: {
+        'content-type': 'application/json',
+        ...(token.value ? { authorization: `Bearer ${token.value}` } : {}),
+        ...(init.headers || {}),
+      },
+    })
+  } catch {
+    throw new Error('Não foi possível conectar à API. Verifique internet, SSL, Cloudflare/proxy e liberação CORS para o aplicativo instalado.')
+  }
   const body = await response.json().catch(() => ({})) as Partial<ApiEnvelope<T>> & { error?: { message?: string } }
   if (!response.ok) throw new Error(body.error?.message || `Falha HTTP ${response.status}`)
   return body.data as T
@@ -83,7 +88,6 @@ async function login(): Promise<void> {
     localStorage.setItem('scheduler_pro_mobile_access_token', data.access_token)
     localStorage.setItem('scheduler_pro_mobile_refresh_token', data.refresh_token)
     localStorage.setItem('scheduler_pro_mobile_email', email.value)
-    localStorage.setItem('scheduler_pro_mobile_api', apiUrl.value)
     await syncAgenda()
   } catch (error) {
     authError.value = error instanceof Error ? error.message : 'Não foi possível entrar.'
@@ -124,7 +128,6 @@ onMounted(() => { void boot() })
       <p>{{ slogan }}</p>
     </section>
     <form class="mobile-card login-form" @submit.prevent="login">
-      <label>API<input v-model="apiUrl" autocomplete="url" /></label>
       <label>E-mail<input v-model="email" type="email" autocomplete="username" required /></label>
       <label>Senha<input v-model="password" type="password" autocomplete="current-password" required /></label>
       <p v-if="authError" class="form-error">{{ authError }}</p>
@@ -169,7 +172,7 @@ onMounted(() => { void boot() })
     </section>
 
     <section v-else class="mobile-content">
-      <article class="mobile-card module-detail"><p class="eyebrow">{{ activeTabLabel }}</p><h2>{{ activeTabLabel }} no aplicativo</h2><p>Superfície mobile preparada para operar o tenant autenticado, com API real, sessão local e visual responsivo.</p><ul><li>API: {{ apiUrl }}</li><li>Status: {{ apiState }}</li><li>Última sincronização: {{ lastSync }}</li></ul><button v-if="activeTab === 'perfil'" class="ghost-button" type="button" @click="logout">Sair</button></article>
+      <article class="mobile-card module-detail"><p class="eyebrow">{{ activeTabLabel }}</p><h2>{{ activeTabLabel }} no aplicativo</h2><p>Superfície mobile preparada para operar o tenant autenticado, com API real, sessão local e visual responsivo.</p><ul><li>Status: {{ apiState }}</li><li>Última sincronização: {{ lastSync }}</li></ul><button v-if="activeTab === 'perfil'" class="ghost-button" type="button" @click="logout">Sair</button></article>
     </section>
 
     <nav class="bottom-nav">

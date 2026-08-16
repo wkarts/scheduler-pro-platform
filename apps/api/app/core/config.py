@@ -113,6 +113,31 @@ class Settings(BaseSettings):
             return "http://localhost:5173"
         return f"https://{self.public_platform_domain}"
 
+    @property
+    def native_app_cors_origins(self) -> list[str]:
+        return [
+            "tauri://localhost",
+            "http://tauri.localhost",
+            "https://tauri.localhost",
+            "capacitor://localhost",
+            "ionic://localhost",
+            "http://localhost",
+            "https://localhost",
+            "http://127.0.0.1",
+            "https://127.0.0.1",
+        ]
+
+    @property
+    def effective_cors_allowed_origins(self) -> list[str]:
+        seen: set[str] = set()
+        origins: list[str] = []
+        for origin in [*self.cors_allowed_origins, *self.native_app_cors_origins]:
+            clean = origin.strip().rstrip("/")
+            if clean and clean not in seen:
+                seen.add(clean)
+                origins.append(clean)
+        return origins
+
     @staticmethod
     def _database_url(driver: str, user: str, password: str, host: str, port: int, database: str) -> str:
         return f"postgresql+{driver}://{quote_plus(user)}:{quote_plus(password)}@{host}:{port}/{database}"

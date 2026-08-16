@@ -17,7 +17,7 @@ const navItems: NavItem[] = [
   { key: 'profissionais', label: 'Profissionais', icon: '♙', hint: 'Equipe, escala e disponibilidade' },
   { key: 'whatsapp', label: 'WhatsApp', icon: '☏', hint: 'Conexão Evolution API' },
   { key: 'notificacoes', label: 'Notificações', icon: '✉', hint: 'Templates, lembretes e fila' },
-  { key: 'branding', label: 'Marca e app', icon: '◈', hint: 'White-label do tenant' },
+  { key: 'branding', label: 'Marca e app', icon: '◈', hint: 'Identidade do cliente' },
   { key: 'sync', label: 'Sincronização', icon: '⇄', hint: 'API, cache e status local' },
   { key: 'configuracoes', label: 'Configurações', icon: '⚙', hint: 'Preferências do aplicativo' },
 ]
@@ -25,7 +25,7 @@ const navItems: NavItem[] = [
 const manifest = ref<BrandingManifest | null>(null)
 const activeView = ref<ViewKey>('dashboard')
 const collapsed = ref(false)
-const apiUrl = ref(localStorage.getItem('scheduler_pro_desktop_api') || import.meta.env.VITE_API_BASE_URL || 'https://scheduler.argws.com.br/api/v1')
+const apiUrl = (import.meta.env.VITE_API_BASE_URL || 'https://scheduler.argws.com.br/api/v1').replace(/\/$/, '')
 const email = ref(localStorage.getItem('scheduler_pro_desktop_email') || '')
 const password = ref('')
 const token = ref(localStorage.getItem('scheduler_pro_desktop_access_token') || '')
@@ -37,7 +37,7 @@ const customers = ref<Customer[]>([])
 const lastSync = ref<string>('Nunca sincronizado')
 
 const appName = computed(() => manifest.value?.app.public_name || manifest.value?.app.name || 'Scheduler Pro Desktop')
-const slogan = computed(() => manifest.value?.app.slogan || 'Aplicativo gerencial para agenda, clientes, WhatsApp, notificações e white-label.')
+const slogan = computed(() => manifest.value?.app.slogan || 'Aplicativo gerencial para agenda, clientes, WhatsApp e notificações.')
 const logged = computed(() => Boolean(token.value))
 const activeNav = computed(() => navItems.find((item) => item.key === activeView.value) || navItems[0])
 const todayAppointments = computed(() => appointments.value.length)
@@ -45,17 +45,22 @@ const confirmedCount = computed(() => appointments.value.filter((item) => item.s
 const pendingCount = computed(() => appointments.value.filter((item) => item.status.includes('PENDING') || item.status.includes('AWAITING')).length)
 
 function setView(key: ViewKey): void { activeView.value = key }
-function endpoint(path: string): string { return `${apiUrl.value.replace(/\/$/, '')}${path}` }
+function endpoint(path: string): string { return `${apiUrl}${path}` }
 
 async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
-  const response = await fetch(endpoint(path), {
-    ...init,
-    headers: {
-      'content-type': 'application/json',
-      ...(token.value ? { authorization: `Bearer ${token.value}` } : {}),
-      ...(init.headers || {}),
-    },
-  })
+  let response: Response
+  try {
+    response = await fetch(endpoint(path), {
+      ...init,
+      headers: {
+        'content-type': 'application/json',
+        ...(token.value ? { authorization: `Bearer ${token.value}` } : {}),
+        ...(init.headers || {}),
+      },
+    })
+  } catch {
+    throw new Error('Não foi possível conectar à API. Verifique internet, SSL, Cloudflare/proxy e liberação CORS para o aplicativo instalado.')
+  }
   const body = await response.json().catch(() => ({})) as Partial<ApiEnvelope<T>> & { error?: { message?: string } }
   if (!response.ok) throw new Error(body.error?.message || `Falha HTTP ${response.status}`)
   return body.data as T
@@ -90,7 +95,6 @@ async function login(): Promise<void> {
     localStorage.setItem('scheduler_pro_desktop_access_token', data.access_token)
     localStorage.setItem('scheduler_pro_desktop_refresh_token', data.refresh_token)
     localStorage.setItem('scheduler_pro_desktop_email', email.value)
-    localStorage.setItem('scheduler_pro_desktop_api', apiUrl.value)
     await syncData()
   } catch (error) {
     authError.value = error instanceof Error ? error.message : 'Não foi possível entrar.'
@@ -134,13 +138,12 @@ onMounted(() => { void boot() })
       <div class="auth-proof">
         <span>Agenda transacional</span>
         <span>WhatsApp Evolution</span>
-        <span>White-label</span>
+        <span>Marca do cliente</span>
       </div>
     </div>
     <form class="login-panel" @submit.prevent="login">
       <p class="eyebrow">Conectar</p>
       <h2>Entrar no aplicativo</h2>
-      <label>API da plataforma<input v-model="apiUrl" autocomplete="url" placeholder="https://scheduler.argws.com.br/api/v1" /></label>
       <label>E-mail<input v-model="email" type="email" autocomplete="username" placeholder="admin@empresa.com.br" required /></label>
       <label>Senha<input v-model="password" type="password" autocomplete="current-password" required /></label>
       <p v-if="authError" class="form-error">{{ authError }}</p>
@@ -182,7 +185,7 @@ onMounted(() => { void boot() })
 
         <section v-else class="module-grid">
           <article class="module-card"><p class="eyebrow">{{ activeNav.label }}</p><h2>{{ activeNav.hint }}</h2><p>Este módulo está pronto como superfície nativa e usa os endpoints do tenant autenticado. A etapa seguinte é ligar CRUDs dedicados por recurso sem mudar a experiência visual.</p><button class="primary-action compact" type="button">Abrir fluxo</button></article>
-          <article class="module-card muted"><h3>Contexto sincronizado</h3><ul><li>API: {{ apiUrl }}</li><li>Status: {{ apiState }}</li><li>Última sync: {{ lastSync }}</li><li>Tenant: {{ manifest?.tenant?.slug || 'resolvido por hostname/API' }}</li></ul></article>
+          <article class="module-card muted"><h3>Contexto sincronizado</h3><ul><li>Status: {{ apiState }}</li><li>Última sync: {{ lastSync }}</li><li>Tenant: {{ manifest?.tenant?.slug || 'resolvido pela distribuição' }}</li></ul></article>
         </section>
       </main>
     </section>
