@@ -22,6 +22,7 @@ class AuthPrincipal:
     tenant_id: str | None
     permissions: frozenset[str]
     roles: frozenset[str] = frozenset()
+    tenant_ids: frozenset[str] = frozenset()
     is_super_admin: bool = False
 
 
