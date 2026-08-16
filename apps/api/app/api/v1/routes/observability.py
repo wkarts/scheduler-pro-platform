@@ -43,7 +43,7 @@ async def platform_logs(
     service = ObservabilityService(session)
     return success(
         await service.list_platform_logs(
-            tenant_id=tenant,
+            tenant_filter=tenant,
             source=source,
             level=level,
             integration=integration,
