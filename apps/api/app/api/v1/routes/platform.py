@@ -15,7 +15,7 @@ router = APIRouter()
 
 class TenantCreateRequest(BaseModel):
     name: str = Field(min_length=2, max_length=160)
-    slug: str = Field(min_length=2, max_length=120, pattern=r"^[a-z0-9-]+$")
+    slug: str | None = Field(default=None, min_length=2, max_length=80, pattern=r"^[a-z0-9-]+$")
     admin_email: str
 
 
@@ -139,8 +139,6 @@ async def dashboard(
                   (select count(*) from domains where status <> 'ACTIVE') as domains_pending,
                   (select count(*) from build_jobs) as builds,
                   (select count(*) from build_artifacts) as build_artifacts,
-                  (select count(*) from build_profiles) as build_profiles,
-                  (select count(*) from tenant_branding_profiles) as branding_profiles,
                   (select count(*) from platform_users where is_active = true) as platform_users
                 """
             )
@@ -193,7 +191,6 @@ async def dashboard(
                 "platform": "online",
                 "queue": "configured",
                 "storage": "configured",
-                "cloudflare": "dry-run" if not totals else "configured",
                 "release": "available",
             },
             "recent_tenants": [dict(row) for row in recent_tenants],

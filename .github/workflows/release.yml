@@ -17,11 +17,14 @@ permissions:
 
 env:
   IMAGE_NAMESPACE: ghcr.io/${{ github.repository }}
+  NODE_VERSION: '24'
 
 jobs:
-  release:
-    name: Publish tagged GitHub Release with downloadable assets
-    runs-on: ubuntu-latest
+  prepare-release:
+    name: Publish release and web/deploy artifacts
+    runs-on: ubuntu-24.04
+    outputs:
+      tag: ${{ steps.version.outputs.tag }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -29,7 +32,8 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: '22'
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
 
       - name: Resolve release tag
         id: version
@@ -37,6 +41,7 @@ jobs:
           INPUT_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || '' }}
         shell: bash
         run: |
+          set -euo pipefail
           if [ -n "${INPUT_TAG}" ]; then
             TAG="${INPUT_TAG}"
           else
@@ -53,14 +58,13 @@ jobs:
           npm --workspace apps/web run build
           npm --workspace apps/admin run build
 
-      - name: Pack release artifacts
+      - name: Pack web/admin/deploy/source artifacts
         shell: bash
         run: |
+          set -euo pipefail
           mkdir -p artifacts
           tar -C apps/web/dist -czf "artifacts/scheduler-pro-web-${SCHEDULER_PRO_RELEASE_TAG}.tar.gz" .
           tar -C apps/admin/dist -czf "artifacts/scheduler-pro-admin-${SCHEDULER_PRO_RELEASE_TAG}.tar.gz" .
-          tar -C apps/desktop -czf "artifacts/scheduler-pro-desktop-source-${SCHEDULER_PRO_RELEASE_TAG}.tar.gz" .
-          tar -C apps/mobile -czf "artifacts/scheduler-pro-mobile-source-${SCHEDULER_PRO_RELEASE_TAG}.tar.gz" .
           tar -C deployments/cloudpanel -czf "artifacts/scheduler-pro-cloudpanel-${SCHEDULER_PRO_RELEASE_TAG}.tar.gz" .
           tar -C deployments/dockge -czf "artifacts/scheduler-pro-dockge-${SCHEDULER_PRO_RELEASE_TAG}.tar.gz" .
           git archive --format=tar.gz --output="artifacts/scheduler-pro-source-${SCHEDULER_PRO_RELEASE_TAG}.tar.gz" HEAD
@@ -69,6 +73,13 @@ jobs:
             "name": "Scheduler Pro",
             "tag": "${SCHEDULER_PRO_RELEASE_TAG}",
             "commit": "${GITHUB_SHA}",
+            "origin_port": 18080,
+            "domains": {
+              "platform": "scheduler.argws.com.br",
+              "admin": "admin.scheduler.argws.com.br",
+              "api": "api.scheduler.argws.com.br",
+              "tenant_pattern": "<codigo-curto>.scheduler.argws.com.br"
+            },
             "images": {
               "python_base": "${IMAGE_NAMESPACE}/python-base:latest",
               "api": "${IMAGE_NAMESPACE}/api:latest",
@@ -76,25 +87,17 @@ jobs:
               "web": "${IMAGE_NAMESPACE}/web:latest",
               "admin": "${IMAGE_NAMESPACE}/admin:latest",
               "proxy": "${IMAGE_NAMESPACE}/proxy:latest"
-            },
-            "artifacts": [
-              "scheduler-pro-web-${SCHEDULER_PRO_RELEASE_TAG}.tar.gz",
-              "scheduler-pro-admin-${SCHEDULER_PRO_RELEASE_TAG}.tar.gz",
-              "scheduler-pro-desktop-source-${SCHEDULER_PRO_RELEASE_TAG}.tar.gz",
-              "scheduler-pro-mobile-source-${SCHEDULER_PRO_RELEASE_TAG}.tar.gz",
-              "scheduler-pro-cloudpanel-${SCHEDULER_PRO_RELEASE_TAG}.tar.gz",
-              "scheduler-pro-dockge-${SCHEDULER_PRO_RELEASE_TAG}.tar.gz",
-              "scheduler-pro-source-${SCHEDULER_PRO_RELEASE_TAG}.tar.gz"
-            ]
+            }
           }
           JSON
           (cd artifacts && sha256sum * > SHA256SUMS.txt)
 
-      - name: Create tag and GitHub Release with assets
+      - name: Create or update GitHub Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         shell: bash
         run: |
+          set -euo pipefail
           TAG="${SCHEDULER_PRO_RELEASE_TAG}"
           if gh release view "$TAG" >/dev/null 2>&1; then
             gh release upload "$TAG" artifacts/* --clobber
@@ -102,12 +105,190 @@ jobs:
             gh release create "$TAG" artifacts/* \
               --target "$GITHUB_SHA" \
               --title "Scheduler Pro ${TAG}" \
-              --notes "Release automática do Scheduler Pro. Inclui PWAs web/admin, pacotes CloudPanel/Dockge, source package, manifesto de distribuição e checksums. Os workflows Desktop Artifacts e Mobile Artifacts adicionam binários/artefatos nativos quando finalizarem." \
+              --notes "Release automática do Scheduler Pro. Inclui PWAs web/admin, CloudPanel/Dockge, source, manifesto e checksums. Os jobs desktop/android/ios desta mesma execução anexam os binários nativos quando concluírem." \
               --latest
           fi
 
-      - name: Upload workflow artifact mirror
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         with:
           name: scheduler-pro-release-${{ steps.version.outputs.tag }}
           path: artifacts/*
+          if-no-files-found: error
+
+  desktop-binaries:
+    name: Desktop ${{ matrix.label }} binary
+    needs: prepare-release
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-24.04
+            label: linux
+          - os: windows-latest
+            label: windows
+          - os: macos-15
+            label: macos
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Linux Tauri dependencies
+        if: matrix.label == 'linux'
+        run: sudo apt-get update && sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf
+      - name: Install JS deps
+        run: npm install
+      - name: Build Tauri desktop unsigned
+        working-directory: apps/desktop
+        run: npm run tauri:build
+      - name: Collect desktop artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          TAG="${{ needs.prepare-release.outputs.tag }}"
+          mkdir -p artifacts desktop-collect
+          find apps/desktop/src-tauri/target/release -type f \( \
+            -name 'scheduler_pro_desktop' -o \
+            -name 'scheduler_pro_desktop.exe' -o \
+            -name '*.AppImage' -o \
+            -name '*.deb' -o \
+            -name '*.rpm' -o \
+            -name '*.dmg' -o \
+            -name '*.msi' -o \
+            -name '*.exe' \
+          \) -print0 | while IFS= read -r -d '' file; do cp "$file" desktop-collect/; done
+          if [ ! -s "$(find desktop-collect -type f -print -quit)" ]; then
+            echo "Nenhum binário desktop foi encontrado." >&2
+            find apps/desktop/src-tauri/target -maxdepth 5 -type f | sed -n '1,120p'
+            exit 1
+          fi
+          tar -C desktop-collect -czf "artifacts/scheduler-pro-desktop-${{ matrix.label }}-${TAG}.tar.gz" .
+          (cd artifacts && sha256sum * > "scheduler-pro-desktop-${{ matrix.label }}-${TAG}.sha256")
+      - uses: actions/upload-artifact@v4
+        with:
+          name: scheduler-pro-desktop-${{ matrix.label }}-${{ needs.prepare-release.outputs.tag }}
+          path: artifacts/*
+          if-no-files-found: error
+      - name: Attach desktop artifact to release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: gh release upload "${{ needs.prepare-release.outputs.tag }}" artifacts/* --clobber
+
+  android-artifacts:
+    name: Android APK/AAB unsigned
+    needs: prepare-release
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android,armv7-linux-androideabi,x86_64-linux-android,i686-linux-android
+      - name: Install Android SDK/NDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          sdk_root="${ANDROID_SDK_ROOT:-${ANDROID_HOME}}"
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platform-tools" "platforms;android-35" "build-tools;35.0.0" "ndk;27.2.12479018"
+          echo "ANDROID_NDK_HOME=${sdk_root}/ndk/27.2.12479018" >> "$GITHUB_ENV"
+          echo "NDK_HOME=${sdk_root}/ndk/27.2.12479018" >> "$GITHUB_ENV"
+      - name: Install JS deps
+        run: npm install
+      - name: Initialize Android project
+        working-directory: apps/mobile
+        run: npm run tauri:android:init || true
+      - name: Build debug APK
+        working-directory: apps/mobile
+        run: npm run tauri:android:apk
+      - name: Build unsigned AAB
+        working-directory: apps/mobile
+        run: npm run tauri:android:aab
+      - name: Collect Android artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          TAG="${{ needs.prepare-release.outputs.tag }}"
+          mkdir -p artifacts
+          find apps/mobile/src-tauri -type f \( -name '*.apk' -o -name '*.aab' \) -print0 | while IFS= read -r -d '' file; do
+            base="$(basename "$file")"
+            cp "$file" "artifacts/scheduler-pro-${base%.*}-${TAG}.${base##*.}"
+          done
+          if [ ! -s "$(find artifacts -type f -print -quit)" ]; then
+            echo "Nenhum APK/AAB foi gerado." >&2
+            find apps/mobile/src-tauri -maxdepth 7 -type f | sed -n '1,160p'
+            exit 1
+          fi
+          (cd artifacts && sha256sum * > "scheduler-pro-android-${TAG}.sha256")
+      - uses: actions/upload-artifact@v4
+        with:
+          name: scheduler-pro-android-${{ needs.prepare-release.outputs.tag }}
+          path: artifacts/*
+          if-no-files-found: error
+      - name: Attach Android artifacts to release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: gh release upload "${{ needs.prepare-release.outputs.tag }}" artifacts/* --clobber
+
+  ios-artifacts:
+    name: iOS unsigned IPA
+    needs: prepare-release
+    runs-on: macos-15
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-ios
+      - name: Install JS deps
+        run: npm install
+      - name: Initialize iOS project
+        working-directory: apps/mobile
+        run: npm run tauri:ios:init || true
+      - name: Build iOS unsigned app bundle
+        working-directory: apps/mobile
+        run: npm run tauri:ios:build
+      - name: Package unsigned IPA
+        shell: bash
+        run: |
+          set -euo pipefail
+          TAG="${{ needs.prepare-release.outputs.tag }}"
+          mkdir -p artifacts ipa-work/Payload
+          app_path="$(find apps/mobile/src-tauri -type d -name '*.app' -print -quit)"
+          if [ -z "${app_path}" ]; then
+            echo "Nenhum .app iOS foi gerado." >&2
+            find apps/mobile/src-tauri -maxdepth 8 -type d | sed -n '1,160p'
+            exit 1
+          fi
+          cp -R "$app_path" ipa-work/Payload/
+          (cd ipa-work && zip -qry "../artifacts/scheduler-pro-ios-arm64-${TAG}-unsigned.ipa" Payload)
+          (cd artifacts && shasum -a 256 * > "scheduler-pro-ios-${TAG}.sha256")
+      - uses: actions/upload-artifact@v4
+        with:
+          name: scheduler-pro-ios-${{ needs.prepare-release.outputs.tag }}
+          path: artifacts/*
+          if-no-files-found: error
+      - name: Attach iOS artifact to release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: gh release upload "${{ needs.prepare-release.outputs.tag }}" artifacts/* --clobber
