@@ -36,6 +36,7 @@ x-api-environment: &api-environment
   WHATSAPP_PROVIDER: ${WHATSAPP_PROVIDER:-evolution}
   EVOLUTION_API_URL: ${EVOLUTION_API_URL:-}
   EVOLUTION_API_TOKEN: ${EVOLUTION_API_TOKEN:-}
+  EVOLUTION_INSTANCE_NAME: ${EVOLUTION_INSTANCE_NAME:-scheduler-pro}
 
 services:
   scheduler-storage-init:
@@ -44,10 +45,7 @@ services:
     user: "0:0"
     volumes:
       - ${SCHEDULER_PRO_DATA_ROOT:-./scheduler-pro-data}:/data
-    command:
-      - /bin/sh
-      - -ec
-      - mkdir -p /data/postgres /data/redis /data/rabbitmq /data/minio /data/app /data/backups && chmod 0755 /data && chmod 0777 /data/postgres /data/redis /data/rabbitmq /data/minio
+    command: ["/bin/sh", "-ec", "mkdir -p /data/postgres /data/redis /data/rabbitmq /data/minio /data/app /data/backups /data/celery && chmod 0755 /data && chmod 0777 /data/postgres /data/redis /data/rabbitmq /data/minio /data/celery"]
 
   scheduler-postgres:
     image: ${POSTGRES_IMAGE:-postgres:17-alpine}
@@ -175,6 +173,18 @@ services:
       scheduler-api:
         condition: service_healthy
     command: ["celery", "-A", "app.workers.celery_app.celery_app", "worker", "-Q", "whatsapp,notifications,webhooks", "--loglevel=INFO", "--concurrency=2", "--without-gossip", "--without-mingle", "--without-heartbeat"]
+
+  scheduler-beat:
+    image: ${IMAGE_REGISTRY:-ghcr.io}/${IMAGE_NAMESPACE:-wkarts/scheduler-pro-platform}/worker:${APP_IMAGE_TAG:-latest}
+    pull_policy: always
+    restart: unless-stopped
+    environment: *api-environment
+    depends_on:
+      scheduler-api:
+        condition: service_healthy
+    volumes:
+      - ${SCHEDULER_PRO_DATA_ROOT:-./scheduler-pro-data}/celery:/var/lib/celery
+    command: ["celery", "-A", "app.workers.celery_app.celery_app", "beat", "--loglevel=INFO", "--schedule=/var/lib/celery/celerybeat-schedule"]
 
   scheduler-web:
     image: ${IMAGE_REGISTRY:-ghcr.io}/${IMAGE_NAMESPACE:-wkarts/scheduler-pro-platform}/web:${APP_IMAGE_TAG:-latest}
