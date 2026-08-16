@@ -1,7 +1,9 @@
 name: Mobile Artifacts
 
 on:
-  pull_request:
+  push:
+    branches:
+      - main
     paths:
       - 'apps/mobile/**'
       - 'package.json'
