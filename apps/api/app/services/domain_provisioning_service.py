@@ -52,14 +52,30 @@ class DomainProvisioningService:
             )
             self.session.add(domain)
             await self.session.flush()
-        result = await self.cloudflare.create_dns_record(
-            hostname,
-            settings.tenant_domain_target,
-            record_type=settings.cloudflare_temporary_record_type,
-            proxied=True,
-        )
-        domain.status = "ACTIVE" if result.get("dry_run") else "CONFIGURING"
-        domain.validation = {"mode": "temporary", "cloudflare": result}
+
+        try:
+            result = await self.cloudflare.create_dns_record(
+                hostname,
+                settings.tenant_domain_target,
+                record_type=settings.cloudflare_temporary_record_type,
+                proxied=True,
+            )
+            domain.status = "ACTIVE" if result.get("dry_run") else "CONFIGURING"
+            domain.validation = {"mode": "temporary", "cloudflare": result}
+        except APIError as exc:
+            # Provisionamento de domínio temporário deve ser idempotente e seguro para o painel.
+            # A falha Cloudflare não pode virar 502 cru na tela administrativa; o operador precisa
+            # ver o domínio persistido e o diagnóstico para reprocessar/checar depois.
+            domain.status = "PENDING_VALIDATION"
+            domain.validation = {
+                "mode": "temporary",
+                "cloudflare_error": {
+                    "code": exc.code,
+                    "message": exc.message,
+                    "details": exc.details,
+                },
+                "next_action": "check_domain_or_retry_dns",
+            }
         await self.session.commit()
         return self.serialize(domain)
 
