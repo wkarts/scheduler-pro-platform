@@ -6,15 +6,29 @@ on:
       - main
     paths:
       - 'apps/desktop/**'
+      - 'apps/admin-desktop/**'
+      - 'scripts/build/configure-desktop-webview.mjs'
       - 'package.json'
       - 'package-lock.json'
       - '.github/workflows/desktop-artifacts.yml'
   workflow_dispatch:
     inputs:
-      build_profile:
-        description: 'Build profile id or slug'
+      distribution_slug:
+        description: 'Identificador da distribuição/tenant usado no nome do artefato'
         required: false
-        default: 'default'
+        default: 'platform'
+      client_web_url:
+        description: 'URL HTTPS carregada pelo Desktop cliente'
+        required: false
+        default: 'https://scheduler.argws.com.br'
+      admin_web_url:
+        description: 'URL HTTPS carregada pelo Desktop administrativo'
+        required: false
+        default: 'https://admin.scheduler.argws.com.br'
+      client_product_name:
+        description: 'Nome visível do Desktop cliente'
+        required: false
+        default: 'Scheduler Pro'
   release:
     types: [published]
 
@@ -24,22 +38,48 @@ permissions:
 
 jobs:
   tauri-desktop:
+    timeout-minutes: 120
     strategy:
       fail-fast: false
       matrix:
         include:
-          - os: ubuntu-latest
+          - os: ubuntu-24.04
             label: linux
+            app_path: apps/desktop
+            app_name: client
+            bundles: deb
           - os: windows-latest
             label: windows
-          - os: macos-latest
+            app_path: apps/desktop
+            app_name: client
+            bundles: msi,nsis
+          - os: macos-15
             label: macos
+            app_path: apps/desktop
+            app_name: client
+            bundles: dmg
+          - os: ubuntu-24.04
+            label: linux
+            app_path: apps/admin-desktop
+            app_name: admin
+            bundles: deb
+          - os: windows-latest
+            label: windows
+            app_path: apps/admin-desktop
+            app_name: admin
+            bundles: msi,nsis
+          - os: macos-15
+            label: macos
+            app_path: apps/admin-desktop
+            app_name: admin
+            bundles: dmg
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: '22'
+          node-version: '24'
+          cache: npm
       - uses: dtolnay/rust-toolchain@stable
       - name: Linux dependencies
         if: matrix.label == 'linux'
@@ -47,116 +87,49 @@ jobs:
       - name: Install JS deps
         run: npm install
       - name: Ensure Tauri icons
-        working-directory: apps/desktop
+        run: node scripts/build/ensure-tauri-icons.mjs ${{ matrix.app_path }}/src-tauri/icons --ico
+      - name: Configure remote web application
         shell: bash
+        env:
+          INPUT_SLUG: ${{ github.event_name == 'workflow_dispatch' && inputs.distribution_slug || 'platform' }}
+          INPUT_CLIENT_URL: ${{ github.event_name == 'workflow_dispatch' && inputs.client_web_url || 'https://scheduler.argws.com.br' }}
+          INPUT_ADMIN_URL: ${{ github.event_name == 'workflow_dispatch' && inputs.admin_web_url || 'https://admin.scheduler.argws.com.br' }}
+          INPUT_CLIENT_NAME: ${{ github.event_name == 'workflow_dispatch' && inputs.client_product_name || 'Scheduler Pro' }}
         run: |
           set -euo pipefail
-          mkdir -p src-tauri/icons
-          node <<'NODE'
-          const fs = require('fs');
-          const zlib = require('zlib');
-          const table = new Uint32Array(256);
-          for (let n = 0; n < 256; n++) {
-            let c = n;
-            for (let k = 0; k < 8; k++) c = (c & 1) ? (0xedb88320 ^ (c >>> 1)) : (c >>> 1);
-            table[n] = c >>> 0;
-          }
-          function crc32(buf) {
-            let c = 0xffffffff;
-            for (const b of buf) c = table[(c ^ b) & 0xff] ^ (c >>> 8);
-            return (c ^ 0xffffffff) >>> 0;
-          }
-          function chunk(type, data) {
-            const t = Buffer.from(type);
-            const len = Buffer.alloc(4);
-            len.writeUInt32BE(data.length);
-            const crc = Buffer.alloc(4);
-            crc.writeUInt32BE(crc32(Buffer.concat([t, data])));
-            return Buffer.concat([len, t, data, crc]);
-          }
-          function makePng(w, h) {
-            const rows = [];
-            for (let y = 0; y < h; y++) {
-              const row = Buffer.alloc(1 + w * 4);
-              row[0] = 0;
-              for (let x = 0; x < w; x++) {
-                const i = 1 + x * 4;
-                const grad = Math.round(48 + 80 * (x / w));
-                row[i] = 20;
-                row[i + 1] = grad;
-                row[i + 2] = 220;
-                row[i + 3] = 255;
-                const s1 = x > w * 0.28 && x < w * 0.72 && y > h * 0.23 && y < h * 0.34;
-                const s2 = x > w * 0.28 && x < w * 0.72 && y > h * 0.45 && y < h * 0.56;
-                const s3 = x > w * 0.28 && x < w * 0.72 && y > h * 0.67 && y < h * 0.78;
-                const s4 = x > w * 0.28 && x < w * 0.40 && y > h * 0.23 && y < h * 0.56;
-                const s5 = x > w * 0.60 && x < w * 0.72 && y > h * 0.45 && y < h * 0.78;
-                if (s1 || s2 || s3 || s4 || s5) {
-                  row[i] = 255;
-                  row[i + 1] = 255;
-                  row[i + 2] = 255;
-                }
-              }
-              rows.push(row);
-            }
-            const ihdr = Buffer.alloc(13);
-            ihdr.writeUInt32BE(w, 0);
-            ihdr.writeUInt32BE(h, 4);
-            ihdr[8] = 8;
-            ihdr[9] = 6;
-            ihdr[10] = 0;
-            ihdr[11] = 0;
-            ihdr[12] = 0;
-            return Buffer.concat([
-              Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]),
-              chunk('IHDR', ihdr),
-              chunk('IDAT', zlib.deflateSync(Buffer.concat(rows))),
-              chunk('IEND', Buffer.alloc(0)),
-            ]);
-          }
-          const png256 = makePng(256, 256);
-          fs.writeFileSync('src-tauri/icons/icon.png', png256);
-          const header = Buffer.alloc(6);
-          header.writeUInt16LE(0, 0);
-          header.writeUInt16LE(1, 2);
-          header.writeUInt16LE(1, 4);
-          const entry = Buffer.alloc(16);
-          entry[0] = 0;
-          entry[1] = 0;
-          entry[2] = 0;
-          entry[3] = 0;
-          entry.writeUInt16LE(1, 4);
-          entry.writeUInt16LE(32, 6);
-          entry.writeUInt32LE(png256.length, 8);
-          entry.writeUInt32LE(header.length + entry.length, 12);
-          fs.writeFileSync('src-tauri/icons/icon.ico', Buffer.concat([header, entry, png256]));
-          NODE
-          test -s src-tauri/icons/icon.png
-          test -s src-tauri/icons/icon.ico
-      - name: Typecheck desktop frontend
-        run: npm --workspace apps/desktop run typecheck
-      - name: Build Tauri desktop unsigned
-        working-directory: apps/desktop
-        run: npm run tauri:build
-      - name: Collect desktop binaries
+          slug="$(printf '%s' "$INPUT_SLUG" | tr '[:upper:]' '[:lower:]' | tr -cd 'a-z0-9-')"
+          slug="${slug:-platform}"
+          if [ "${{ matrix.app_name }}" = "client" ]; then
+            web_url="$INPUT_CLIENT_URL"
+            product_name="$INPUT_CLIENT_NAME"
+            if [ "$slug" = "platform" ]; then identifier="br.com.argws.schedulerpro"; else identifier="br.com.argws.schedulerpro.$(printf '%s' "$slug" | tr -d '-')"; fi
+          else
+            web_url="$INPUT_ADMIN_URL"
+            product_name="Scheduler Pro Admin"
+            identifier="br.com.argws.schedulerpro.admin"
+          fi
+          node scripts/build/configure-desktop-webview.mjs "${{ matrix.app_path }}" "$web_url" "$product_name" "$identifier"
+          echo "DISTRIBUTION_SLUG=$slug" >> "$GITHUB_ENV"
+      - name: Build installable remote-web desktop
+        working-directory: ${{ matrix.app_path }}
+        run: npm run tauri:build -- --config src-tauri/tauri.generated.conf.json --bundles ${{ matrix.bundles }}
+      - name: Collect installers only
         shell: bash
         run: |
           set -euo pipefail
           suffix="${{ github.event.release.tag_name || github.sha }}"
-          mkdir -p artifacts/stage
-          if [ -d apps/desktop/src-tauri/target/release/bundle ]; then
-            cp -R apps/desktop/src-tauri/target/release/bundle artifacts/stage/bundle
-          fi
-          find apps/desktop/src-tauri/target/release -maxdepth 1 -type f \( -perm -111 -o -name '*.exe' \) -print -exec cp {} artifacts/stage/ \; || true
-          if [ ! -d artifacts/stage/bundle ] && [ -z "$(find artifacts/stage -type f -print -quit)" ]; then
-            echo 'Nenhum binário desktop foi gerado.' >&2
+          mkdir -p artifacts/installers artifacts/output
+          find "${{ matrix.app_path }}/src-tauri/target/release/bundle" -type f \( -name '*.msi' -o -name '*setup*.exe' -o -name '*Setup*.exe' -o -name '*.dmg' -o -name '*.deb' \) -print0 | while IFS= read -r -d '' file; do cp "$file" artifacts/installers/; done
+          if [ -z "$(find artifacts/installers -type f -print -quit)" ]; then
+            echo 'Nenhum instalador final foi gerado. Portables não são aceitos.' >&2
             exit 1
           fi
-          tar -czf "artifacts/scheduler-pro-desktop-${{ matrix.label }}-${suffix}.tar.gz" -C artifacts/stage .
+          tar -C artifacts/installers -czf "artifacts/output/scheduler-pro-${{ matrix.app_name }}-desktop-${{ matrix.label }}-${DISTRIBUTION_SLUG}-${suffix}.tar.gz" .
+          (cd artifacts/output && sha256sum * > "scheduler-pro-${{ matrix.app_name }}-desktop-${{ matrix.label }}-${DISTRIBUTION_SLUG}-${suffix}.sha256")
       - uses: actions/upload-artifact@v4
         with:
-          name: scheduler-pro-desktop-${{ matrix.label }}-${{ github.event.release.tag_name || github.sha }}
-          path: artifacts/*.tar.gz
+          name: scheduler-pro-${{ matrix.app_name }}-desktop-${{ matrix.label }}-${{ github.event.release.tag_name || github.sha }}
+          path: artifacts/output/*
           if-no-files-found: error
           retention-days: 30
       - name: Attach desktop artifact to release
@@ -164,4 +137,4 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         shell: bash
-        run: gh release upload "${{ github.event.release.tag_name }}" artifacts/* --clobber
+        run: gh release upload "${{ github.event.release.tag_name }}" artifacts/output/* --clobber
