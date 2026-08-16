@@ -2,8 +2,8 @@ from pathlib import Path
 
 from alembic import op
 
-revision = "0003_scheduler_engine"
-down_revision = "0002_foundation_auth_rbac"
+revision = "tenant_0003_scheduler_engine"
+down_revision = "tenant_0002"
 branch_labels = None
 depends_on = None
 
