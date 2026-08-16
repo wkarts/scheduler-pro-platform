@@ -66,65 +66,11 @@ async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
   return body.data as T
 }
 
-async function boot(): Promise<void> {
-  manifest.value = await loadBrandingManifest()
-  applyBranding(manifest.value)
-  await checkApi()
-  if (token.value) await syncData()
-}
-
-async function checkApi(): Promise<void> {
-  apiState.value = 'checking'
-  try {
-    await fetch(endpoint('/health/ready'), { headers: { accept: 'application/json' } })
-    apiState.value = 'online'
-  } catch {
-    apiState.value = 'offline'
-  }
-}
-
-async function login(): Promise<void> {
-  loading.value = true
-  authError.value = ''
-  try {
-    const data = await api<{ access_token: string; refresh_token: string }>('/auth/login', {
-      method: 'POST',
-      body: JSON.stringify({ email: email.value, password: password.value }),
-    })
-    token.value = data.access_token
-    localStorage.setItem('scheduler_pro_desktop_access_token', data.access_token)
-    localStorage.setItem('scheduler_pro_desktop_refresh_token', data.refresh_token)
-    localStorage.setItem('scheduler_pro_desktop_email', email.value)
-    await syncData()
-  } catch (error) {
-    authError.value = error instanceof Error ? error.message : 'Não foi possível entrar.'
-  } finally {
-    loading.value = false
-  }
-}
-
-function logout(): void {
-  token.value = ''
-  appointments.value = []
-  customers.value = []
-  localStorage.removeItem('scheduler_pro_desktop_access_token')
-  localStorage.removeItem('scheduler_pro_desktop_refresh_token')
-}
-
-async function syncData(): Promise<void> {
-  loading.value = true
-  try {
-    appointments.value = await api<Appointment[]>('/appointments')
-    try { customers.value = await api<Customer[]>('/customers') } catch { customers.value = [] }
-    apiState.value = 'online'
-    lastSync.value = new Date().toLocaleString()
-  } catch {
-    apiState.value = 'offline'
-  } finally {
-    loading.value = false
-  }
-}
-
+async function boot(): Promise<void> { manifest.value = await loadBrandingManifest(); applyBranding(manifest.value); await checkApi(); if (token.value) await syncData() }
+async function checkApi(): Promise<void> { apiState.value = 'checking'; try { await fetch(endpoint('/health/ready'), { headers: { accept: 'application/json' } }); apiState.value = 'online' } catch { apiState.value = 'offline' } }
+async function login(): Promise<void> { loading.value = true; authError.value = ''; try { const data = await api<{ access_token: string; refresh_token: string }>('/auth/login', { method: 'POST', body: JSON.stringify({ email: email.value, password: password.value }) }); token.value = data.access_token; localStorage.setItem('scheduler_pro_desktop_access_token', data.access_token); localStorage.setItem('scheduler_pro_desktop_refresh_token', data.refresh_token); localStorage.setItem('scheduler_pro_desktop_email', email.value); await syncData() } catch (error) { authError.value = error instanceof Error ? error.message : 'Não foi possível entrar.' } finally { loading.value = false } }
+function logout(): void { token.value = ''; appointments.value = []; customers.value = []; localStorage.removeItem('scheduler_pro_desktop_access_token'); localStorage.removeItem('scheduler_pro_desktop_refresh_token') }
+async function syncData(): Promise<void> { loading.value = true; try { appointments.value = await api<Appointment[]>('/appointments'); try { customers.value = await api<Customer[]>('/customers') } catch { customers.value = [] }; apiState.value = 'online'; lastSync.value = new Date().toLocaleString() } catch { apiState.value = 'offline' } finally { loading.value = false } }
 onMounted(() => { void boot() })
 </script>
 
@@ -135,58 +81,26 @@ onMounted(() => { void boot() })
       <p class="eyebrow">Aplicativo desktop</p>
       <h1>Gestão da agenda com operação local, API remota e experiência profissional.</h1>
       <p>{{ slogan }}</p>
-      <div class="auth-proof">
-        <span>Agenda transacional</span>
-        <span>WhatsApp Evolution</span>
-        <span>Marca do cliente</span>
-      </div>
+      <div class="auth-proof"><span>Agenda transacional</span><span>WhatsApp Evolution</span><span>Marca do cliente</span></div>
     </div>
     <form class="login-panel" @submit.prevent="login">
-      <p class="eyebrow">Conectar</p>
-      <h2>Entrar no aplicativo</h2>
+      <p class="eyebrow">Conectar</p><h2>Entrar no aplicativo</h2>
       <label>E-mail<input v-model="email" type="email" autocomplete="username" placeholder="admin@empresa.com.br" required /></label>
       <label>Senha<input v-model="password" type="password" autocomplete="current-password" required /></label>
       <p v-if="authError" class="form-error">{{ authError }}</p>
       <button class="primary-action" type="submit" :disabled="loading">{{ loading ? 'Conectando...' : 'Entrar e sincronizar' }}</button>
-      <button class="secondary-action" type="button" @click="checkApi">Testar API</button>
+      <button class="secondary-action" type="button" @click="checkApi">Testar conexão</button>
       <small :class="['api-dot', apiState]">{{ apiState === 'online' ? 'API online' : apiState === 'checking' ? 'verificando API' : 'API offline' }}</small>
     </form>
   </section>
 
   <div v-else class="desktop-shell">
-    <aside class="rail" :class="{ collapsed }">
-      <button class="collapse-button" type="button" @click="collapsed = !collapsed">{{ collapsed ? '›' : '‹' }}</button>
-      <div class="brand-block"><div class="brand-icon">SP</div><div><strong>{{ appName }}</strong><small>{{ slogan }}</small></div></div>
-      <nav>
-        <button v-for="item in navItems" :key="item.key" type="button" :class="['nav-button', { active: activeView === item.key }]" @click="setView(item.key)">
-          <span>{{ item.icon }}</span><div><strong>{{ item.label }}</strong><small>{{ item.hint }}</small></div>
-        </button>
-      </nav>
-      <div class="rail-footer"><button class="nav-button" type="button" @click="logout"><span>⇥</span><div><strong>Sair</strong><small>Encerrar sessão local</small></div></button></div>
-    </aside>
-
-    <section class="workspace">
-      <header class="workspace-topbar">
-        <div><p class="eyebrow">{{ activeNav.label }}</p><h1>{{ activeNav.hint }}</h1></div>
-        <div class="top-actions"><span :class="['api-chip', apiState]">{{ apiState }}</span><button class="secondary-action" type="button" @click="syncData">Sincronizar</button></div>
-      </header>
-
+    <aside class="rail" :class="{ collapsed }"><button class="collapse-button" type="button" @click="collapsed = !collapsed">{{ collapsed ? '›' : '‹' }}</button><div class="brand-block"><div class="brand-icon">SP</div><div><strong>{{ appName }}</strong><small>{{ slogan }}</small></div></div><nav><button v-for="item in navItems" :key="item.key" type="button" :class="['nav-button', { active: activeView === item.key }]" @click="setView(item.key)"><span>{{ item.icon }}</span><div><strong>{{ item.label }}</strong><small>{{ item.hint }}</small></div></button></nav><div class="rail-footer"><button class="nav-button" type="button" @click="logout"><span>⇥</span><div><strong>Sair</strong><small>Encerrar sessão local</small></div></button></div></aside>
+    <section class="workspace"><header class="workspace-topbar"><div><p class="eyebrow">{{ activeNav.label }}</p><h1>{{ activeNav.hint }}</h1></div><div class="top-actions"><span :class="['api-chip', apiState]">{{ apiState }}</span><button class="secondary-action" type="button" @click="syncData">Sincronizar</button></div></header>
       <main class="workspace-content">
-        <section v-if="activeView === 'dashboard'" class="dashboard-grid">
-          <article class="metric-card"><span>Agendamentos</span><strong>{{ todayAppointments }}</strong><small>{{ confirmedCount }} confirmados hoje</small></article>
-          <article class="metric-card"><span>Pendências</span><strong>{{ pendingCount }}</strong><small>confirmações e retornos</small></article>
-          <article class="metric-card"><span>Clientes</span><strong>{{ customers.length }}</strong><small>base sincronizada</small></article>
-          <article class="metric-card accent"><span>Última sincronização</span><strong>{{ lastSync }}</strong><small>desktop conectado ao tenant</small></article>
-          <section class="panel wide"><div class="panel-title"><div><h2>Próximos atendimentos</h2><p>Lista real de agendamentos retornada pela API.</p></div><button class="secondary-action" type="button" @click="setView('agenda')">Abrir agenda</button></div><div class="rows"><article v-for="item in appointments" :key="item.id" class="data-row"><time>{{ new Date(item.starts_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) }}</time><div><strong>{{ item.customer_name }}</strong><small>{{ item.service_name }} • {{ item.professional_name }}</small></div><span>{{ item.status }}</span></article><p v-if="appointments.length === 0" class="empty">Nenhum agendamento carregado. Sincronize a API ou cadastre horários no WebApp.</p></div></section>
-          <section class="panel"><h2>Saúde operacional</h2><ul class="health-list"><li><span>API</span><strong>{{ apiState }}</strong></li><li><span>Auth</span><strong>Bearer local</strong></li><li><span>Fila</span><strong>Workers</strong></li><li><span>Build</span><strong>Pós-merge</strong></li></ul></section>
-        </section>
-
-        <section v-else-if="activeView === 'agenda'" class="panel full"><div class="panel-title"><div><h2>Agenda operacional</h2><p>Conflitos, status e disponibilidade vêm do motor de agenda.</p></div><button class="primary-action compact" type="button">Novo agendamento</button></div><div class="timeline"><article v-for="item in appointments" :key="item.id"><time>{{ new Date(item.starts_at).toLocaleString() }}</time><div><strong>{{ item.customer_name }}</strong><small>{{ item.service_name }} com {{ item.professional_name }}</small></div><span>{{ item.status }}</span></article><p v-if="appointments.length === 0" class="empty">Sem atendimentos sincronizados.</p></div></section>
-
-        <section v-else class="module-grid">
-          <article class="module-card"><p class="eyebrow">{{ activeNav.label }}</p><h2>{{ activeNav.hint }}</h2><p>Este módulo está pronto como superfície nativa e usa os endpoints do tenant autenticado. A etapa seguinte é ligar CRUDs dedicados por recurso sem mudar a experiência visual.</p><button class="primary-action compact" type="button">Abrir fluxo</button></article>
-          <article class="module-card muted"><h3>Contexto sincronizado</h3><ul><li>Status: {{ apiState }}</li><li>Última sync: {{ lastSync }}</li><li>Tenant: {{ manifest?.tenant?.slug || 'resolvido pela distribuição' }}</li></ul></article>
-        </section>
+        <section v-if="activeView === 'dashboard'" class="dashboard-grid"><article class="metric-card"><span>Agendamentos</span><strong>{{ todayAppointments }}</strong><small>{{ confirmedCount }} confirmados hoje</small></article><article class="metric-card"><span>Pendências</span><strong>{{ pendingCount }}</strong><small>confirmações e retornos</small></article><article class="metric-card"><span>Clientes</span><strong>{{ customers.length }}</strong><small>base sincronizada</small></article><article class="metric-card accent"><span>Última sincronização</span><strong>{{ lastSync }}</strong><small>desktop conectado ao tenant</small></article><section class="panel wide"><div class="panel-title"><div><h2>Próximos atendimentos</h2><p>Lista real de agendamentos retornada pela API.</p></div><button class="secondary-action" type="button" @click="setView('agenda')">Abrir agenda</button></div><div class="rows"><article v-for="item in appointments" :key="item.id" class="data-row"><time>{{ new Date(item.starts_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) }}</time><div><strong>{{ item.customer_name }}</strong><small>{{ item.service_name }} • {{ item.professional_name }}</small></div><span>{{ item.status }}</span></article><p v-if="appointments.length === 0" class="empty">Nenhum agendamento carregado. Sincronize a API ou cadastre horários no WebApp.</p></div></section><section class="panel"><h2>Saúde operacional</h2><ul class="health-list"><li><span>API</span><strong>{{ apiState }}</strong></li><li><span>Autenticação</span><strong>Sessão local</strong></li><li><span>Fila</span><strong>Workers</strong></li><li><span>Distribuição</span><strong>Instalável</strong></li></ul></section></section>
+        <section v-else-if="activeView === 'agenda'" class="panel full"><div class="panel-title"><div><h2>Agenda operacional</h2><p>Conflitos, status e disponibilidade do motor de agenda.</p></div><button class="primary-action compact" type="button">Novo agendamento</button></div><div class="timeline"><article v-for="item in appointments" :key="item.id"><time>{{ new Date(item.starts_at).toLocaleString() }}</time><div><strong>{{ item.customer_name }}</strong><small>{{ item.service_name }} com {{ item.professional_name }}</small></div><span>{{ item.status }}</span></article><p v-if="appointments.length === 0" class="empty">Sem atendimentos sincronizados.</p></div></section>
+        <section v-else class="module-grid"><article class="module-card"><p class="eyebrow">{{ activeNav.label }}</p><h2>{{ activeNav.hint }}</h2><p>Módulo nativo conectado ao tenant autenticado, com sessão local, sincronização e visual consistente com o WebApp.</p><button class="primary-action compact" type="button" @click="syncData">Sincronizar dados</button></article><article class="module-card muted"><h3>Contexto sincronizado</h3><ul><li>Status: {{ apiState }}</li><li>Última sync: {{ lastSync }}</li><li>Tenant: {{ manifest?.tenant?.slug || 'resolvido pela distribuição' }}</li></ul></article></section>
       </main>
     </section>
   </div>
