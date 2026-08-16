@@ -156,14 +156,14 @@ jobs:
               cp -R "$app_bundle" Payload/
               /usr/bin/zip -qry artifacts/scheduler-pro-ios-unsigned-${{ github.sha }}.ipa Payload
             else
-              cat > artifacts/IOS_UNSIGNED_STATUS.txt <<'TXT'
-Nenhum .ipa/.app foi gerado pelo runner macOS.
-O workflow manteve diagnóstico para não mascarar exigência Apple/Xcode/provisioning.
-Para IPA instalável em aparelho físico, rode com certificado Apple Developer ou perfil de provisionamento local.
-TXT
+              printf '%s\n' \
+                'Nenhum .ipa/.app foi gerado pelo runner macOS.' \
+                'O workflow manteve diagnóstico para não mascarar exigência Apple/Xcode/provisioning.' \
+                'Para IPA instalável em aparelho físico, rode com certificado Apple Developer ou perfil de provisionamento local.' \
+                > artifacts/IOS_UNSIGNED_STATUS.txt
             fi
           fi
-          find artifacts -type f -maxdepth 1 -print
+          find artifacts -maxdepth 1 -type f -print
       - uses: actions/upload-artifact@v4
         with:
           name: scheduler-pro-ios-unsigned-attempt-${{ github.event.release.tag_name || github.sha }}
