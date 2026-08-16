@@ -18,7 +18,8 @@ from app.core.errors import APIError
 from app.core.responses import success
 from app.core.security import AuthPrincipal
 from app.core.tenant_context import TenantContext
-from app.services.auth_service import PlatformAuthService, TenantAuthService
+from app.services.auth_service import TenantAuthService
+from app.services.platform_auth_service import PlatformAuthService
 
 router = APIRouter()
 

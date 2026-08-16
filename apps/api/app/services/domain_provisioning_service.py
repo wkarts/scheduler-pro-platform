@@ -36,7 +36,9 @@ class DomainProvisioningService:
 
     async def _domain_by_hostname(self, hostname: str) -> Domain | None:
         return (
-            await self.session.execute(select(Domain).where(Domain.hostname == hostname.lower()))
+            await self.session.execute(
+                select(Domain).where(Domain.hostname == hostname.lower())
+            )
         ).scalar_one_or_none()
 
     async def _record_cloudflare_failure(
@@ -49,9 +51,18 @@ class DomainProvisioningService:
         hostname: str | None = None,
         details: dict[str, Any] | None = None,
     ) -> None:
-        error_details: dict[str, Any] = {"exception": error.__class__.__name__, "message": str(error)}
+        error_details: dict[str, Any] = {
+            "exception": error.__class__.__name__,
+            "message": str(error),
+        }
         if isinstance(error, APIError):
-            error_details.update({"code": error.code, "status_code": error.status_code, "details": error.details})
+            error_details.update(
+                {
+                    "code": error.code,
+                    "status_code": error.status_code,
+                    "details": error.details,
+                }
+            )
         if details:
             error_details.update(details)
         await self.logs.record_platform_log(
@@ -67,7 +78,11 @@ class DomainProvisioningService:
             details=error_details,
         )
 
-    async def _mark_temporary_dns_active(self, domain: Domain, dns_result: dict[str, Any]) -> None:
+    async def _mark_temporary_dns_active(
+        self,
+        domain: Domain,
+        dns_result: dict[str, Any],
+    ) -> None:
         domain.status = "ACTIVE"
         domain.validation = {
             **(domain.validation or {}),
@@ -146,7 +161,11 @@ class DomainProvisioningService:
             await self.session.flush()
         try:
             result = await self.cloudflare.create_custom_hostname(clean_hostname)
-            cf_result = result.get("result", {}) if isinstance(result.get("result"), dict) else {}
+            cf_result = (
+                result.get("result", {})
+                if isinstance(result.get("result"), dict)
+                else {}
+            )
             domain.validation = {
                 "mode": "custom_hostname",
                 "cloudflare": result,
@@ -175,7 +194,9 @@ class DomainProvisioningService:
             )
         if make_primary:
             await self.session.execute(
-                update(Domain).where(Domain.tenant_id == tenant_id).values(is_primary=False)
+                update(Domain)
+                .where(Domain.tenant_id == tenant_id)
+                .values(is_primary=False)
             )
             domain.is_primary = True
         await self.session.commit()
@@ -191,20 +212,44 @@ class DomainProvisioningService:
                     record_type=settings.cloudflare_temporary_record_type,
                     proxied=True,
                 )
-                await self._mark_temporary_dns_active(domain, {**result, "check": True})
+                await self._mark_temporary_dns_active(
+                    domain,
+                    {**result, "check": True},
+                )
             else:
-                hostname_id = domain.validation.get("custom_hostname_id") if domain.validation else None
+                hostname_id = (
+                    domain.validation.get("custom_hostname_id")
+                    if domain.validation
+                    else None
+                )
                 if hostname_id:
-                    result = await self.cloudflare.get_custom_hostname_status(str(hostname_id))
+                    result = await self.cloudflare.get_custom_hostname_status(
+                        str(hostname_id)
+                    )
                 else:
                     result = await self.cloudflare.create_custom_hostname(domain.hostname)
-                cf_result = result.get("result", {}) if isinstance(result.get("result"), dict) else {}
-                ssl_status = cf_result.get("ssl", {}).get("status") if isinstance(cf_result.get("ssl"), dict) else None
-                if result.get("dry_run") or cf_result.get("status") == "active" or ssl_status == "active":
+                cf_result = (
+                    result.get("result", {})
+                    if isinstance(result.get("result"), dict)
+                    else {}
+                )
+                ssl_status = (
+                    cf_result.get("ssl", {}).get("status")
+                    if isinstance(cf_result.get("ssl"), dict)
+                    else None
+                )
+                if (
+                    result.get("dry_run")
+                    or cf_result.get("status") == "active"
+                    or ssl_status == "active"
+                ):
                     domain.status = "ACTIVE"
                 else:
                     domain.status = "PENDING_VALIDATION"
-                domain.validation = {**(domain.validation or {}), "last_check": result}
+                domain.validation = {
+                    **(domain.validation or {}),
+                    "last_check": result,
+                }
         except APIError as exc:
             domain.status = "PENDING_VALIDATION"
             domain.validation = {
@@ -230,10 +275,25 @@ class DomainProvisioningService:
         domain = await self._domain_by_id(domain_id)
         try:
             result = await self.cloudflare.purge_cache(domain.hostname)
-            domain.validation = {**(domain.validation or {}), "last_cache_purge": result}
+            domain.validation = {
+                **(domain.validation or {}),
+                "last_cache_purge": result,
+            }
+            await self.session.commit()
+            return {"domain": self.serialize(domain), "purge": result}
         except APIError as exc:
-            result = {"success": False, "error": {"code": exc.code, "message": exc.message, "details": exc.details}}
-            domain.validation = {**(domain.validation or {}), "last_cache_purge_error": result}
+            failure = {
+                "success": False,
+                "error": {
+                    "code": exc.code,
+                    "message": exc.message,
+                    "details": exc.details,
+                },
+            }
+            domain.validation = {
+                **(domain.validation or {}),
+                "last_cache_purge_error": failure,
+            }
             await self._record_cloudflare_failure(
                 tenant_id=str(domain.tenant_id),
                 event="domain_cache_purge_failed",
@@ -241,8 +301,8 @@ class DomainProvisioningService:
                 error=exc,
                 hostname=domain.hostname,
             )
-        await self.session.commit()
-        return {"domain": self.serialize(domain), "purge": result}
+            await self.session.commit()
+            raise
 
     @staticmethod
     def serialize(domain: Domain) -> dict[str, Any]:

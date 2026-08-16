@@ -6,14 +6,20 @@ from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_platform_session, require_super_admin
+from app.api.deps import (
+    assert_platform_tenant_access,
+    get_platform_session,
+    require_platform_permission,
+)
 from app.core.config import settings
 from app.core.errors import APIError
 from app.core.responses import success
+from app.core.security import AuthPrincipal
 from app.services.cloudflare_service import CloudflareService
 from app.services.domain_provisioning_service import DomainProvisioningService
 from app.services.feature_service import FeatureService
 from app.services.provisioning import ProvisioningService
+from app.services.tenant_lifecycle_service import TenantLifecycleService
 from app.workers.celery_app import celery_app
 
 router = APIRouter()
@@ -41,10 +47,33 @@ class FeatureFlagUpdate(BaseModel):
     rules: dict[str, Any] = Field(default_factory=dict)
 
 
+class TenantPurgeRequest(BaseModel):
+    confirmation: str = Field(min_length=2, max_length=120)
+    force: bool = False
+
+
+def _scope_clause(principal: AuthPrincipal, alias: str = "t") -> tuple[str, dict[str, Any]]:
+    if principal.is_super_admin:
+        return "", {}
+    tenant_ids = list(principal.tenant_ids)
+    if not tenant_ids:
+        return " and false", {}
+    return f" and {alias}.id = any(cast(:tenant_ids as uuid[]))", {"tenant_ids": tenant_ids}
+
+
+def _tenant_filter_clause(principal: AuthPrincipal, column: str) -> tuple[str, dict[str, Any]]:
+    if principal.is_super_admin:
+        return "", {}
+    tenant_ids = list(principal.tenant_ids)
+    if not tenant_ids:
+        return " and false", {}
+    return f" and {column} = any(cast(:tenant_ids as uuid[]))", {"tenant_ids": tenant_ids}
+
+
 @router.post("/tenants")
 async def create_tenant(
     payload: TenantCreateRequest,
-    _: Any = Depends(require_super_admin),
+    principal: AuthPrincipal = Depends(require_platform_permission("tenants.create")),
     session: AsyncSession = Depends(get_platform_session),
 ) -> dict[str, Any]:
     job = await ProvisioningService(session).enqueue_tenant(
@@ -53,13 +82,21 @@ async def create_tenant(
         str(payload.admin_email),
         payload.admin_password,
     )
+    if not principal.is_super_admin:
+        await session.execute(
+            text(
+                """
+                insert into platform_user_tenants(user_id, tenant_id)
+                values(cast(:user_id as uuid), cast(:tenant_id as uuid))
+                on conflict do nothing
+                """
+            ),
+            {"user_id": principal.user_id, "tenant_id": job["tenant_id"]},
+        )
+        await session.commit()
     celery_app.send_task(
         "app.workers.tasks.run_provisioning",
-        args=[
-            job["job_id"],
-            job["tenant_id"],
-            f"provision-{job['job_id']}",
-        ],
+        args=[job["job_id"], job["tenant_id"], f"provision-{job['job_id']}"],
         queue="provisioning",
     )
     return success(job)
@@ -67,30 +104,29 @@ async def create_tenant(
 
 @router.get("/tenants")
 async def tenants(
-    _: Any = Depends(require_super_admin),
+    principal: AuthPrincipal = Depends(require_platform_permission("tenants.read")),
     session: AsyncSession = Depends(get_platform_session),
 ) -> dict[str, Any]:
+    scope, params = _scope_clause(principal)
     rows = (
         await session.execute(
             text(
-                """
+                f"""
                 select
-                  t.id::text,
-                  t.name,
-                  t.slug,
-                  t.status,
-                  t.created_at,
+                  t.id::text, t.name, t.slug, t.status, t.created_at,
                   d.hostname as primary_hostname,
-                  b.public_name as branding_name
+                  b.public_name as branding_name,
+                  coalesce((select count(*) from tenant_capabilities tc
+                            where tc.tenant_id=t.id and tc.enabled=true), 0) as capabilities_enabled
                 from tenants t
-                left join domains d
-                  on d.tenant_id=t.id and d.is_primary=true
-                left join tenant_branding_profiles b
-                  on b.tenant_id=t.id
+                left join domains d on d.tenant_id=t.id and d.is_primary=true
+                left join tenant_branding_profiles b on b.tenant_id=t.id
+                where true {scope}
                 order by t.created_at desc
-                limit 200
+                limit 500
                 """
-            )
+            ),
+            params,
         )
     ).mappings().all()
     return success([dict(row) for row in rows])
@@ -98,30 +134,26 @@ async def tenants(
 
 @router.get("/provisioning")
 async def provisioning(
-    _: Any = Depends(require_super_admin),
+    principal: AuthPrincipal = Depends(require_platform_permission("tenants.read")),
     session: AsyncSession = Depends(get_platform_session),
 ) -> dict[str, Any]:
+    scope, params = _tenant_filter_clause(principal, "pj.tenant_id")
     jobs = (
         await session.execute(
             text(
-                """
-                select
-                  pj.id::text,
-                  pj.tenant_id::text,
-                  t.name as tenant_name,
-                  t.slug,
-                  pj.status,
-                  pj.correlation_id,
-                  pj.created_at
+                f"""
+                select pj.id::text, pj.tenant_id::text, t.name as tenant_name,
+                       t.slug, pj.status, pj.correlation_id, pj.created_at
                 from provisioning_jobs pj
                 join tenants t on t.id=pj.tenant_id
+                where true {scope}
                 order by pj.created_at desc
-                limit 100
+                limit 300
                 """
-            )
+            ),
+            params,
         )
     ).mappings().all()
-
     result: list[dict[str, Any]] = []
     for job in jobs:
         steps = (
@@ -130,7 +162,7 @@ async def provisioning(
                     """
                     select id::text, name, status, error
                     from provisioning_steps
-                    where job_id=:id::uuid
+                    where job_id=cast(:id as uuid)
                     order by id
                     """
                 ),
@@ -146,7 +178,7 @@ async def provisioning(
 @router.post("/provisioning/{job_id}/retry")
 async def retry_provisioning(
     job_id: str,
-    _: Any = Depends(require_super_admin),
+    principal: AuthPrincipal = Depends(require_platform_permission("tenants.provision")),
     session: AsyncSession = Depends(get_platform_session),
 ) -> dict[str, Any]:
     row = (
@@ -155,21 +187,17 @@ async def retry_provisioning(
                 """
                 select id::text, tenant_id::text, correlation_id
                 from provisioning_jobs
-                where id=:id::uuid
+                where id=cast(:id as uuid)
                 """
             ),
             {"id": job_id},
         )
     ).mappings().first()
     if row is None:
-        raise APIError(
-            "PROVISIONING_JOB_NOT_FOUND",
-            "Job de provisionamento não encontrado.",
-            404,
-        )
-
+        raise APIError("PROVISIONING_JOB_NOT_FOUND", "Job de provisionamento não encontrado.", 404)
+    assert_platform_tenant_access(principal, row["tenant_id"])
     await session.execute(
-        text("update provisioning_jobs set status='PENDING' where id=:id::uuid"),
+        text("update provisioning_jobs set status='PENDING' where id=cast(:id as uuid)"),
         {"id": job_id},
     )
     await session.execute(
@@ -177,17 +205,16 @@ async def retry_provisioning(
             """
             update provisioning_steps
             set status='pending', error=null
-            where job_id=:id::uuid and status='failed'
+            where job_id=cast(:id as uuid) and status='failed'
             """
         ),
         {"id": job_id},
     )
     await session.execute(
-        text("update tenants set status='PENDING' where id=:tenant_id::uuid"),
-        {"tenant_id": row["tenant_id"]},
+        text("update tenants set status='PENDING' where id=cast(:id as uuid)"),
+        {"id": row["tenant_id"]},
     )
     await session.commit()
-
     celery_app.send_task(
         "app.workers.tasks.run_provisioning",
         args=[job_id, row["tenant_id"], row["correlation_id"]],
@@ -196,30 +223,74 @@ async def retry_provisioning(
     return success({"job_id": job_id, "queued": True})
 
 
-@router.get("/domains")
-async def domains(
-    _: Any = Depends(require_super_admin),
+@router.post("/tenants/{tenant_id}/suspend")
+async def suspend_tenant(
+    tenant_id: str,
+    principal: AuthPrincipal = Depends(require_platform_permission("tenants.update")),
     session: AsyncSession = Depends(get_platform_session),
 ) -> dict[str, Any]:
+    assert_platform_tenant_access(principal, tenant_id)
+    return success(await TenantLifecycleService(session).suspend(tenant_id, principal.user_id))
+
+
+@router.post("/tenants/{tenant_id}/restore")
+async def restore_tenant(
+    tenant_id: str,
+    principal: AuthPrincipal = Depends(require_platform_permission("tenants.update")),
+    session: AsyncSession = Depends(get_platform_session),
+) -> dict[str, Any]:
+    assert_platform_tenant_access(principal, tenant_id)
+    return success(await TenantLifecycleService(session).restore(tenant_id, principal.user_id))
+
+
+@router.delete("/tenants/{tenant_id}")
+async def delete_tenant(
+    tenant_id: str,
+    principal: AuthPrincipal = Depends(require_platform_permission("tenants.delete")),
+    session: AsyncSession = Depends(get_platform_session),
+) -> dict[str, Any]:
+    assert_platform_tenant_access(principal, tenant_id)
+    return success(await TenantLifecycleService(session).soft_delete(tenant_id, principal.user_id))
+
+
+@router.post("/tenants/{tenant_id}/purge")
+async def purge_tenant(
+    tenant_id: str,
+    payload: TenantPurgeRequest,
+    principal: AuthPrincipal = Depends(require_platform_permission("tenants.purge")),
+    session: AsyncSession = Depends(get_platform_session),
+) -> dict[str, Any]:
+    assert_platform_tenant_access(principal, tenant_id)
+    return success(
+        await TenantLifecycleService(session).purge(
+            tenant_id,
+            payload.confirmation,
+            principal.user_id,
+            force=payload.force,
+        )
+    )
+
+
+@router.get("/domains")
+async def domains(
+    principal: AuthPrincipal = Depends(require_platform_permission("domains.read")),
+    session: AsyncSession = Depends(get_platform_session),
+) -> dict[str, Any]:
+    scope, params = _tenant_filter_clause(principal, "d.tenant_id")
     rows = (
         await session.execute(
             text(
-                """
-                select
-                  d.id::text,
-                  d.tenant_id::text,
-                  t.name as tenant_name,
-                  d.hostname,
-                  d.is_primary,
-                  d.is_temporary,
-                  d.status,
-                  d.validation
+                f"""
+                select d.id::text, d.tenant_id::text, t.name as tenant_name,
+                       d.hostname, d.is_primary, d.is_temporary, d.status, d.validation
                 from domains d
                 join tenants t on t.id=d.tenant_id
+                where true {scope}
                 order by d.is_primary desc, d.hostname asc
-                limit 500
+                limit 1000
                 """
-            )
+            ),
+            params,
         )
     ).mappings().all()
     return success([dict(row) for row in rows])
@@ -228,51 +299,65 @@ async def domains(
 @router.post("/tenants/{tenant_id}/domains/temporary")
 async def temporary_domain(
     tenant_id: str,
-    _: Any = Depends(require_super_admin),
+    principal: AuthPrincipal = Depends(require_platform_permission("domains.manage")),
     session: AsyncSession = Depends(get_platform_session),
 ) -> dict[str, Any]:
-    data = await DomainProvisioningService(session).create_temporary_domain(tenant_id)
-    return success(data)
+    assert_platform_tenant_access(principal, tenant_id)
+    return success(await DomainProvisioningService(session).create_temporary_domain(tenant_id))
 
 
 @router.post("/tenants/{tenant_id}/domains/custom")
 async def custom_domain(
     tenant_id: str,
     payload: CustomDomainRequest,
-    _: Any = Depends(require_super_admin),
+    principal: AuthPrincipal = Depends(require_platform_permission("domains.manage")),
     session: AsyncSession = Depends(get_platform_session),
 ) -> dict[str, Any]:
-    data = await DomainProvisioningService(session).connect_custom_domain(
-        tenant_id,
-        payload.hostname,
-        make_primary=payload.make_primary,
+    assert_platform_tenant_access(principal, tenant_id)
+    return success(
+        await DomainProvisioningService(session).connect_custom_domain(
+            tenant_id,
+            payload.hostname,
+            make_primary=payload.make_primary,
+        )
     )
-    return success(data)
+
+
+async def _domain_tenant(session: AsyncSession, domain_id: str) -> str:
+    tenant_id = (
+        await session.execute(
+            text("select tenant_id::text from domains where id=cast(:id as uuid)"),
+            {"id": domain_id},
+        )
+    ).scalar_one_or_none()
+    if tenant_id is None:
+        raise APIError("DOMAIN_NOT_FOUND", "Domínio não encontrado.", 404)
+    return str(tenant_id)
 
 
 @router.post("/domains/{domain_id}/check")
 async def check_domain(
     domain_id: str,
-    _: Any = Depends(require_super_admin),
+    principal: AuthPrincipal = Depends(require_platform_permission("domains.manage")),
     session: AsyncSession = Depends(get_platform_session),
 ) -> dict[str, Any]:
-    data = await DomainProvisioningService(session).check_domain(domain_id)
-    return success(data)
+    assert_platform_tenant_access(principal, await _domain_tenant(session, domain_id))
+    return success(await DomainProvisioningService(session).check_domain(domain_id))
 
 
 @router.post("/domains/{domain_id}/purge-cache")
 async def purge_domain_cache(
     domain_id: str,
-    _: Any = Depends(require_super_admin),
+    principal: AuthPrincipal = Depends(require_platform_permission("cache.purge")),
     session: AsyncSession = Depends(get_platform_session),
 ) -> dict[str, Any]:
-    data = await DomainProvisioningService(session).purge_domain_cache(domain_id)
-    return success(data)
+    assert_platform_tenant_access(principal, await _domain_tenant(session, domain_id))
+    return success(await DomainProvisioningService(session).purge_domain_cache(domain_id))
 
 
 @router.get("/integrations/status")
 async def integration_status(
-    _: Any = Depends(require_super_admin),
+    _: AuthPrincipal = Depends(require_platform_permission("integrations.read")),
 ) -> dict[str, Any]:
     cloudflare: dict[str, Any] = {
         "configured": bool(settings.cloudflare_api_token and settings.cloudflare_zone_id),
@@ -289,28 +374,20 @@ async def integration_status(
         try:
             result = await service.verify_token()
             cloudflare.update(
-                {
-                    "ok": bool(result.get("success", False)),
-                    "result": result.get("result"),
-                }
+                {"ok": bool(result.get("success", False)), "result": result.get("result")}
             )
-        except Exception as exc:  # noqa: BLE001 - status endpoint is diagnostic
+        except Exception as exc:  # noqa: BLE001 - diagnostic endpoint
             cloudflare["error"] = str(exc)
-
     return success(
         {
             "cloudflare": cloudflare,
             "evolution": {
-                "configured": bool(
-                    settings.evolution_api_url and settings.evolution_api_token
-                ),
+                "configured": bool(settings.evolution_api_url and settings.evolution_api_token),
                 "instance_prefix": settings.evolution_instance_name,
             },
             "storage": {
                 "configured": bool(
-                    settings.s3_endpoint
-                    and settings.s3_access_key
-                    and settings.s3_secret_key
+                    settings.s3_endpoint and settings.s3_access_key and settings.s3_secret_key
                 ),
                 "endpoint": settings.s3_endpoint,
             },
@@ -324,31 +401,23 @@ async def integration_status(
 
 @router.get("/audit")
 async def audit(
-    limit: int = 200,
-    _: Any = Depends(require_super_admin),
+    limit: int = 300,
+    _: AuthPrincipal = Depends(require_platform_permission("audit.read")),
     session: AsyncSession = Depends(get_platform_session),
 ) -> dict[str, Any]:
     rows = (
         await session.execute(
             text(
                 """
-                select
-                  a.id::text,
-                  a.user_id::text,
-                  u.email,
-                  a.action,
-                  a.result,
-                  a.ip_address,
-                  a.correlation_id,
-                  a.metadata,
-                  a.created_at
+                select a.id::text, a.user_id::text, u.email, a.action, a.result,
+                       a.ip_address, a.correlation_id, a.metadata, a.created_at
                 from platform_audit_logs a
                 left join platform_users u on u.id=a.user_id
                 order by a.created_at desc
                 limit :limit
                 """
             ),
-            {"limit": min(max(limit, 1), 500)},
+            {"limit": min(max(limit, 1), 5000)},
         )
     ).mappings().all()
     return success([dict(row) for row in rows])
@@ -356,7 +425,7 @@ async def audit(
 
 @router.get("/feature-flags")
 async def feature_flags(
-    _: Any = Depends(require_super_admin),
+    _: AuthPrincipal = Depends(require_platform_permission("settings.manage")),
     session: AsyncSession = Depends(get_platform_session),
 ) -> dict[str, Any]:
     return success(await FeatureService(session).list_flags())
@@ -366,7 +435,7 @@ async def feature_flags(
 async def update_feature_flag(
     key: str,
     payload: FeatureFlagUpdate,
-    _: Any = Depends(require_super_admin),
+    _: AuthPrincipal = Depends(require_platform_permission("settings.manage")),
     session: AsyncSession = Depends(get_platform_session),
 ) -> dict[str, Any]:
     await session.execute(
@@ -374,16 +443,10 @@ async def update_feature_flag(
             """
             insert into feature_flags(key, enabled, rules)
             values(:key, :enabled, cast(:rules as jsonb))
-            on conflict(key) do update set
-              enabled=excluded.enabled,
-              rules=excluded.rules
+            on conflict(key) do update set enabled=excluded.enabled, rules=excluded.rules
             """
         ),
-        {
-            "key": key,
-            "enabled": payload.enabled,
-            "rules": json.dumps(payload.rules),
-        },
+        {"key": key, "enabled": payload.enabled, "rules": json.dumps(payload.rules)},
     )
     await session.commit()
     return success({"key": key, **payload.model_dump()})
@@ -391,62 +454,46 @@ async def update_feature_flag(
 
 @router.get("/dashboard")
 async def dashboard(
-    _: Any = Depends(require_super_admin),
+    principal: AuthPrincipal = Depends(require_platform_permission("platform.dashboard.read")),
     session: AsyncSession = Depends(get_platform_session),
 ) -> dict[str, Any]:
+    if principal.is_super_admin:
+        scope_sql = ""
+        params: dict[str, Any] = {}
+    else:
+        tenant_ids = list(principal.tenant_ids)
+        scope_sql = "where id = any(cast(:tenant_ids as uuid[]))" if tenant_ids else "where false"
+        params = {"tenant_ids": tenant_ids}
     totals = (
         await session.execute(
             text(
-                """
+                f"""
+                with scoped_tenants as (select id from tenants {scope_sql})
                 select
-                  (select count(*) from tenants) as tenants,
-                  (select count(*) from tenants where status='ACTIVE') as active_tenants,
-                  (select count(*) from provisioning_jobs) as provisioning_jobs,
-                  (select count(*) from domains where status<>'ACTIVE') as domains_pending,
-                  (select count(*) from build_jobs) as builds,
-                  (select count(*) from build_artifacts) as build_artifacts,
+                  (select count(*) from scoped_tenants) as tenants,
+                  (select count(*) from tenants where status='ACTIVE' and id in (select id from scoped_tenants)) as active_tenants,
+                  (select count(*) from provisioning_jobs where tenant_id in (select id from scoped_tenants)) as provisioning_jobs,
+                  (select count(*) from domains where status<>'ACTIVE' and tenant_id in (select id from scoped_tenants)) as domains_pending,
+                  (select count(*) from build_jobs where tenant_id in (select id from scoped_tenants)) as builds,
+                  (select count(*) from build_artifacts where tenant_id in (select id from scoped_tenants)) as build_artifacts,
                   (select count(*) from platform_users where is_active=true) as platform_users
                 """
-            )
+            ),
+            params,
         )
     ).mappings().one()
     recent_tenants = (
         await session.execute(
             text(
-                """
+                f"""
                 select id::text, name, slug, status, created_at
-                from tenants
-                order by created_at desc
-                limit 6
+                from tenants {scope_sql}
+                order by created_at desc limit 8
                 """
-            )
+            ),
+            params,
         )
     ).mappings().all()
-    recent_builds = (
-        await session.execute(
-            text(
-                """
-                select id::text, target, status, created_at
-                from build_jobs
-                order by created_at desc
-                limit 6
-                """
-            )
-        )
-    ).mappings().all()
-    recent_provisioning = (
-        await session.execute(
-            text(
-                """
-                select id::text, status, correlation_id, created_at
-                from provisioning_jobs
-                order by created_at desc
-                limit 6
-                """
-            )
-        )
-    ).mappings().all()
-
     return success(
         {
             "totals": dict(totals),
@@ -457,7 +504,5 @@ async def dashboard(
                 "release": "available",
             },
             "recent_tenants": [dict(row) for row in recent_tenants],
-            "recent_builds": [dict(row) for row in recent_builds],
-            "recent_provisioning": [dict(row) for row in recent_provisioning],
         }
     )

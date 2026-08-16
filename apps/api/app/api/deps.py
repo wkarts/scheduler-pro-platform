@@ -64,9 +64,7 @@ async def get_tenant_session(
         yield session
 
 
-def _token(
-    credentials: HTTPAuthorizationCredentials | None,
-) -> dict[str, Any]:
+def _token(credentials: HTTPAuthorizationCredentials | None) -> dict[str, Any]:
     if credentials is None or credentials.scheme.lower() != "bearer":
         raise APIError("AUTH_REQUIRED", "Autenticação obrigatória.", 401)
     return decode_access_token(credentials.credentials)
@@ -135,6 +133,7 @@ async def get_current_tenant_user(
         tenant_id=context.tenant_id,
         permissions=frozenset(permissions),
         roles=frozenset(roles),
+        tenant_ids=frozenset({context.tenant_id}),
     )
 
 
@@ -142,6 +141,38 @@ async def get_current_user(
     principal: AuthPrincipal = Depends(get_current_tenant_user),
 ) -> AuthPrincipal:
     return principal
+
+
+def require_tenant_capability(
+    capability: str,
+) -> Callable[..., Awaitable[None]]:
+    async def dependency(
+        context: TenantContext = Depends(get_tenant_context),
+        session: AsyncSession = Depends(get_platform_session),
+    ) -> None:
+        enabled = (
+            await session.execute(
+                text(
+                    """
+                    select enabled
+                    from tenant_capabilities
+                    where tenant_id=cast(:tenant_id as uuid)
+                      and capability_key=:capability
+                    limit 1
+                    """
+                ),
+                {"tenant_id": context.tenant_id, "capability": capability},
+            )
+        ).scalar_one_or_none()
+        if enabled is not True:
+            raise APIError(
+                "TENANT_CAPABILITY_DISABLED",
+                "Este recurso não está liberado para o tenant.",
+                403,
+                {"capability": capability},
+            )
+
+    return dependency
 
 
 async def get_current_platform_user(
@@ -168,8 +199,62 @@ async def get_current_platform_user(
     ).mappings().first()
     if row is None:
         raise APIError("AUTH_SESSION_INVALID", "Sessão inválida ou expirada.", 401)
-    permissions = {"platform.manage", "builds.manage"} if row["is_super_admin"] else set()
-    roles = {"super-admin"} if row["is_super_admin"] else set()
+
+    is_super_admin = bool(row["is_super_admin"])
+    if is_super_admin:
+        permissions = set(
+            (await session.execute(text("select key from platform_permissions"))).scalars()
+        )
+        roles = {"super-admin"}
+        tenant_ids = set(
+            (await session.execute(text("select id::text from tenants"))).scalars()
+        )
+    else:
+        permissions = set(
+            (
+                await session.execute(
+                    text(
+                        """
+                        select distinct rp.permission_key
+                        from platform_role_permissions rp
+                        join platform_user_roles ur on ur.role_id=rp.role_id
+                        where ur.user_id=cast(:user_id as uuid)
+                        """
+                    ),
+                    {"user_id": row["id"]},
+                )
+            ).scalars()
+        )
+        roles = set(
+            (
+                await session.execute(
+                    text(
+                        """
+                        select distinct r.name
+                        from platform_roles r
+                        join platform_user_roles ur on ur.role_id=r.id
+                        where ur.user_id=cast(:user_id as uuid)
+                        """
+                    ),
+                    {"user_id": row["id"]},
+                )
+            ).scalars()
+        )
+        tenant_ids = set(
+            (
+                await session.execute(
+                    text(
+                        """
+                        select tenant_id::text
+                        from platform_user_tenants
+                        where user_id=cast(:user_id as uuid)
+                        """
+                    ),
+                    {"user_id": row["id"]},
+                )
+            ).scalars()
+        )
+
     return AuthPrincipal(
         user_id=row["id"],
         email=row["email"],
@@ -178,7 +263,8 @@ async def get_current_platform_user(
         tenant_id=None,
         permissions=frozenset(permissions),
         roles=frozenset(roles),
-        is_super_admin=bool(row["is_super_admin"]),
+        tenant_ids=frozenset(tenant_ids),
+        is_super_admin=is_super_admin,
     )
 
 
@@ -198,6 +284,36 @@ def require_permission(
         return principal
 
     return dependency
+
+
+def require_platform_permission(
+    permission: str,
+) -> Callable[[AuthPrincipal], Awaitable[AuthPrincipal]]:
+    async def dependency(
+        principal: AuthPrincipal = Depends(get_current_platform_user),
+    ) -> AuthPrincipal:
+        if not principal.is_super_admin and permission not in principal.permissions:
+            raise APIError(
+                "AUTH_PERMISSION_DENIED",
+                "Permissão administrativa insuficiente.",
+                403,
+                {"permission": permission},
+            )
+        return principal
+
+    return dependency
+
+
+def assert_platform_tenant_access(principal: AuthPrincipal, tenant_id: str) -> None:
+    if principal.is_super_admin:
+        return
+    if tenant_id not in principal.tenant_ids:
+        raise APIError(
+            "AUTH_TENANT_SCOPE_DENIED",
+            "Este usuário administrativo não possui acesso ao tenant.",
+            403,
+            {"tenant_id": tenant_id},
+        )
 
 
 def require_role(

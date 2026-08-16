@@ -1,0 +1,25 @@
+from typing import Final
+
+DEFAULT_TENANT_CAPABILITIES: Final[tuple[str, ...]] = (
+    "appointments",
+    "customers",
+    "services",
+    "professionals",
+    "landing_pages",
+    "notifications",
+    "automations",
+    "whatsapp",
+    "evolution",
+    "storage",
+    "custom_domains",
+    "dns",
+    "ssl",
+    "cloudflare",
+    "branding",
+    "builds",
+    "desktop_apps",
+    "android_app",
+    "ios_app",
+    "observability",
+    "audit",
+)

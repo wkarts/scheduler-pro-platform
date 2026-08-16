@@ -47,7 +47,7 @@ async def test_bootstrap_created_platform_tenant_migrations_and_bucket() -> None
             """,
             settings.dev_tenant_slug,
         )
-        assert platform_revision == "platform_0004"
+        assert platform_revision == "platform_0005"
         assert row is not None
         assert row["database_name"] == settings.dev_tenant_database
         assert row["password_ref"] == settings.dev_tenant_database_password_ref
