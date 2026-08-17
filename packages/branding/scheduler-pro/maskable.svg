@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Scheduler Pro">
+  <defs><linearGradient id="bg" x1="32" y1="28" x2="478" y2="492" gradientUnits="userSpaceOnUse"><stop stop-color="#0B1D3A"/><stop offset="1" stop-color="#061327"/></linearGradient><linearGradient id="flow" x1="132" y1="128" x2="382" y2="386" gradientUnits="userSpaceOnUse"><stop stop-color="#2F6BFF"/><stop offset=".58" stop-color="#1DAAF5"/><stop offset="1" stop-color="#22D3EE"/></linearGradient></defs>
+  <rect width="512" height="512" fill="url(#bg)"/>
+  <circle cx="256" cy="256" r="176" fill="#0C284D" opacity=".46"/>
+  <path d="M168 179c0-34 28-62 62-62h86c39 0 71 32 71 71s-32 71-71 71h-78c-38 0-69 31-69 69s31 69 69 69h76c38 0 69-31 69-69" fill="none" stroke="url(#flow)" stroke-width="28" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="383" cy="132" r="12" fill="#8B5CF6"/><circle cx="139" cy="385" r="9" fill="#22D3EE"/><circle cx="256" cy="259" r="10" fill="#FFFFFF"/>
+</svg>
