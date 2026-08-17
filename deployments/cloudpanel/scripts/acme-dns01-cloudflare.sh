@@ -12,6 +12,12 @@ fi
 
 mkdir -p /certs /acme.sh
 
+# O plugin dns_cf aceita CF_Zone_ID, mas ele é opcional. Removemos valores antigos
+# persistidos para forçar a descoberta da zone pelo CF_Token. Isso evita reutilizar
+# acidentalmente um Account ID no lugar do Zone ID.
+find /acme.sh -type f -name '*.conf' -exec sed -i '/^CF_Zone_ID=/d' {} \; 2>/dev/null || true
+unset CF_Zone_ID || true
+
 acme.sh --set-default-ca --server "$SERVER"
 acme.sh --register-account -m "$EMAIL" || true
 
