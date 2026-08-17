@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Scheduler Pro">
+  <rect x="32" y="32" width="448" height="448" rx="116" fill="#0B1D3A"/>
+  <path d="M157 169c0-38 31-69 69-69h101c43 0 78 35 78 78s-35 78-78 78h-91c-42 0-76 34-76 76s34 76 76 76h89c42 0 76-34 76-76" fill="none" stroke="#FFFFFF" stroke-width="30" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="401" cy="112" r="12" fill="#FFFFFF"/>
+  <circle cx="126" cy="398" r="9" fill="#FFFFFF"/>
+  <circle cx="256" cy="256" r="10" fill="#FFFFFF"/>
+</svg>
