@@ -25,9 +25,11 @@ def test_development_seeded_local_domains_require_tenant_probe(monkeypatch) -> N
 
 
 def test_readiness_tracks_current_platform_migration_head() -> None:
-    assert PLATFORM_MIGRATION_HEAD == "platform_0007"
+    assert PLATFORM_MIGRATION_HEAD == "platform_0008"
 
 
 def test_foundation_integration_tracks_same_platform_migration_head() -> None:
-    source = Path(__file__).with_name("test_foundation_integration.py").read_text(encoding="utf-8")
+    source = Path(__file__).with_name("test_foundation_integration.py").read_text(
+        encoding="utf-8"
+    )
     assert f'PLATFORM_MIGRATION_HEAD = "{PLATFORM_MIGRATION_HEAD}"' in source
