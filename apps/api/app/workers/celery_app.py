@@ -23,7 +23,12 @@ DURABLE_QUEUES = (
 
 scheduler_exchange = Exchange("scheduler", type="direct", durable=True)
 
-celery_app = Celery("scheduler_pro", broker=settings.celery_broker_url, backend=settings.celery_result_backend)
+celery_app = Celery(
+    "scheduler_pro",
+    broker=settings.celery_broker_url,
+    backend=settings.celery_result_backend,
+    include=["app.workers.tasks"],
+)
 celery_app.conf.update(
     broker_connection_retry_on_startup=True,
     task_default_queue="default",
@@ -36,11 +41,26 @@ celery_app.conf.update(
         for queue_name in DURABLE_QUEUES
     ),
     task_routes={
-        "app.workers.tasks.run_provisioning": {"queue": "provisioning", "routing_key": "provisioning"},
-        "app.workers.tasks.process_whatsapp_webhook": {"queue": "whatsapp", "routing_key": "whatsapp"},
-        "app.workers.tasks.process_due_notifications": {"queue": "notifications", "routing_key": "notifications"},
-        "app.workers.tasks.process_all_due_notifications": {"queue": "notifications", "routing_key": "notifications"},
-        "app.workers.tasks.run_build_job": {"queue": "builds", "routing_key": "builds"},
+        "app.workers.tasks.run_provisioning": {
+            "queue": "provisioning",
+            "routing_key": "provisioning",
+        },
+        "app.workers.tasks.process_whatsapp_webhook": {
+            "queue": "whatsapp",
+            "routing_key": "whatsapp",
+        },
+        "app.workers.tasks.process_due_notifications": {
+            "queue": "notifications",
+            "routing_key": "notifications",
+        },
+        "app.workers.tasks.process_all_due_notifications": {
+            "queue": "notifications",
+            "routing_key": "notifications",
+        },
+        "app.workers.tasks.run_build_job": {
+            "queue": "builds",
+            "routing_key": "builds",
+        },
     },
     beat_schedule={
         "notification-sweep-every-minute": {

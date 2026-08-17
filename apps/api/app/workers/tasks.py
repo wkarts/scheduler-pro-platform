@@ -79,7 +79,7 @@ async def _process_whatsapp_event(
 
     async for session in tenant_session(context):
         payload_value = await session.scalar(
-            text("select payload from whatsapp_events where id=:id::uuid"),
+            text("select payload from whatsapp_events where id=cast(:id as uuid)"),
             {"id": event_id},
         )
         payload: dict[str, Any] = (
