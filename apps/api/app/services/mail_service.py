@@ -44,53 +44,104 @@ class MailDeliveryService:
     @staticmethod
     def _failure(exc: BaseException) -> MailDeliveryResult:
         if isinstance(exc, smtplib.SMTPAuthenticationError):
-            return MailDeliveryResult(False, "SMTP_AUTH", "Autenticação SMTP rejeitada pelo servidor.")
+            return MailDeliveryResult(
+                False,
+                "SMTP_AUTH",
+                "Autenticação SMTP rejeitada pelo servidor.",
+            )
         if isinstance(exc, smtplib.SMTPRecipientsRefused):
-            return MailDeliveryResult(False, "SMTP_RECIPIENT", "O servidor SMTP rejeitou o destinatário.")
+            return MailDeliveryResult(
+                False,
+                "SMTP_RECIPIENT",
+                "O servidor SMTP rejeitou o destinatário.",
+            )
         if isinstance(exc, smtplib.SMTPSenderRefused):
-            return MailDeliveryResult(False, "SMTP_SENDER", "O servidor SMTP rejeitou o remetente configurado.")
+            return MailDeliveryResult(
+                False,
+                "SMTP_SENDER",
+                "O servidor SMTP rejeitou o remetente configurado.",
+            )
         if isinstance(exc, TimeoutError):
-            return MailDeliveryResult(False, "SMTP_TIMEOUT", "Tempo limite excedido ao conectar ao servidor SMTP.")
+            return MailDeliveryResult(
+                False,
+                "SMTP_TIMEOUT",
+                "Tempo limite excedido ao conectar ao servidor SMTP.",
+            )
         if isinstance(exc, ssl.SSLError):
-            return MailDeliveryResult(False, "SMTP_SSL", "Falha na negociação SSL/TLS com o servidor SMTP.")
+            return MailDeliveryResult(
+                False,
+                "SMTP_SSL",
+                "Falha na negociação SSL/TLS com o servidor SMTP.",
+            )
         if isinstance(exc, smtplib.SMTPConnectError):
-            return MailDeliveryResult(False, "SMTP_CONNECT", "O servidor SMTP recusou a conexão.")
+            return MailDeliveryResult(
+                False,
+                "SMTP_CONNECT",
+                "O servidor SMTP recusou a conexão.",
+            )
         if isinstance(exc, smtplib.SMTPException):
-            return MailDeliveryResult(False, "SMTP_PROTOCOL", "Falha de protocolo durante a entrega SMTP.")
-        return MailDeliveryResult(False, "SMTP_NETWORK", "Falha de rede ao conectar ao servidor SMTP.")
+            return MailDeliveryResult(
+                False,
+                "SMTP_PROTOCOL",
+                "Falha de protocolo durante a entrega SMTP.",
+            )
+        return MailDeliveryResult(
+            False,
+            "SMTP_NETWORK",
+            "Falha de rede ao conectar ao servidor SMTP.",
+        )
 
     def _base_message(self, *, recipient: str, subject: str) -> EmailMessage | None:
         if not self.enabled or not settings.smtp_from_email:
             return None
         message = EmailMessage()
         message["Subject"] = subject
-        message["From"] = formataddr((settings.smtp_from_name, settings.smtp_from_email))
+        message["From"] = formataddr(
+            (settings.smtp_from_name, settings.smtp_from_email)
+        )
         message["To"] = recipient
         if settings.smtp_reply_to:
             message["Reply-To"] = settings.smtp_reply_to
         return message
 
-    def _send(self, message: EmailMessage | None, *, purpose: str) -> MailDeliveryResult:
+    def _send(
+        self,
+        message: EmailMessage | None,
+        *,
+        purpose: str,
+    ) -> MailDeliveryResult:
         if message is None or not settings.smtp_host:
             logger.warning("SMTP não configurado; %s não foi enviado", purpose)
-            return MailDeliveryResult(False, "SMTP_NOT_CONFIGURED", "SMTP não está configurado no container da API.")
-        client_class = smtplib.SMTP_SSL if settings.smtp_use_ssl else smtplib.SMTP
+            return MailDeliveryResult(
+                False,
+                "SMTP_NOT_CONFIGURED",
+                "SMTP não está configurado no container da API.",
+            )
+
+        context = ssl.create_default_context()
         try:
-            context = ssl.create_default_context()
-            with client_class(
-                settings.smtp_host,
-                settings.smtp_port,
-                timeout=settings.smtp_timeout_seconds,
-                context=context,
-            ) if settings.smtp_use_ssl else client_class(
-                settings.smtp_host,
-                settings.smtp_port,
-                timeout=settings.smtp_timeout_seconds,
-            ) as client:
+            if settings.smtp_use_ssl:
+                client: smtplib.SMTP = smtplib.SMTP_SSL(
+                    settings.smtp_host,
+                    settings.smtp_port,
+                    timeout=settings.smtp_timeout_seconds,
+                    context=context,
+                )
+            else:
+                client = smtplib.SMTP(
+                    settings.smtp_host,
+                    settings.smtp_port,
+                    timeout=settings.smtp_timeout_seconds,
+                )
+
+            with client:
                 if settings.smtp_use_tls and not settings.smtp_use_ssl:
                     client.starttls(context=context)
                 if settings.smtp_username:
-                    client.login(settings.smtp_username, settings.smtp_password or "")
+                    client.login(
+                        settings.smtp_username,
+                        settings.smtp_password or "",
+                    )
                 client.send_message(message)
             return MailDeliveryResult(True)
         except (OSError, smtplib.SMTPException) as exc:
@@ -98,11 +149,15 @@ class MailDeliveryService:
             return self._failure(exc)
 
     def send_test_message(self, *, recipient: str) -> MailDeliveryResult:
-        message = self._base_message(recipient=recipient, subject="Teste de SMTP — Scheduler Pro")
+        message = self._base_message(
+            recipient=recipient,
+            subject="Teste de SMTP — Scheduler Pro",
+        )
         if message is not None:
             message.set_content(
                 "Este é um teste de entrega SMTP do Scheduler Pro.\n\n"
-                "Se esta mensagem chegou, servidor, autenticação e remetente estão operacionais."
+                "Se esta mensagem chegou, servidor, autenticação e remetente "
+                "estão operacionais."
             )
         return self._send(message, purpose="teste SMTP")
 
@@ -120,18 +175,24 @@ class MailDeliveryService:
         )
         if message is not None:
             message.set_content(
-                f"Recebemos uma solicitação para redefinir sua senha no {context_name}.\n\n"
+                f"Recebemos uma solicitação para redefinir sua senha no "
+                f"{context_name}.\n\n"
                 f"Acesse: {reset_url}\n\n"
                 f"Validade: {settings.password_reset_ttl_minutes} minutos.\n"
-                "O link é de uso único. Se você não solicitou a alteração, ignore esta mensagem."
+                "O link é de uso único. Se você não solicitou a alteração, "
+                "ignore esta mensagem."
             )
             message.add_alternative(
                 "<html><body style='font-family:Arial,sans-serif;color:#10233f'>"
                 "<h2>Redefinição de senha</h2>"
-                f"<p>Recebemos uma solicitação para redefinir sua senha no {escape(context_name)}.</p>"
-                f"<p><a href='{escape(reset_url, quote=True)}' style='display:inline-block;padding:12px 18px;"
-                "background:#0b9fea;color:#fff;text-decoration:none;border-radius:8px'>Redefinir minha senha</a></p>"
-                f"<p>O link é válido por {settings.password_reset_ttl_minutes} minutos e pode ser usado uma única vez.</p>"
+                f"<p>Recebemos uma solicitação para redefinir sua senha no "
+                f"{escape(context_name)}.</p>"
+                f"<p><a href='{escape(reset_url, quote=True)}' "
+                "style='display:inline-block;padding:12px 18px;"
+                "background:#0b9fea;color:#fff;text-decoration:none;"
+                "border-radius:8px'>Redefinir minha senha</a></p>"
+                f"<p>O link é válido por {settings.password_reset_ttl_minutes} "
+                "minutos e pode ser usado uma única vez.</p>"
                 "<p>Se você não solicitou a alteração, ignore esta mensagem.</p>"
                 "</body></html>",
                 subtype="html",
@@ -166,10 +227,14 @@ class MailDeliveryService:
                 "<p>Seu ambiente no Scheduler Pro está pronto.</p>"
                 f"<p><strong>Código do tenant:</strong> {escape(tenant_code)}<br>"
                 f"<strong>Usuário administrador:</strong> {escape(recipient)}<br>"
-                f"<strong>Senha inicial:</strong> <code>{escape(temporary_password)}</code></p>"
-                f"<p><a href='{escape(login_url, quote=True)}' style='display:inline-block;padding:12px 18px;"
-                "background:#0b9fea;color:#fff;text-decoration:none;border-radius:8px'>Acessar Scheduler Pro</a></p>"
-                "<p>Por segurança, altere sua senha depois do primeiro acesso e não compartilhe esta mensagem.</p>"
+                f"<strong>Senha inicial:</strong> "
+                f"<code>{escape(temporary_password)}</code></p>"
+                f"<p><a href='{escape(login_url, quote=True)}' "
+                "style='display:inline-block;padding:12px 18px;"
+                "background:#0b9fea;color:#fff;text-decoration:none;"
+                "border-radius:8px'>Acessar Scheduler Pro</a></p>"
+                "<p>Por segurança, altere sua senha depois do primeiro acesso "
+                "e não compartilhe esta mensagem.</p>"
                 "</body></html>",
                 subtype="html",
             )
