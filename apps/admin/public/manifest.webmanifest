@@ -1,27 +1,17 @@
 {
   "name": "Scheduler Pro Admin",
-  "short_name": "SP Admin",
-  "description": "Painel administrativo instalável para gerir clientes, provisionamento, domínios, builds e white-label do Scheduler Pro.",
+  "short_name": "Scheduler Pro",
+  "description": "Administração da plataforma Scheduler Pro: clientes, provisionamento, domínios, integrações, builds e observabilidade.",
   "id": "/?source=pwa-admin",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
   "orientation": "any",
-  "background_color": "#eef3f9",
-  "theme_color": "#092449",
+  "background_color": "#F4F7FB",
+  "theme_color": "#081A33",
   "categories": ["business", "productivity"],
   "icons": [
-    {
-      "src": "/icons/icon.svg",
-      "sizes": "any",
-      "type": "image/svg+xml",
-      "purpose": "any"
-    },
-    {
-      "src": "/icons/maskable.svg",
-      "sizes": "any",
-      "type": "image/svg+xml",
-      "purpose": "maskable"
-    }
+    { "src": "/icons/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" },
+    { "src": "/icons/maskable.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "maskable" }
   ]
 }
