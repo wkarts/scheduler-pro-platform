@@ -1238,7 +1238,7 @@ onUnmounted(() => {
 
           <section v-else-if="activeModule === 'provisioning'" class="view-stack">
             <article v-for="job in filteredProvisioning" :key="job.id" class="panel provisioning-card">
-              <div class="panel-title"><div><h3>{{ job.tenant_name }}</h3><p>{{ job.slug }} • {{ formatDate(job.created_at) }} • {{ job.correlation_id }}</p></div><div class="actions-cell"><span class="status-pill" :class="statusClass(job.status)">{{ job.status }}</span><button v-if="hasPermission('tenants.provision') && job.status === 'FAILED'" class="btn small" @click="retryProvision(job.id)">Tentar novamente</button></div></div>
+              <div class="panel-title"><div><h3>{{ job.tenant_name }}</h3><p>{{ job.slug }} • {{ formatDate(job.created_at) }} • {{ job.correlation_id }}</p></div><div class="actions-cell"><span class="status-pill" :class="statusClass(job.status)">{{ job.status }}</span><button v-if="hasPermission('tenants.provision') && ['FAILED','PROVISIONING'].includes(job.status)" class="btn small" @click="retryProvision(job.id)">{{ job.status === 'PROVISIONING' ? 'Reprocessar' : 'Tentar novamente' }}</button></div></div>
               <div class="step-grid"><article v-for="step in job.steps" :key="step.id" class="step" :class="statusClass(step.status)"><strong>{{ step.name }}</strong><span>{{ step.status }}</span><small v-if="step.error">{{ step.error }}</small></article></div>
             </article>
             <div v-if="!filteredProvisioning.length" class="empty-state">Nenhum job de provisionamento neste escopo.</div>

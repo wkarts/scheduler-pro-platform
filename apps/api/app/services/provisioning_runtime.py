@@ -117,27 +117,41 @@ class ProvisioningRuntime:
                 {"id": job_id},
             )
             await self.session.commit()
+            tenant_id = str(tenant.id)
+            step_id = str(step.id)
+            correlation_id = job.correlation_id
             try:
                 await self._run_step(name, tenant)
             except Exception as exc:  # noqa: BLE001 - persisted for ops diagnostics
-                step.status = ProvisioningStepStatus.failed.value
-                step.error = str(exc)[:4000]
-                job.status = "FAILED"
-                tenant.status = TenantStatus.failed.value
+                error_message = str(exc)[:4000]
+                # Qualquer erro PostgreSQL pode deixar a transação SQLAlchemy abortada.
+                # O rollback precisa ocorrer antes de persistir FAILED; sem isso o job
+                # permanece eternamente RUNNING/PROVISIONING.
+                await self.session.rollback()
+                failed_step = await self.session.get(ProvisioningStep, step_id)
+                failed_job = await self.session.get(ProvisioningJob, job_id)
+                failed_tenant = await self.session.get(Tenant, tenant_id)
+                if failed_step is not None:
+                    failed_step.status = ProvisioningStepStatus.failed.value
+                    failed_step.error = error_message
+                if failed_job is not None:
+                    failed_job.status = "FAILED"
+                if failed_tenant is not None:
+                    failed_tenant.status = TenantStatus.failed.value
                 await self.session.execute(
                     text("update provisioning_jobs set updated_at=now() where id=cast(:id as uuid)"),
                     {"id": job_id},
                 )
                 await self.logs.record_platform_log(
-                    tenant_id=str(tenant.id),
+                    tenant_id=tenant_id,
                     source="provisioning",
                     service="provisioning-runtime",
                     level="ERROR",
                     event="provisioning_step_failed",
                     message=f"Falha no passo {name}.",
-                    correlation_id=job.correlation_id,
+                    correlation_id=correlation_id,
                     error_code="PROVISIONING_STEP_FAILED",
-                    details={"step": name, "error": str(exc)},
+                    details={"step": name, "error": error_message},
                 )
                 await self.session.commit()
                 return
@@ -453,8 +467,8 @@ class ProvisioningRuntime:
                 """
                 update tenants
                 set settings = coalesce(settings, '{}'::jsonb) || jsonb_build_object(
-                    'welcome_email_status', :status,
-                    'welcome_email_recipient', :recipient,
+                    'welcome_email_status', cast(:status as text),
+                    'welcome_email_recipient', cast(:recipient as text),
                     'welcome_email_updated_at', cast(now() as text)
                 )
                 where id=cast(:tenant_id as uuid)

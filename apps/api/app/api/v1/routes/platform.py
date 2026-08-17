@@ -197,7 +197,10 @@ async def retry_provisioning(
         raise APIError("PROVISIONING_JOB_NOT_FOUND", "Job de provisionamento não encontrado.", 404)
     assert_platform_tenant_access(principal, row["tenant_id"])
     await session.execute(
-        text("update provisioning_jobs set status='PENDING' where id=cast(:id as uuid)"),
+        text(
+            "update provisioning_jobs set status='PENDING', updated_at=now() "
+            "where id=cast(:id as uuid)"
+        ),
         {"id": job_id},
     )
     await session.execute(
@@ -205,7 +208,7 @@ async def retry_provisioning(
             """
             update provisioning_steps
             set status='pending', error=null
-            where job_id=cast(:id as uuid) and status='failed'
+            where job_id=cast(:id as uuid) and status <> 'completed'
             """
         ),
         {"id": job_id},

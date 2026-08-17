@@ -26,16 +26,19 @@ class PostgresAdminConnectionError(RuntimeError):
 
 
 def _credential_candidates() -> list[AdminCredentialAttempt]:
+    # Na imagem oficial postgres, POSTGRES_USER criado no primeiro initdb
+    # é o superusuário real do cluster. Tente-o primeiro para não gerar um FATAL
+    # artificial em stacks onde o papel `postgres` não existe.
     candidates = [
-        AdminCredentialAttempt(
-            "POSTGRES_ADMIN_*",
-            (settings.postgres_admin_user or "").strip(),
-            settings.postgres_admin_password or "",
-        ),
         AdminCredentialAttempt(
             "POSTGRES_*",
             (settings.postgres_user or "").strip(),
             settings.postgres_password or "",
+        ),
+        AdminCredentialAttempt(
+            "POSTGRES_ADMIN_*",
+            (settings.postgres_admin_user or "").strip(),
+            settings.postgres_admin_password or "",
         ),
     ]
     unique: list[AdminCredentialAttempt] = []
