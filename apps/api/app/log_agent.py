@@ -85,9 +85,16 @@ async def _project_containers() -> list[dict[str, Any]]:
     return sorted(result, key=lambda item: (str(item.get("service") or ""), str(item.get("name") or "")))
 
 
+async def _project_containers_or_503() -> list[dict[str, Any]]:
+    try:
+        return await _project_containers()
+    except (httpx.HTTPError, OSError) as exc:
+        raise HTTPException(status_code=503, detail="docker socket unavailable") from exc
+
+
 async def _resolve_container(identifier: str) -> dict[str, Any]:
     clean = identifier.strip().lstrip("/")
-    for container in await _project_containers():
+    for container in await _project_containers_or_503():
         if clean in {container["id"], container["container_id"], container["name"], container.get("service")}:
             return container
     raise HTTPException(status_code=404, detail="container not found in Scheduler Pro project")
@@ -96,14 +103,30 @@ async def _resolve_container(identifier: str) -> dict[str, Any]:
 @app.get("/health")
 async def health(x_log_agent_token: str | None = Header(default=None)) -> dict[str, Any]:
     _authorize(x_log_agent_token)
-    containers = await _project_containers()
-    return {"ok": True, "project": COMPOSE_PROJECT, "containers": len(containers)}
+    try:
+        containers = await _project_containers()
+    except (httpx.HTTPError, OSError) as exc:
+        return {
+            "ok": True,
+            "project": COMPOSE_PROJECT,
+            "docker": {
+                "ok": False,
+                "containers": 0,
+                "status": "degraded",
+                "error": type(exc).__name__,
+            },
+        }
+    return {
+        "ok": True,
+        "project": COMPOSE_PROJECT,
+        "docker": {"ok": True, "containers": len(containers), "status": "ready"},
+    }
 
 
 @app.get("/containers")
 async def containers(x_log_agent_token: str | None = Header(default=None)) -> dict[str, Any]:
     _authorize(x_log_agent_token)
-    return {"containers": await _project_containers()}
+    return {"containers": await _project_containers_or_503()}
 
 
 @app.get("/logs")
@@ -119,9 +142,14 @@ async def logs(
     params: dict[str, str] = {"stdout": "1", "stderr": "1", "timestamps": "1", "tail": str(tail)}
     if since is not None:
         params["since"] = str(since)
-    async with _client() as client:
-        response = await client.get(f"/containers/{quote(resolved['container_id'], safe='')}/logs", params=params)
-        response.raise_for_status()
+    try:
+        async with _client() as client:
+            response = await client.get(
+                f"/containers/{quote(resolved['container_id'], safe='')}/logs", params=params
+            )
+            response.raise_for_status()
+    except (httpx.HTTPError, OSError) as exc:
+        raise HTTPException(status_code=503, detail="docker socket unavailable") from exc
     entries = _decode_logs(response.content)
     if search:
         needle = search.casefold()

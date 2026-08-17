@@ -121,6 +121,12 @@ services:
     image: *api-image
     pull_policy: always
     restart: unless-stopped
+    # The API image runs as the unprivileged scheduler user. This narrowly-scoped
+    # internal agent needs to open the host Docker socket, whose owner/group varies
+    # between CloudPanel/Dockge hosts, so the service explicitly runs as root.
+    # The socket is not published externally and the HTTP API remains HMAC protected.
+    user: "0:0"
+    security_opt: ["no-new-privileges:true"]
     environment:
       APP_ENV: ${APP_ENV:-production}
       APP_SECRET_KEY: ${APP_SECRET_KEY:?APP_SECRET_KEY obrigatória}
