@@ -81,6 +81,30 @@ async def test_admin_connection_skips_authenticated_user_without_create_privileg
 
 
 @pytest.mark.asyncio
+async def test_admin_connection_error_never_exposes_passwords(monkeypatch) -> None:
+    admin_password = "super-secret-admin-password"
+    platform_password = "super-secret-platform-password"
+    monkeypatch.setattr(settings, "postgres_admin_user", "postgres")
+    monkeypatch.setattr(settings, "postgres_admin_password", admin_password)
+    monkeypatch.setattr(settings, "postgres_user", "scheduler")
+    monkeypatch.setattr(settings, "postgres_password", platform_password)
+
+    async def fake_connect(**_kwargs: Any) -> Any:
+        raise asyncpg.InvalidPasswordError("password authentication failed")
+
+    monkeypatch.setattr(postgres_admin.asyncpg, "connect", fake_connect)
+
+    with pytest.raises(postgres_admin.PostgresAdminConnectionError) as captured:
+        await postgres_admin.connect_postgres_admin()
+
+    message = str(captured.value)
+    assert "postgres" in message
+    assert "scheduler" in message
+    assert admin_password not in message
+    assert platform_password not in message
+
+
+@pytest.mark.asyncio
 async def test_tenant_purge_uses_same_resilient_postgres_admin_connection(monkeypatch) -> None:
     fake_conn = FakeAdminConnection(privileged=True)
 
