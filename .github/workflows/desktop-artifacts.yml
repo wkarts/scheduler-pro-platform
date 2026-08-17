@@ -7,6 +7,7 @@ on:
     paths:
       - 'apps/desktop/**'
       - 'apps/admin-desktop/**'
+      - 'packages/branding/scheduler-pro/**'
       - 'scripts/build/configure-desktop-webview.mjs'
       - 'scripts/build/validate-desktop-webview.mjs'
       - 'package.json'
@@ -65,8 +66,10 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf
       - name: Install JS deps
         run: npm install
-      - name: Ensure Tauri icons
-        run: node scripts/build/ensure-tauri-icons.mjs ${{ matrix.app_path }}/src-tauri/icons --ico
+      - name: Generate canonical Tauri icon set
+        working-directory: ${{ matrix.app_path }}
+        shell: bash
+        run: npx tauri icon ../../packages/branding/scheduler-pro/brand-symbol.svg --output src-tauri/icons
       - name: Configure remote web application
         shell: bash
         env:
