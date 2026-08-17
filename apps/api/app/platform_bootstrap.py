@@ -17,29 +17,35 @@ async def bootstrap_platform_admin() -> None:
 
     normalized_email = email.lower()
     async with PlatformSession() as session:
-        existing = (
-            await session.execute(
-                text(
-                    """
-                    select email,is_super_admin,is_active
-                    from platform_users
-                    where lower(email)=:email
-                    limit 1
-                    """
-                ),
-                {"email": normalized_email},
-            )
-        ).mappings().first()
-
         if len(password) < 12:
-            if existing and bool(existing["is_super_admin"]) and bool(existing["is_active"]):
+            existing_superadmin = (
+                await session.execute(
+                    text(
+                        """
+                        select email,is_super_admin,is_active
+                        from platform_users
+                        where is_super_admin=true and is_active=true
+                        order by case when lower(email)=:email then 0 else 1 end
+                        limit 1
+                        """
+                    ),
+                    {"email": normalized_email},
+                )
+            ).mappings().first()
+
+            if existing_superadmin:
+                preserved_email = str(existing_superadmin["email"]).lower()
                 print(
-                    "Scheduler Pro platform admin already exists; "
-                    "legacy PLATFORM_ADMIN_PASSWORD was not reapplied. "
+                    "Scheduler Pro active platform superadmin already exists "
+                    f"({preserved_email}); legacy PLATFORM_ADMIN_PASSWORD was not reapplied. "
                     "Configure a password with at least 12 characters before the next credential rotation."
                 )
                 return
-            raise RuntimeError("PLATFORM_ADMIN_PASSWORD must contain at least 12 characters")
+
+            raise RuntimeError(
+                "PLATFORM_ADMIN_PASSWORD must contain at least 12 characters; "
+                "no active platform superadmin exists to preserve"
+            )
 
         await session.execute(
             text(
