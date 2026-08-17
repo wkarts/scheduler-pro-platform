@@ -2,17 +2,6 @@ name: Desktop Artifacts
 run-name: Desktop ${{ inputs.correlation_id || github.sha }}
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - 'apps/desktop/**'
-      - 'apps/admin-desktop/**'
-      - 'packages/branding/scheduler-pro/**'
-      - 'scripts/build/configure-desktop-webview.mjs'
-      - 'scripts/build/validate-desktop-webview.mjs'
-      - 'package.json'
-      - 'package-lock.json'
-      - '.github/workflows/desktop-artifacts.yml'
   workflow_dispatch:
     inputs:
       distribution_slug:
@@ -35,8 +24,10 @@ on:
         description: 'Correlação do Build Manager'
         required: false
         default: ''
-  release:
-    types: [published]
+
+concurrency:
+  group: desktop-${{ github.ref }}-${{ inputs.distribution_slug || 'platform' }}
+  cancel-in-progress: true
 
 permissions:
   contents: write
@@ -73,10 +64,10 @@ jobs:
       - name: Configure remote web application
         shell: bash
         env:
-          INPUT_SLUG: ${{ github.event_name == 'workflow_dispatch' && inputs.distribution_slug || 'platform' }}
-          INPUT_CLIENT_URL: ${{ github.event_name == 'workflow_dispatch' && inputs.client_web_url || 'https://scheduler.argws.com.br' }}
-          INPUT_ADMIN_URL: ${{ github.event_name == 'workflow_dispatch' && inputs.admin_web_url || 'https://admin.scheduler.argws.com.br' }}
-          INPUT_CLIENT_NAME: ${{ github.event_name == 'workflow_dispatch' && inputs.client_product_name || 'Scheduler Pro' }}
+          INPUT_SLUG: ${{ inputs.distribution_slug || 'platform' }}
+          INPUT_CLIENT_URL: ${{ inputs.client_web_url || 'https://scheduler.argws.com.br' }}
+          INPUT_ADMIN_URL: ${{ inputs.admin_web_url || 'https://admin.scheduler.argws.com.br' }}
+          INPUT_CLIENT_NAME: ${{ inputs.client_product_name || 'Scheduler Pro' }}
         run: |
           set -euo pipefail
           slug="$(printf '%s' "$INPUT_SLUG" | tr '[:upper:]' '[:lower:]' | tr -cd 'a-z0-9-')"; slug="${slug:-platform}"
@@ -95,7 +86,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          suffix="${{ github.event.release.tag_name || github.sha }}"
+          suffix="${{ github.sha }}"
           mkdir -p artifacts/installers artifacts/output
           find "${{ matrix.app_path }}/src-tauri/target/release/bundle" -type f \( -name '*.msi' -o -name '*setup*.exe' -o -name '*Setup*.exe' -o -name '*.dmg' -o -name '*.deb' \) -print0 | while IFS= read -r -d '' file; do cp "$file" artifacts/installers/; done
           if [ -z "$(find artifacts/installers -type f -print -quit)" ]; then echo 'Nenhum instalador final foi gerado.' >&2; exit 1; fi
@@ -103,12 +94,7 @@ jobs:
           (cd artifacts/output && sha256sum * > "scheduler-pro-${{ matrix.app_name }}-desktop-${{ matrix.label }}-${DISTRIBUTION_SLUG}-${suffix}.sha256")
       - uses: actions/upload-artifact@v4
         with:
-          name: scheduler-pro-${{ matrix.app_name }}-desktop-${{ matrix.label }}-${{ github.event.release.tag_name || github.sha }}
+          name: scheduler-pro-${{ matrix.app_name }}-desktop-${{ matrix.label }}-${{ github.sha }}
           path: artifacts/output/*
           if-no-files-found: error
           retention-days: 30
-      - name: Attach desktop artifact to release
-        if: github.event_name == 'release'
-        env: { GH_TOKEN: '${{ secrets.GITHUB_TOKEN }}' }
-        shell: bash
-        run: gh release upload "${{ github.event.release.tag_name }}" artifacts/output/* --clobber

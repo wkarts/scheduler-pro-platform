@@ -1,15 +1,16 @@
 name: Release
 
 on:
-  push:
-    branches:
-      - main
   workflow_dispatch:
     inputs:
       tag:
         description: 'Release tag. Leave empty to generate v0.1.0-alpha.<run_number>'
         required: false
         default: ''
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
 
 permissions:
   contents: write
@@ -38,7 +39,7 @@ jobs:
       - name: Resolve release tag
         id: version
         env:
-          INPUT_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || '' }}
+          INPUT_TAG: ${{ inputs.tag || '' }}
         shell: bash
         run: |
           set -euo pipefail
@@ -72,7 +73,7 @@ jobs:
         run: |
           set -euo pipefail
           TAG="${SCHEDULER_PRO_RELEASE_TAG}"
-          NOTES='Release automática do Scheduler Pro. Android publica APK debug ARM64 assinado para instalação direta em homologação. Desktop publica instaladores Windows MSI/NSIS, Linux DEB e macOS DMG. iOS publica IPA ARM64 não assinado; para instalar em aparelho físico é necessário assinar com identidade/provisionamento Apple.'
+          NOTES='Release controlada do Scheduler Pro. Android publica APK debug ARM64 assinado para instalação direta em homologação. Desktop publica instaladores Windows MSI/NSIS, Linux DEB e macOS DMG. iOS publica IPA ARM64 não assinado; para instalar em aparelho físico é necessário assinar com identidade/provisionamento Apple.'
           if gh release view "$TAG" >/dev/null 2>&1; then
             gh release upload "$TAG" artifacts/* --clobber
           else

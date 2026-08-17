@@ -2,26 +2,17 @@ name: Mobile Artifacts
 run-name: Mobile ${{ inputs.correlation_id || github.sha }}
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - 'apps/mobile/**'
-      - 'apps/admin-mobile/**'
-      - 'packages/branding/scheduler-pro/**'
-      - 'scripts/mobile/build-ios-unsigned.sh'
-      - 'scripts/release/package-ios-unsigned.sh'
-      - 'package.json'
-      - 'package-lock.json'
-      - '.github/workflows/mobile-artifacts.yml'
   workflow_dispatch:
     inputs:
       build_profile: { description: 'Build profile id or slug', required: false, default: 'default' }
       target: { description: 'android|ios|admin-android|admin-ios|all', required: false, default: 'all' }
       correlation_id: { description: 'Correlação do Build Manager', required: false, default: '' }
-  release:
-    types: [published]
 
-permissions: { contents: write, actions: write }
+concurrency:
+  group: mobile-${{ github.ref }}-${{ inputs.build_profile || 'default' }}-${{ inputs.target || 'all' }}
+  cancel-in-progress: true
+
+permissions: { contents: read, actions: write }
 
 env:
   NODE_VERSION: '24'
@@ -30,7 +21,7 @@ env:
 
 jobs:
   android:
-    if: github.event_name != 'workflow_dispatch' || inputs.target == 'all' || contains(inputs.target, 'android')
+    if: inputs.target == 'all' || contains(inputs.target, 'android')
     runs-on: ubuntu-24.04
     timeout-minutes: 120
     strategy:
@@ -74,7 +65,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          suffix="${{ github.event.release.tag_name || github.sha }}"
+          suffix="${{ github.sha }}"
           mkdir -p artifacts
           apk="$(find '${{ matrix.app_path }}/src-tauri' -type f -name '*debug*.apk' -print -quit)"
           test -n "$apk"
@@ -82,18 +73,14 @@ jobs:
           (cd artifacts && sha256sum *.apk > SHA256SUMS.txt)
       - uses: actions/upload-artifact@v4
         with:
-          name: scheduler-pro-${{ matrix.app_name }}-android-debug-installable-${{ github.event.release.tag_name || github.sha }}
+          name: scheduler-pro-${{ matrix.app_name }}-android-debug-installable-${{ github.sha }}
           path: artifacts/*
           if-no-files-found: error
           retention-days: 30
           compression-level: 0
-      - name: Attach to release
-        if: github.event_name == 'release'
-        env: { GH_TOKEN: '${{ secrets.GITHUB_TOKEN }}' }
-        run: gh release upload "${{ github.event.release.tag_name }}" artifacts/* --clobber
 
   ios:
-    if: github.event_name != 'workflow_dispatch' || inputs.target == 'all' || contains(inputs.target, 'ios')
+    if: inputs.target == 'all' || contains(inputs.target, 'ios')
     runs-on: macos-15
     timeout-minutes: 120
     strategy:
@@ -129,7 +116,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          suffix="${{ github.event.release.tag_name || github.sha }}"
+          suffix="${{ github.sha }}"
           app_path="$(cat release/${{ matrix.app_name }}-ios-app/app-path.txt)"
           mkdir -p artifacts
           bash scripts/release/package-ios-unsigned.sh \
@@ -137,15 +124,10 @@ jobs:
             "artifacts/scheduler-pro-${{ matrix.app_name }}-ios-arm64-${suffix}-unsigned.ipa"
       - uses: actions/upload-artifact@v4
         with:
-          name: scheduler-pro-${{ matrix.app_name }}-ios-arm64-unsigned-${{ github.event.release.tag_name || github.sha }}
+          name: scheduler-pro-${{ matrix.app_name }}-ios-arm64-unsigned-${{ github.sha }}
           path: |
             artifacts/*.ipa
             artifacts/*.ipa.sha256
           if-no-files-found: error
           retention-days: 30
           compression-level: 0
-      - name: Attach to release
-        if: github.event_name == 'release'
-        env: { GH_TOKEN: '${{ secrets.GITHUB_TOKEN }}' }
-        shell: bash
-        run: gh release upload "${{ github.event.release.tag_name }}" artifacts/* --clobber

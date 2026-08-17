@@ -2,8 +2,6 @@ name: Distribution Artifacts
 run-name: Distribution ${{ inputs.correlation_id || github.sha }}
 
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
     inputs:
       artifact_suffix:
@@ -14,6 +12,10 @@ on:
         description: 'Correlação do Build Manager'
         required: false
         default: ''
+
+concurrency:
+  group: distribution-${{ github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
