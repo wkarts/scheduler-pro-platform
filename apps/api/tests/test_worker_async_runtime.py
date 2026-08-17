@@ -1,4 +1,5 @@
 import asyncio
+from pathlib import Path
 
 from app.workers import tasks
 
@@ -28,7 +29,8 @@ def test_celery_worker_reuses_one_event_loop_across_tasks() -> None:
 
 
 def test_worker_tasks_do_not_create_a_fresh_loop_per_task() -> None:
-    source = (tasks.__file__ and open(tasks.__file__, encoding="utf-8").read()) or ""
+    assert tasks.__file__ is not None
+    source = Path(tasks.__file__).read_text(encoding="utf-8")
 
     assert "asyncio.run(" not in source
     assert "loop.run_until_complete(coro)" in source
