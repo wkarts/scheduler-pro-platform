@@ -49,25 +49,52 @@ def _credential_candidates() -> list[AdminCredentialAttempt]:
     return unique
 
 
+async def _has_tenant_admin_capabilities(conn: asyncpg.Connection) -> bool:
+    """Confirma que a credencial pode criar/remover banco e papel de tenant."""
+
+    row = await conn.fetchrow(
+        """
+        select rolsuper, rolcreaterole, rolcreatedb
+        from pg_roles
+        where rolname=current_user
+        """
+    )
+    if row is None:
+        return False
+    return bool(row["rolsuper"] or (row["rolcreaterole"] and row["rolcreatedb"]))
+
+
 async def connect_postgres_admin(
     database: str | None = None,
 ) -> asyncpg.Connection:
     """Conecta com a primeira credencial administrativa válida.
 
-    A mensagem de erro informa apenas usuários/fontes tentados; senhas nunca são
-    incluídas no log ou na exceção.
+    Além de autenticar, a credencial precisa ter privilégios suficientes para
+    criar/remover os bancos e papéis isolados dos tenants. Uma credencial
+    explícita inválida ou sem privilégios não impede o fallback para a
+    credencial da plataforma. Senhas nunca são incluídas em logs/exceções.
     """
 
     attempts: list[dict[str, str]] = []
     last_error: BaseException | None = None
     for candidate in _credential_candidates():
+        conn: asyncpg.Connection | None = None
         try:
-            return await asyncpg.connect(
+            conn = await asyncpg.connect(
                 host=settings.postgres_host,
                 port=settings.postgres_port,
                 user=candidate.user,
                 password=candidate.password,
                 database=database or settings.postgres_db,
+            )
+            if await _has_tenant_admin_capabilities(conn):
+                return conn
+            attempts.append(
+                {
+                    "source": candidate.source,
+                    "user": candidate.user,
+                    "error": "InsufficientPrivilege",
+                }
             )
         except (asyncpg.PostgresError, OSError) as exc:
             attempts.append(
@@ -78,6 +105,18 @@ async def connect_postgres_admin(
                 }
             )
             last_error = exc
+        finally:
+            if conn is not None:
+                # A conexão aprovada é retornada antes deste ponto. Todas as
+                # demais tentativas precisam ser descartadas antes do fallback.
+                try:
+                    if not await _has_tenant_admin_capabilities(conn):
+                        await conn.close()
+                except (asyncpg.PostgresError, OSError):
+                    try:
+                        await conn.close()
+                    except Exception:  # noqa: BLE001 - cleanup best effort
+                        pass
 
     error = PostgresAdminConnectionError(
         "Não foi possível abrir conexão administrativa PostgreSQL. "
