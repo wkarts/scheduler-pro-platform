@@ -9,11 +9,11 @@ on:
         required: false
         default: 'platform'
       client_web_url:
-        description: 'URL HTTPS carregada pelo Desktop cliente'
+        description: 'URL HTTPS da distribuição; /api/v1 será usado pelo Desktop cliente'
         required: false
         default: 'https://scheduler.argws.com.br'
       admin_web_url:
-        description: 'URL HTTPS carregada pelo Desktop administrativo'
+        description: 'URL HTTPS do Control Plane; /api/v1 será usado pelo Desktop administrativo'
         required: false
         default: 'https://admin.scheduler.argws.com.br'
       client_product_name:
@@ -61,7 +61,7 @@ jobs:
         working-directory: ${{ matrix.app_path }}
         shell: bash
         run: npx tauri icon ../../packages/branding/scheduler-pro/brand-symbol.svg --output src-tauri/icons
-      - name: Configure remote web application
+      - name: Configure local desktop bundle and API endpoint
         shell: bash
         env:
           INPUT_SLUG: ${{ inputs.distribution_slug || 'platform' }}
@@ -72,14 +72,15 @@ jobs:
           set -euo pipefail
           slug="$(printf '%s' "$INPUT_SLUG" | tr '[:upper:]' '[:lower:]' | tr -cd 'a-z0-9-')"; slug="${slug:-platform}"
           if [ "${{ matrix.app_name }}" = "client" ]; then
-            web_url="$INPUT_CLIENT_URL"; product_name="$INPUT_CLIENT_NAME"
+            api_url="$INPUT_CLIENT_URL"; product_name="$INPUT_CLIENT_NAME"
             if [ "$slug" = "platform" ]; then identifier="br.com.argws.schedulerpro"; else identifier="br.com.argws.schedulerpro.$(printf '%s' "$slug" | tr -d '-')"; fi
           else
-            web_url="$INPUT_ADMIN_URL"; product_name="Scheduler Pro Admin"; identifier="br.com.argws.schedulerpro.admin"
+            api_url="$INPUT_ADMIN_URL"; product_name="Scheduler Pro Admin"; identifier="br.com.argws.schedulerpro.admin"
           fi
-          node scripts/build/configure-desktop-webview.mjs "${{ matrix.app_path }}" "$web_url" "$product_name" "$identifier"
+          node scripts/build/configure-desktop-webview.mjs "${{ matrix.app_path }}" "$api_url" "$product_name" "$identifier"
+          node scripts/build/validate-desktop-local.mjs "${{ matrix.app_path }}"
           echo "DISTRIBUTION_SLUG=$slug" >> "$GITHUB_ENV"
-      - name: Build installable remote-web desktop
+      - name: Build installable desktop with bundled Vue UI
         working-directory: ${{ matrix.app_path }}
         run: npm run tauri:build -- --config src-tauri/tauri.generated.conf.json --bundles ${{ matrix.bundles }}
       - name: Collect installers only
@@ -97,4 +98,32 @@ jobs:
           name: scheduler-pro-${{ matrix.app_name }}-desktop-${{ matrix.label }}-${{ github.sha }}
           path: artifacts/output/*
           if-no-files-found: error
+          retention-days: 1
+
+
+  aggregate:
+    name: Desktop package / all supported systems
+    needs: tauri-desktop
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: scheduler-pro-*-desktop-*-${{ github.sha }}
+          path: collected
+          merge-multiple: true
+      - name: Create one delivery package
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$(find collected -type f -print -quit)"
+          mkdir -p final
+          find collected -type f -maxdepth 2 -print | LC_ALL=C sort > final/CONTENTS.txt
+          tar -C collected -czf "final/scheduler-pro-desktop-complete-${{ github.sha }}.tar.gz" .
+          (cd final && sha256sum scheduler-pro-desktop-complete-*.tar.gz > SHA256SUMS.txt)
+      - uses: actions/upload-artifact@v4
+        with:
+          name: scheduler-pro-desktop-complete-${{ github.sha }}
+          path: final/*
+          if-no-files-found: error
           retention-days: 30
+          compression-level: 0

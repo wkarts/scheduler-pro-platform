@@ -9,6 +9,7 @@ on:
       - 'apps/admin-mobile/**'
       - 'packages/branding/scheduler-pro/**'
       - 'scripts/build/ensure-tauri-icons.mjs'
+      - 'scripts/build/validate-desktop-local.mjs'
       - 'scripts/build/validate-desktop-webview.mjs'
       - 'scripts/build/configure-desktop-webview.mjs'
       - 'package.json'
@@ -31,9 +32,9 @@ jobs:
           cache: npm
       - name: Install JS deps
         run: npm install
-      - name: Validate client desktop remote WebView
+      - name: Validate client desktop bundled frontend
         run: npm --workspace apps/desktop run typecheck
-      - name: Validate admin desktop remote WebView
+      - name: Validate admin desktop bundled frontend
         run: npm --workspace apps/admin-desktop run typecheck
       - name: Typecheck and build client mobile UI
         run: |

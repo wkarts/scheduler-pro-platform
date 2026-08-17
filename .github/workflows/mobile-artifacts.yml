@@ -21,15 +21,13 @@ env:
 
 jobs:
   android:
-    if: inputs.target == 'all' || contains(inputs.target, 'android')
+    if: inputs.target == 'all' || inputs.target == 'android' || inputs.target == 'admin-android'
     runs-on: ubuntu-24.04
     timeout-minutes: 120
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - { app_path: apps/mobile, app_name: client }
-          - { app_path: apps/admin-mobile, app_name: admin }
+        include: ${{ fromJSON(inputs.target == 'android' && '[{"app_path":"apps/mobile","app_name":"client"}]' || inputs.target == 'admin-android' && '[{"app_path":"apps/admin-mobile","app_name":"admin"}]' || '[{"app_path":"apps/mobile","app_name":"client"},{"app_path":"apps/admin-mobile","app_name":"admin"}]') }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -61,34 +59,59 @@ jobs:
       - name: Build debug installable arm64 APK
         working-directory: ${{ matrix.app_path }}
         run: npm run tauri:android:apk:debug
-      - name: Collect APK
+      - name: Select, verify signature and validate final APK
         shell: bash
         run: |
           set -euo pipefail
           suffix="${{ github.sha }}"
-          mkdir -p artifacts
-          apk="$(find '${{ matrix.app_path }}/src-tauri' -type f -name '*debug*.apk' -print -quit)"
-          test -n "$apk"
-          cp "$apk" "artifacts/scheduler-pro-${{ matrix.app_name }}-android-${suffix}-debug-installable.apk"
-          (cd artifacts && sha256sum *.apk > SHA256SUMS.txt)
+          python scripts/mobile/collect-android-apk.py \
+            "${{ matrix.app_path }}" \
+            "artifacts/scheduler-pro-${{ matrix.app_name }}-android-${suffix}-debug-installable.apk" \
+            --require-signature --max-mib 200
       - uses: actions/upload-artifact@v4
         with:
           name: scheduler-pro-${{ matrix.app_name }}-android-debug-installable-${{ github.sha }}
           path: artifacts/*
           if-no-files-found: error
+          retention-days: 1
+          compression-level: 0
+
+
+  android-package:
+    name: Android delivery package
+    needs: android
+    if: always() && needs.android.result == 'success'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: scheduler-pro-*-android-debug-installable-${{ github.sha }}
+          path: collected
+          merge-multiple: true
+      - name: Aggregate validated APKs
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$(find collected -maxdepth 2 -type f -name '*.apk' -print -quit)"
+          mkdir -p final
+          tar -C collected -czf "final/scheduler-pro-android-complete-${{ github.sha }}.tar.gz" .
+          (cd final && sha256sum scheduler-pro-android-complete-*.tar.gz > SHA256SUMS.txt)
+      - uses: actions/upload-artifact@v4
+        with:
+          name: scheduler-pro-android-complete-${{ github.sha }}
+          path: final/*
+          if-no-files-found: error
           retention-days: 30
           compression-level: 0
 
   ios:
-    if: inputs.target == 'all' || contains(inputs.target, 'ios')
+    if: inputs.target == 'all' || inputs.target == 'ios' || inputs.target == 'admin-ios'
     runs-on: macos-15
     timeout-minutes: 120
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - { app_path: apps/mobile, app_name: client }
-          - { app_path: apps/admin-mobile, app_name: admin }
+        include: ${{ fromJSON(inputs.target == 'ios' && '[{"app_path":"apps/mobile","app_name":"client"}]' || inputs.target == 'admin-ios' && '[{"app_path":"apps/admin-mobile","app_name":"admin"}]' || '[{"app_path":"apps/mobile","app_name":"client"},{"app_path":"apps/admin-mobile","app_name":"admin"}]') }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4

@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Scheduler PRO Admin">
+  <g fill="none" stroke="#FFFFFF" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M112 166V126Q112 100 138 100H374Q400 100 400 126V302" stroke-width="48"/>
+    <path d="M170 76v76M332 76v76" stroke-width="42"/>
+    <circle cx="316" cy="318" r="132" stroke-width="42"/>
+    <path d="M263 330l45 46 91-105" stroke-width="54"/>
+  </g>
+</svg>

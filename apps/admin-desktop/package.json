@@ -4,14 +4,23 @@
   "version": "0.1.0-alpha.1",
   "type": "module",
   "scripts": {
-    "dev": "tauri dev",
-    "build": "node ../../scripts/build/validate-desktop-webview.mjs .",
-    "typecheck": "node ../../scripts/build/validate-desktop-webview.mjs .",
-    "lint": "node ../../scripts/build/validate-desktop-webview.mjs .",
+    "dev": "vite --host 0.0.0.0 --port 1421",
+    "build": "vue-tsc --noEmit && vite build",
+    "typecheck": "vue-tsc --noEmit",
+    "lint": "node ../../scripts/build/validate-desktop-local.mjs .",
     "tauri": "tauri",
     "tauri:dev": "tauri dev",
     "tauri:build": "tauri build"
   },
-  "dependencies": {"@tauri-apps/api": "^2.0.0"},
-  "devDependencies": {"@tauri-apps/cli": "^2.0.0"}
+  "dependencies": {
+    "@tauri-apps/api": "^2.0.0",
+    "vue": "3.5.13"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.0.0",
+    "@vitejs/plugin-vue": "5.2.1",
+    "typescript": "5.5.4",
+    "vite": "5.4.11",
+    "vue-tsc": "2.1.10"
+  }
 }

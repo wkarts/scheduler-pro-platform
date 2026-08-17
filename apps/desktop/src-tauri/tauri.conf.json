@@ -1,12 +1,16 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Scheduler Pro",
-  "version": "0.1.0",
+  "version": "0.1.0-alpha.1",
   "identifier": "br.com.argws.schedulerpro",
   "build": {
-    "devUrl": "https://scheduler.argws.com.br",
-    "frontendDist": "https://scheduler.argws.com.br",
-    "features": ["desktop"],
+    "beforeDevCommand": "npm run dev",
+    "devUrl": "http://localhost:1420",
+    "beforeBuildCommand": "npm run build",
+    "frontendDist": "../dist",
+    "features": [
+      "desktop"
+    ],
     "removeUnusedCommands": true
   },
   "app": {
@@ -14,7 +18,6 @@
       {
         "label": "main",
         "title": "Scheduler Pro",
-        "url": "https://scheduler.argws.com.br",
         "width": 1440,
         "height": 900,
         "minWidth": 1024,
@@ -25,15 +28,25 @@
         "center": true
       }
     ],
-    "security": { "csp": null }
+    "security": {
+      "csp": null
+    }
   },
   "bundle": {
     "active": true,
-    "targets": ["msi", "nsis", "dmg", "deb"],
-    "icon": ["icons/icon.png", "icons/icon.ico"],
+    "targets": [
+      "msi",
+      "nsis",
+      "dmg",
+      "deb"
+    ],
+    "icon": [
+      "icons/icon.png",
+      "icons/icon.ico"
+    ],
     "publisher": "ARGWS Sistemas",
     "category": "Business",
     "shortDescription": "Scheduler Pro",
-    "longDescription": "Aplicativo desktop do Scheduler Pro conectado à aplicação web do cliente."
+    "longDescription": "Aplicativo desktop local do Scheduler Pro conectado à API da distribuição."
   }
 }

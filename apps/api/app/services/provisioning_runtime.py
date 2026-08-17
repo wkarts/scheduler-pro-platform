@@ -4,7 +4,6 @@ import re
 import sys
 
 import asyncpg
-import boto3
 from botocore.exceptions import BotoCoreError, ClientError
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -13,6 +12,7 @@ from app.core.config import settings
 from app.core.enums import ProvisioningStepStatus, TenantStatus
 from app.core.security import hash_password
 from app.core.secrets import secret_resolver
+from app.db.postgres_admin import connect_postgres_admin
 from app.db.models_platform import (
     BuildProfile,
     Domain,
@@ -25,7 +25,8 @@ from app.db.models_platform import (
 )
 from app.services.domain_provisioning_service import DomainProvisioningService
 from app.services.observability_service import ObservabilityService
-from app.services.provisioning import PROVISIONING_STEPS
+from app.services.provisioning import BUILD_TARGETS, PROVISIONING_STEPS
+from app.services.s3_bucket_admin import ensure_bucket
 
 IDENTIFIER_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 TENANT_ADMIN_PERMISSIONS = [
@@ -59,15 +60,43 @@ class ProvisioningRuntime:
         self.logs = ObservabilityService(session)
 
     async def run_job(self, job_id: str) -> None:
+        claimed = (
+            await self.session.execute(
+                text(
+                    """
+                    update provisioning_jobs
+                    set status='PROVISIONING', updated_at=now()
+                    where id=cast(:id as uuid) and status='PENDING'
+                    returning tenant_id::text, correlation_id
+                    """
+                ),
+                {"id": job_id},
+            )
+        ).mappings().first()
+        if claimed is None:
+            await self.session.rollback()
+            return
+
+        tenant = await self.session.get(Tenant, claimed["tenant_id"])
+        if tenant is None:
+            await self.session.execute(
+                text(
+                    """
+                    update provisioning_jobs
+                    set status='FAILED', updated_at=now()
+                    where id=cast(:id as uuid)
+                    """
+                ),
+                {"id": job_id},
+            )
+            await self.session.commit()
+            return
+
+        tenant.status = TenantStatus.provisioning.value
+        await self.session.commit()
         job = await self.session.get(ProvisioningJob, job_id)
         if job is None:
             return
-        tenant = await self.session.get(Tenant, job.tenant_id)
-        if tenant is None:
-            return
-        job.status = "PROVISIONING"
-        tenant.status = TenantStatus.provisioning.value
-        await self.session.commit()
 
         steps = (
             await self.session.execute(
@@ -81,14 +110,22 @@ class ProvisioningRuntime:
                 continue
             step.status = ProvisioningStepStatus.running.value
             step.error = None
+            await self.session.execute(
+                text("update provisioning_jobs set updated_at=now() where id=cast(:id as uuid)"),
+                {"id": job_id},
+            )
             await self.session.commit()
             try:
                 await self._run_step(name, tenant)
-            except Exception as exc:  # noqa: BLE001 - persisted for ops diagnostics
+            except Exception as exc:
                 step.status = ProvisioningStepStatus.failed.value
                 step.error = str(exc)[:4000]
                 job.status = "FAILED"
                 tenant.status = TenantStatus.failed.value
+                await self.session.execute(
+                    text("update provisioning_jobs set updated_at=now() where id=cast(:id as uuid)"),
+                    {"id": job_id},
+                )
                 await self.logs.record_platform_log(
                     tenant_id=str(tenant.id),
                     source="provisioning",
@@ -104,20 +141,34 @@ class ProvisioningRuntime:
                 return
             step.status = ProvisioningStepStatus.completed.value
             step.error = None
+            await self.session.execute(
+                text("update provisioning_jobs set updated_at=now() where id=cast(:id as uuid)"),
+                {"id": job_id},
+            )
             await self.session.commit()
 
         tenant.status = TenantStatus.active.value
         job.status = "ACTIVE"
         await self.session.execute(
-            text("update tenant_resource_boundaries set isolation_status='ACTIVE', updated_at=now() where tenant_id=:tenant_id::uuid"),
+            text(
+                """
+                update tenant_resource_boundaries
+                set isolation_status='ACTIVE', updated_at=now()
+                where tenant_id=cast(:tenant_id as uuid)
+                """
+            ),
             {"tenant_id": str(tenant.id)},
+        )
+        await self.session.execute(
+            text("update provisioning_jobs set updated_at=now() where id=cast(:id as uuid)"),
+            {"id": job_id},
         )
         await self.logs.record_platform_log(
             tenant_id=str(tenant.id),
             source="provisioning",
             service="provisioning-runtime",
             event="tenant_activated",
-            message="Tenant provisionado e ativado com banco, storage, admin, domínio e perfis isolados.",
+            message="Cliente provisionado e ativado com banco, storage, administrador, domínio e perfis isolados.",
             correlation_id=job.correlation_id,
         )
         await self.session.commit()
@@ -145,7 +196,12 @@ class ProvisioningRuntime:
             await self._create_storage(tenant)
             return
         if name == "CreateTemporaryDomain":
-            await self.domains.create_temporary_domain(str(tenant.id))
+            domain = await self.domains.create_temporary_domain(str(tenant.id))
+            if domain.get("status") != "ACTIVE":
+                raise RuntimeError(
+                    "Domínio temporário não convergiu para DNS proxied/ACTIVE. "
+                    f"Estado: {domain.get('status')}"
+                )
             return
         if name == "ConfigureCloudflare":
             domain = (
@@ -154,9 +210,14 @@ class ProvisioningRuntime:
                 )
             ).scalar_one_or_none()
             if domain is None:
-                await self.domains.create_temporary_domain(str(tenant.id))
+                checked = await self.domains.create_temporary_domain(str(tenant.id))
             else:
-                await self.domains.check_domain(str(domain.id))
+                checked = await self.domains.check_domain(str(domain.id))
+            if checked.get("status") != "ACTIVE":
+                raise RuntimeError(
+                    "Cloudflare não confirmou o domínio temporário como proxied/ACTIVE. "
+                    f"Estado: {checked.get('status')}"
+                )
             return
         if name == "CreateAdmin":
             await self._create_admin(tenant)
@@ -172,9 +233,19 @@ class ProvisioningRuntime:
                 raise RuntimeError("Branding profile ausente para o tenant.")
             return
         if name == "CreateBuildProfiles":
-            count = len((await self.session.execute(select(BuildProfile.id).where(BuildProfile.tenant_id == tenant.id))).scalars().all())
-            if count < 5:
-                raise RuntimeError("Build profiles incompletos para o tenant.")
+            targets = set(
+                (
+                    await self.session.execute(
+                        select(BuildProfile.target).where(BuildProfile.tenant_id == tenant.id)
+                    )
+                ).scalars().all()
+            )
+            missing = [target for target in BUILD_TARGETS if target not in targets]
+            if missing:
+                raise RuntimeError(
+                    "Build profiles incompletos para o tenant. "
+                    f"Targets ausentes: {', '.join(missing)}"
+                )
             return
         if name == "ActivateTenant":
             return
@@ -182,13 +253,7 @@ class ProvisioningRuntime:
 
     async def _create_database(self, tenant: Tenant) -> None:
         database, _, password = await self._resources(tenant)
-        conn = await asyncpg.connect(
-            host=settings.postgres_host,
-            port=settings.postgres_port,
-            user=settings.postgres_admin_user,
-            password=settings.postgres_admin_password,
-            database=settings.postgres_db,
-        )
+        conn = await connect_postgres_admin()
         try:
             password_literal = await conn.fetchval("select quote_literal($1)", password)
             role_exists = await conn.fetchval("select exists(select 1 from pg_roles where rolname=$1)", database.database_user)
@@ -231,27 +296,10 @@ class ProvisioningRuntime:
                 details={"output": stdout.decode("utf-8", "replace")[-1000:]},
             )
 
-    @staticmethod
-    def _ensure_bucket(bucket: str) -> None:
-        s3 = boto3.client(
-            "s3",
-            endpoint_url=settings.s3_endpoint,
-            aws_access_key_id=settings.s3_access_key,
-            aws_secret_access_key=settings.s3_secret_key,
-            region_name=settings.s3_region,
-        )
-        try:
-            s3.head_bucket(Bucket=bucket)
-        except ClientError as exc:
-            status = int(exc.response.get("ResponseMetadata", {}).get("HTTPStatusCode", 0))
-            if status not in {403, 404}:
-                raise
-            s3.create_bucket(Bucket=bucket)
-
     async def _create_storage(self, tenant: Tenant) -> None:
         _, storage, _ = await self._resources(tenant)
         try:
-            await asyncio.to_thread(self._ensure_bucket, storage.bucket)
+            await asyncio.to_thread(ensure_bucket, storage.bucket)
         except (BotoCoreError, ClientError, OSError) as exc:
             raise RuntimeError(f"Falha ao criar bucket S3/MinIO {storage.bucket}: {exc}") from exc
 
