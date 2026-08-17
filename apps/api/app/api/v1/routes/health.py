@@ -17,7 +17,7 @@ from app.db.session import PlatformSession, get_tenant_engine
 from app.services.tenant_resolver import TenantResolver
 
 router = APIRouter()
-PLATFORM_MIGRATION_HEAD = "platform_0006"
+PLATFORM_MIGRATION_HEAD = "platform_0007"
 TENANT_MIGRATION_HEAD = "tenant_0004_product_complete"
 
 
@@ -90,8 +90,15 @@ def resolve_request_hostname_from_value(value: str) -> str:
 
 
 def _tenant_probe_required(hostname: str) -> bool:
-    if settings.app_env == "development":
-        return True
+    """Return whether readiness must also probe a tenant database.
+
+    Platform/readiness requests to localhost or the configured platform hostname
+    must never be resolved as tenants. This is especially important in the
+    development/integration stack, whose readiness probe reaches the API through
+    127.0.0.1. A real tenant hostname (for example ``dev.localhost``) still
+    requires the tenant probe in every environment.
+    """
+
     platform_hostname = resolve_request_hostname_from_value(
         settings.public_platform_domain
     )
