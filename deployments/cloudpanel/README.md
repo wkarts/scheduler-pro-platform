@@ -31,9 +31,15 @@ SMTP_REPLY_TO=suporte@seu-dominio.com.br
 SMTP_USE_TLS=true
 SMTP_USE_SSL=false
 SMTP_TIMEOUT_SECONDS=15
+
+# A imagem oficial PostgreSQL cria POSTGRES_USER como superusuário no primeiro initdb.
+POSTGRES_USER=scheduler
+POSTGRES_PASSWORD=COLOQUE_AQUI_A_SENHA_DO_POSTGRES
+POSTGRES_ADMIN_USER=scheduler
+POSTGRES_ADMIN_PASSWORD=COLOQUE_AQUI_A_MESMA_SENHA_DO_POSTGRES
 ```
 
-Nunca versione a senha administrativa ou as credenciais SMTP reais. Elas devem existir somente no `.env` do servidor/secret store.
+Nunca versione a senha administrativa ou as credenciais SMTP/PostgreSQL reais. Elas devem existir somente no `.env` do servidor/secret store.
 
 O SMTP é usado para recuperação de senha, teste de entrega e e-mail de boas-vindas ao administrador de um tenant provisionado. Se `SMTP_HOST`/`SMTP_FROM_EMAIL` não estiverem configurados, a recuperação retorna `SMTP_NOT_CONFIGURED` em vez de simular envio.
 
@@ -68,3 +74,13 @@ O perfil `compose.acme.yaml` permanece opcional e não precisa ser iniciado no a
 docker compose --env-file .env -f compose.yaml pull
 docker compose --env-file .env -f compose.yaml up -d --remove-orphans
 ```
+
+## 5. Recuperar provisionamento estagnado
+
+O provisionamento é idempotente por passo. Passos marcados como `completed` não são repetidos em um retry; somente passos ainda pendentes, em execução ou que falharam são reenfileirados.
+
+O runtime faz `rollback` da sessão antes de persistir uma falha, impedindo que um erro PostgreSQL deixe o job indefinidamente em `RUNNING/PROVISIONING`. Jobs `FAILED` podem ser reenfileirados imediatamente. Jobs `PENDING/PROVISIONING` só podem ser reprocessados quando estiverem sem atualização por pelo menos 10 minutos, evitando execução concorrente do mesmo job.
+
+No Control Plane, abra **Provisionamento** e use **Tentar novamente** ou **Reprocessar** no job existente. Não crie outro tenant apenas para recuperar uma execução interrompida: banco, migrations, storage, DNS, administrador e demais passos já concluídos são preservados.
+
+Após `ActivateTenant`, o tenant, o domínio validado e `tenant_resource_boundaries.isolation_status` devem convergir para `ACTIVE`; somente então o login pelo hostname do tenant é liberado.
