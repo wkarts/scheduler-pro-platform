@@ -1,6 +1,5 @@
 import asyncio
 from typing import Any
-from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel, EmailStr, Field
@@ -134,7 +133,7 @@ async def forgot_password(
         recipient, raw_token = created
         reset_url = (
             f"{_external_origin(request, context.hostname)}"
-            f"/api/v1/auth/password/reset-page?token={quote(raw_token, safe='')}"
+            f"/api/v1/auth/password/reset-page#token={raw_token}"
         )
         await asyncio.to_thread(
             mail_delivery.send_password_reset,
@@ -241,7 +240,7 @@ async def platform_forgot_password(
         recipient, raw_token = created
         reset_url = (
             f"{_external_origin(request, hostname)}"
-            f"/api/v1/auth/platform/password/reset-page?token={quote(raw_token, safe='')}"
+            f"/api/v1/auth/platform/password/reset-page#token={raw_token}"
         )
         await asyncio.to_thread(
             mail_delivery.send_password_reset,
