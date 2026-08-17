@@ -5,6 +5,7 @@ import './styles.css'
 import './operational.css'
 import './hubfiscal-admin.css'
 import './enterprise.css'
+import './branding.css'
 import './pwa'
 
 createApp(App).use(createPinia()).mount('#app')
