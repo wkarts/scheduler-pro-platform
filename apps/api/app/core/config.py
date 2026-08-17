@@ -46,6 +46,8 @@ class Settings(BaseSettings):
     refresh_token_days: int = 30
     max_login_attempts: int = 5
     login_lock_minutes: int = 15
+    password_reset_ttl_minutes: int = 30
+    password_reset_min_length: int = 12
     tenant_engine_cache_max: int = 64
     tenant_engine_cache_ttl_seconds: int = 900
     trusted_proxy_hosts: Annotated[list[str], NoDecode] = Field(default_factory=lambda: ["127.0.0.1", "::1"])
@@ -75,6 +77,17 @@ class Settings(BaseSettings):
     evolution_api_token: str | None = None
     evolution_instance_name: str = "scheduler-pro"
 
+    smtp_host: str | None = None
+    smtp_port: int = 587
+    smtp_username: str | None = None
+    smtp_password: str | None = None
+    smtp_from_email: str | None = None
+    smtp_from_name: str = "Scheduler Pro"
+    smtp_reply_to: str | None = None
+    smtp_use_tls: bool = True
+    smtp_use_ssl: bool = False
+    smtp_timeout_seconds: int = 15
+
     cors_allowed_origins: Annotated[list[str], NoDecode] = Field(default_factory=lambda: ["http://localhost:5173", "http://localhost:5174", "http://localhost:1420"])
 
     @field_validator("cors_allowed_origins", "trusted_proxy_hosts", "admin_platform_domains", mode="before")
@@ -89,6 +102,16 @@ class Settings(BaseSettings):
         if self.app_env != "development":
             if len(self.app_secret_key) < 64 or self.app_secret_key.startswith("change-me"):
                 raise ValueError("APP_SECRET_KEY must contain at least 64 non-placeholder characters")
+        if self.smtp_use_tls and self.smtp_use_ssl:
+            raise ValueError("SMTP_USE_TLS and SMTP_USE_SSL cannot both be true")
+        if self.smtp_port < 1 or self.smtp_port > 65535:
+            raise ValueError("SMTP_PORT must be between 1 and 65535")
+        if self.smtp_timeout_seconds < 1:
+            raise ValueError("SMTP_TIMEOUT_SECONDS must be positive")
+        if self.password_reset_ttl_minutes < 5:
+            raise ValueError("PASSWORD_RESET_TTL_MINUTES must be at least 5")
+        if self.password_reset_min_length < 8:
+            raise ValueError("PASSWORD_RESET_MIN_LENGTH must be at least 8")
         return self
 
     @property

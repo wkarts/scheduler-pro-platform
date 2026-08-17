@@ -17,9 +17,10 @@ export type BrandingManifest = {
 
 type ApiResponse<T> = { data: T; meta: Record<string, unknown> }
 
-export async function loadBrandingManifest(): Promise<BrandingManifest | null> {
+export async function loadBrandingManifest(apiBaseUrl: string = API_BASE_URL): Promise<BrandingManifest | null> {
   try {
-    const response = await fetch(`${API_BASE_URL}/branding/manifest`, { headers: { Accept: 'application/json' } })
+    const normalized = apiBaseUrl.replace(/\/$/, '')
+    const response = await fetch(`${normalized}/branding/manifest`, { headers: { Accept: 'application/json' } })
     if (!response.ok) return null
     const payload = (await response.json()) as ApiResponse<BrandingManifest>
     return payload.data

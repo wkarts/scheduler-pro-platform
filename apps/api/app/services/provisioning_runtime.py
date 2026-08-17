@@ -24,6 +24,7 @@ from app.db.models_platform import (
     TenantStorage,
 )
 from app.services.domain_provisioning_service import DomainProvisioningService
+from app.services.mail_service import mail_delivery
 from app.services.observability_service import ObservabilityService
 from app.services.provisioning import BUILD_TARGETS, PROVISIONING_STEPS
 from app.services.s3_bucket_admin import ensure_bucket
@@ -248,6 +249,9 @@ class ProvisioningRuntime:
                     f"Targets ausentes: {', '.join(missing)}"
                 )
             return
+        if name == "SendWelcomeEmail":
+            await self._send_welcome_email(tenant)
+            return
         if name == "ActivateTenant":
             return
         raise RuntimeError(f"Passo de provisionamento desconhecido: {name}")
@@ -297,7 +301,6 @@ class ProvisioningRuntime:
                 details={"output": stdout.decode("utf-8", "replace")[-1000:]},
             )
 
-
     async def _create_storage(self, tenant: Tenant) -> None:
         _, storage, _ = await self._resources(tenant)
         try:
@@ -316,8 +319,9 @@ class ProvisioningRuntime:
         )
 
     async def _create_admin(self, tenant: Tenant) -> None:
-        admin_email = str(tenant.settings.get("admin_email") or "").strip().lower()
-        admin_password_ref = str(tenant.settings.get("admin_password_ref") or "")
+        tenant_settings = tenant.settings if isinstance(tenant.settings, dict) else {}
+        admin_email = str(tenant_settings.get("admin_email") or "").strip().lower()
+        admin_password_ref = str(tenant_settings.get("admin_password_ref") or "")
         if not admin_email or not admin_password_ref:
             raise RuntimeError("Credenciais iniciais do administrador do tenant estão ausentes.")
         admin_password = secret_resolver.resolve(admin_password_ref)
@@ -393,3 +397,72 @@ class ProvisioningRuntime:
             )
         finally:
             await conn.close()
+
+    async def _send_welcome_email(self, tenant: Tenant) -> None:
+        tenant_settings = tenant.settings if isinstance(tenant.settings, dict) else {}
+        admin_email = str(tenant_settings.get("admin_email") or "").strip().lower()
+        admin_password_ref = str(tenant_settings.get("admin_password_ref") or "")
+        if not admin_email or not admin_password_ref:
+            await self.logs.record_platform_log(
+                tenant_id=str(tenant.id),
+                source="provisioning",
+                service="smtp",
+                level="WARNING",
+                event="tenant_welcome_email_skipped",
+                message="E-mail de boas-vindas não enviado porque as credenciais iniciais do tenant estão ausentes.",
+                error_code="TENANT_WELCOME_CREDENTIALS_MISSING",
+            )
+            return
+
+        domain = (
+            await self.session.execute(
+                select(Domain)
+                .where(Domain.tenant_id == tenant.id, Domain.status == "ACTIVE")
+                .order_by(Domain.is_primary.desc(), Domain.is_temporary.desc())
+                .limit(1)
+            )
+        ).scalar_one_or_none()
+        hostname = domain.hostname if domain else f"{tenant.slug}.{settings.tenant_domain_root}"
+        login_url = f"https://{hostname}"
+        initial_password = secret_resolver.resolve(admin_password_ref)
+        result = await asyncio.to_thread(
+            mail_delivery.send_tenant_welcome,
+            recipient=admin_email,
+            tenant_name=tenant.name,
+            tenant_code=tenant.slug,
+            temporary_password=initial_password,
+            login_url=login_url,
+        )
+        event = "tenant_welcome_email_sent" if result.delivered else "tenant_welcome_email_failed"
+        await self.logs.record_platform_log(
+            tenant_id=str(tenant.id),
+            source="provisioning",
+            service="smtp",
+            level="INFO" if result.delivered else "WARNING",
+            event=event,
+            message=(
+                "E-mail de boas-vindas e credenciais iniciais enviado ao administrador do tenant."
+                if result.delivered
+                else "Tenant provisionado, mas o e-mail de boas-vindas não pôde ser entregue."
+            ),
+            error_code=None if result.delivered else (result.error_code or "SMTP_DELIVERY_FAILED"),
+            details={"recipient": admin_email, "login_url": login_url},
+        )
+        await self.session.execute(
+            text(
+                """
+                update tenants
+                set settings = coalesce(settings, '{}'::jsonb) || jsonb_build_object(
+                    'welcome_email_status', :status,
+                    'welcome_email_recipient', :recipient,
+                    'welcome_email_updated_at', cast(now() as text)
+                )
+                where id=cast(:tenant_id as uuid)
+                """
+            ),
+            {
+                "tenant_id": str(tenant.id),
+                "status": "SENT" if result.delivered else "FAILED",
+                "recipient": admin_email,
+            },
+        )
