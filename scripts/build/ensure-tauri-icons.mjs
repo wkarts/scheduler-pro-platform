@@ -10,35 +10,24 @@ if (!outDir) {
 
 const source = path.resolve('packages/branding/scheduler-pro/brand-symbol.svg')
 const target = path.resolve(outDir)
-const tauriBin = path.resolve('node_modules', '.bin', process.platform === 'win32' ? 'tauri.cmd' : 'tauri')
 
 if (!fs.existsSync(source)) {
   console.error(`Canonical Scheduler PRO icon not found: ${source}`)
   process.exit(2)
 }
-if (!fs.existsSync(tauriBin)) {
-  console.error(`Local Tauri CLI not found: ${tauriBin}. Run npm install first.`)
-  process.exit(2)
-}
 
 fs.mkdirSync(target, { recursive: true })
 
-let result
-if (process.platform === 'win32') {
-  // Node 24 no longer spawns .cmd files directly with spawnSync. Use the
-  // Windows command processor and CALL the locally installed Tauri CLI.
-  const command = `call "${tauriBin}" icon "${source}" --output "${target}"`
-  result = spawnSync(process.env.ComSpec || 'cmd.exe', ['/d', '/c', command], {
+const result = spawnSync(
+  'npx',
+  ['tauri', 'icon', source, '--output', target],
+  {
     cwd: process.cwd(),
     stdio: 'inherit',
+    shell: process.platform === 'win32',
     windowsHide: true,
-  })
-} else {
-  result = spawnSync(tauriBin, ['icon', source, '--output', target], {
-    cwd: process.cwd(),
-    stdio: 'inherit',
-  })
-}
+  },
+)
 
 if (result.error) {
   console.error(result.error)
