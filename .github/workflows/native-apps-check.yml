@@ -7,6 +7,8 @@ on:
       - 'apps/admin-desktop/**'
       - 'apps/mobile/**'
       - 'apps/admin-mobile/**'
+      - 'packages/branding/scheduler-pro/**'
+      - 'scripts/build/ensure-tauri-icons.mjs'
       - 'scripts/build/validate-desktop-webview.mjs'
       - 'scripts/build/configure-desktop-webview.mjs'
       - 'package.json'
@@ -40,3 +42,26 @@ jobs:
         run: |
           npm --workspace apps/admin-mobile run typecheck
           npm --workspace apps/admin-mobile run build
+
+  native-icons-windows:
+    name: Tauri icon generation / Windows
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - name: Install JS deps
+        run: npm install
+      - name: Generate official Scheduler PRO icon set
+        shell: pwsh
+        run: |
+          $target = Join-Path $env:RUNNER_TEMP 'scheduler-pro-icons'
+          node scripts/build/ensure-tauri-icons.mjs $target --ico
+          if (-not (Test-Path (Join-Path $target 'icon.ico'))) {
+            throw 'Tauri icon.ico was not generated on Windows'
+          }
+          if (-not (Test-Path (Join-Path $target 'icon.png'))) {
+            throw 'Tauri icon.png was not generated on Windows'
+          }
