@@ -1,4 +1,4 @@
-const CACHE = 'scheduler-pro-admin-v2'
+const CACHE = 'scheduler-pro-admin-brand-20260817-v1'
 const ASSETS = ['/', '/offline.html', '/manifest.webmanifest', '/icons/icon.svg', '/icons/maskable.svg']
 
 self.addEventListener('install', event => {
