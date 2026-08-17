@@ -20,3 +20,11 @@ def test_retry_recovers_running_as_well_as_failed_steps() -> None:
     source = Path(__file__).parents[1] / "app" / "api" / "v1" / "routes" / "platform.py"
     text = source.read_text(encoding="utf-8")
     assert "status <> 'completed'" in text
+
+
+def test_retry_requires_stale_pending_or_provisioning_job() -> None:
+    source = Path(__file__).parents[1] / "app" / "api" / "v1" / "routes" / "platform.py"
+    text = source.read_text(encoding="utf-8")
+    assert "interval '10 minutes'" in text
+    assert 'PROVISIONING_JOB_RUNNING' in text
+    assert "pj.updated_at" in text

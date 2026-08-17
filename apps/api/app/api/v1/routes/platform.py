@@ -143,7 +143,7 @@ async def provisioning(
             text(
                 f"""
                 select pj.id::text, pj.tenant_id::text, t.name as tenant_name,
-                       t.slug, pj.status, pj.correlation_id, pj.created_at
+                       t.slug, pj.status, pj.correlation_id, pj.created_at, pj.updated_at
                 from provisioning_jobs pj
                 join tenants t on t.id=pj.tenant_id
                 where true {scope}
@@ -185,7 +185,8 @@ async def retry_provisioning(
         await session.execute(
             text(
                 """
-                select id::text, tenant_id::text, correlation_id
+                select id::text, tenant_id::text, correlation_id, status, updated_at,
+                       (updated_at < now() - interval '10 minutes') as is_stale
                 from provisioning_jobs
                 where id=cast(:id as uuid)
                 """
@@ -196,6 +197,19 @@ async def retry_provisioning(
     if row is None:
         raise APIError("PROVISIONING_JOB_NOT_FOUND", "Job de provisionamento não encontrado.", 404)
     assert_platform_tenant_access(principal, row["tenant_id"])
+    current_status = str(row["status"]).upper()
+    if current_status == "ACTIVE":
+        raise APIError(
+            "PROVISIONING_JOB_ACTIVE",
+            "O tenant já está provisionado e ativo.",
+            409,
+        )
+    if current_status in {"PENDING", "PROVISIONING"} and not bool(row["is_stale"]):
+        raise APIError(
+            "PROVISIONING_JOB_RUNNING",
+            "O provisionamento ainda está em execução. Aguarde antes de reprocessar.",
+            409,
+        )
     await session.execute(
         text(
             "update provisioning_jobs set status='PENDING', updated_at=now() "

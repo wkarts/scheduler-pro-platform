@@ -66,6 +66,7 @@ type ProvisioningJob = {
   status: string
   correlation_id: string
   created_at?: string | null
+  updated_at?: string | null
   steps: ProvisioningStep[]
 }
 
@@ -422,6 +423,13 @@ function formatDate(value?: string | null): string {
 
 function statusClass(value?: string | null): string {
   return String(value || '').toLowerCase().replace(/[^a-z0-9]+/g, '-')
+}
+
+function canRetryProvision(job: ProvisioningJob): boolean {
+  if (job.status === 'FAILED') return true
+  if (!['PENDING', 'PROVISIONING'].includes(job.status) || !job.updated_at) return false
+  const updatedAt = new Date(job.updated_at).getTime()
+  return Number.isFinite(updatedAt) && Date.now() - updatedAt >= 10 * 60 * 1000
 }
 
 function describeError(error: unknown, fallback: string): string {
@@ -1238,7 +1246,7 @@ onUnmounted(() => {
 
           <section v-else-if="activeModule === 'provisioning'" class="view-stack">
             <article v-for="job in filteredProvisioning" :key="job.id" class="panel provisioning-card">
-              <div class="panel-title"><div><h3>{{ job.tenant_name }}</h3><p>{{ job.slug }} • {{ formatDate(job.created_at) }} • {{ job.correlation_id }}</p></div><div class="actions-cell"><span class="status-pill" :class="statusClass(job.status)">{{ job.status }}</span><button v-if="hasPermission('tenants.provision') && ['FAILED','PROVISIONING'].includes(job.status)" class="btn small" @click="retryProvision(job.id)">{{ job.status === 'PROVISIONING' ? 'Reprocessar' : 'Tentar novamente' }}</button></div></div>
+              <div class="panel-title"><div><h3>{{ job.tenant_name }}</h3><p>{{ job.slug }} • {{ formatDate(job.created_at) }} • {{ job.correlation_id }}</p></div><div class="actions-cell"><span class="status-pill" :class="statusClass(job.status)">{{ job.status }}</span><button v-if="hasPermission('tenants.provision') && canRetryProvision(job)" class="btn small" @click="retryProvision(job.id)">{{ job.status === 'FAILED' ? 'Tentar novamente' : 'Reprocessar' }}</button></div></div>
               <div class="step-grid"><article v-for="step in job.steps" :key="step.id" class="step" :class="statusClass(step.status)"><strong>{{ step.name }}</strong><span>{{ step.status }}</span><small v-if="step.error">{{ step.error }}</small></article></div>
             </article>
             <div v-if="!filteredProvisioning.length" class="empty-state">Nenhum job de provisionamento neste escopo.</div>
