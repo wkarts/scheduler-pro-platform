@@ -119,15 +119,19 @@ class DomainProvisioningService:
         Cloudflare can reject a later check/purge while the DNS record or custom
         hostname already exists. In that situation the local domain must stay ACTIVE
         and the integration is marked DEGRADED instead of fabricating a DNS outage.
+        Também recupera tenants antigos cujo status foi rebaixado, mas cujo histórico
+        local ainda comprova `record_exists=true` para o DNS temporário.
         """
 
         previous = dict(domain.validation or {})
         was_active = str(domain.status).upper() == "ACTIVE"
-        domain.status = "ACTIVE" if was_active else "PENDING_VALIDATION"
+        last_known_dns_active = mode == "temporary_dns" and previous.get("record_exists") is True
+        resource_was_verified = was_active or last_known_dns_active
+        domain.status = "ACTIVE" if resource_was_verified else "PENDING_VALIDATION"
         validation: dict[str, Any] = {
             **previous,
             "mode": mode,
-            "integration_status": "DEGRADED" if was_active else "UNVERIFIED",
+            "integration_status": "DEGRADED" if resource_was_verified else "UNVERIFIED",
             error_key: {
                 "code": error.code,
                 "message": error.message,
@@ -136,11 +140,9 @@ class DomainProvisioningService:
             },
         }
         if record_exists is not None:
-            validation["record_exists"] = (
-                True if was_active and previous.get("record_exists") is True else record_exists
-            )
+            validation["record_exists"] = True if resource_was_verified else record_exists
         domain.validation = validation
-        return was_active
+        return resource_was_verified
 
     async def create_temporary_domain(self, tenant_id: str) -> dict[str, Any]:
         tenant = await self._tenant(tenant_id)
