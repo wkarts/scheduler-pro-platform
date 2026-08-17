@@ -96,6 +96,8 @@ async def connect_postgres_admin(
                     "error": "InsufficientPrivilege",
                 }
             )
+            await conn.close()
+            conn = None
         except (asyncpg.PostgresError, OSError) as exc:
             attempts.append(
                 {
@@ -105,18 +107,11 @@ async def connect_postgres_admin(
                 }
             )
             last_error = exc
-        finally:
             if conn is not None:
-                # A conexão aprovada é retornada antes deste ponto. Todas as
-                # demais tentativas precisam ser descartadas antes do fallback.
                 try:
-                    if not await _has_tenant_admin_capabilities(conn):
-                        await conn.close()
-                except (asyncpg.PostgresError, OSError):
-                    try:
-                        await conn.close()
-                    except Exception:  # noqa: BLE001 - cleanup best effort
-                        pass
+                    await conn.close()
+                except Exception:  # noqa: BLE001 - cleanup best effort
+                    pass
 
     error = PostgresAdminConnectionError(
         "Não foi possível abrir conexão administrativa PostgreSQL. "
