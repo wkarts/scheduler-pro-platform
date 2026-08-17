@@ -7,8 +7,10 @@ on:
         description: 'Tag das imagens GHCR'
         required: false
         default: 'latest'
-  push:
-    branches: [main]
+
+concurrency:
+  group: images-${{ github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
