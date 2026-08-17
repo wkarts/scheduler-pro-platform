@@ -32,6 +32,7 @@ PROVISIONING_STEPS = [
     "SeedTenant",
     "CreateBranding",
     "CreateBuildProfiles",
+    "SendWelcomeEmail",
     "ActivateTenant",
 ]
 
