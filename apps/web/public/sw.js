@@ -1,4 +1,4 @@
-const CACHE = 'scheduler-pro-pwa-v2'
+const CACHE = 'scheduler-pro-web-brand-20260817-v1'
 const STATIC_ASSETS = ['/', '/index.html', '/offline.html', '/manifest.webmanifest', '/icons/icon.svg', '/icons/maskable.svg']
 self.addEventListener('install', event => {
   self.skipWaiting()
