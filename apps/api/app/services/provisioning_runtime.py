@@ -74,6 +74,7 @@ class ProvisioningRuntime:
             )
         ).mappings().first()
         if claimed is None:
+            # A entrega duplicada da tarefa ou um job já encerrado não pode executar novamente.
             await self.session.rollback()
             return
 
@@ -117,7 +118,7 @@ class ProvisioningRuntime:
             await self.session.commit()
             try:
                 await self._run_step(name, tenant)
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 - persisted for ops diagnostics
                 step.status = ProvisioningStepStatus.failed.value
                 step.error = str(exc)[:4000]
                 job.status = "FAILED"
@@ -196,23 +197,23 @@ class ProvisioningRuntime:
             await self._create_storage(tenant)
             return
         if name == "CreateTemporaryDomain":
-            domain = await self.domains.create_temporary_domain(str(tenant.id))
-            if domain.get("status") != "ACTIVE":
+            domain_result = await self.domains.create_temporary_domain(str(tenant.id))
+            if domain_result.get("status") != "ACTIVE":
                 raise RuntimeError(
                     "Domínio temporário não convergiu para DNS proxied/ACTIVE. "
-                    f"Estado: {domain.get('status')}"
+                    f"Estado: {domain_result.get('status')}"
                 )
             return
         if name == "ConfigureCloudflare":
-            domain = (
+            domain_record = (
                 await self.session.execute(
                     select(Domain).where(Domain.tenant_id == tenant.id, Domain.is_temporary.is_(True))
                 )
             ).scalar_one_or_none()
-            if domain is None:
+            if domain_record is None:
                 checked = await self.domains.create_temporary_domain(str(tenant.id))
             else:
-                checked = await self.domains.check_domain(str(domain.id))
+                checked = await self.domains.check_domain(str(domain_record.id))
             if checked.get("status") != "ACTIVE":
                 raise RuntimeError(
                     "Cloudflare não confirmou o domínio temporário como proxied/ACTIVE. "
@@ -295,6 +296,7 @@ class ProvisioningRuntime:
                 message="Migrations do tenant aplicadas.",
                 details={"output": stdout.decode("utf-8", "replace")[-1000:]},
             )
+
 
     async def _create_storage(self, tenant: Tenant) -> None:
         _, storage, _ = await self._resources(tenant)
