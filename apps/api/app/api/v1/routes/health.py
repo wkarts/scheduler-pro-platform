@@ -17,8 +17,8 @@ from app.db.session import PlatformSession, get_tenant_engine
 from app.services.tenant_resolver import TenantResolver
 
 router = APIRouter()
-PLATFORM_MIGRATION_HEAD = "platform_0007"
-TENANT_MIGRATION_HEAD = "tenant_0004_product_complete"
+PLATFORM_MIGRATION_HEAD = "platform_0008"
+TENANT_MIGRATION_HEAD = "tenant_0005_password_recovery"
 
 
 @router.get("/health")
