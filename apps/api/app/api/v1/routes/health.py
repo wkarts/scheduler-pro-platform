@@ -92,12 +92,16 @@ def resolve_request_hostname_from_value(value: str) -> str:
 def _tenant_probe_required(hostname: str) -> bool:
     """Return whether readiness must also probe a tenant database.
 
-    Platform/readiness requests to localhost or the configured platform hostname
-    must never be resolved as tenants. This is especially important in the
-    development/integration stack, whose readiness probe reaches the API through
-    127.0.0.1. A real tenant hostname (for example ``dev.localhost``) still
-    requires the tenant probe in every environment.
+    In the development/integration stack, ``localhost`` and ``127.0.0.1`` are
+    intentionally registered as active domains for the seeded development
+    tenant. Readiness must therefore probe the tenant database there as well.
+
+    In production, platform/internal probe hostnames must not be resolved as
+    tenants; only real tenant hostnames require the tenant database probe.
     """
+
+    if settings.app_env == "development":
+        return True
 
     platform_hostname = resolve_request_hostname_from_value(
         settings.public_platform_domain
