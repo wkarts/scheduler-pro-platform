@@ -63,8 +63,10 @@ class Settings(BaseSettings):
     cloudflare_api_base_url: str = "https://api.cloudflare.com/client/v4"
     cloudflare_api_token: str | None = None
     cloudflare_zone_id: str | None = None
+    cloudflare_zone_name: str | None = None
     cloudflare_dry_run: bool = True
     cloudflare_custom_hostname_origin: str | None = None
+    cloudflare_custom_hostname_ca: str = "lets_encrypt"
     cloudflare_temporary_record_type: str = "CNAME"
     cloudflare_temporary_record_target: str | None = None
 

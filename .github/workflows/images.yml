@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       image_tag:
-        description: 'Tag das imagens GHCR'
+        description: 'Tag do conjunto completo de imagens GHCR'
         required: false
         default: 'latest'
 
@@ -16,8 +16,12 @@ permissions:
   contents: read
   packages: write
 
+env:
+  REGISTRY_PREFIX: ghcr.io/${{ github.repository }}
+
 jobs:
   base:
+    name: Build base imutável
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -27,18 +31,18 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - uses: docker/build-push-action@v6
+      - name: Build e push da base pelo SHA
+        uses: docker/build-push-action@v6
         with:
           context: .
           file: infrastructure/docker/base/python/Dockerfile
           push: true
-          tags: |
-            ghcr.io/${{ github.repository }}/python-base:${{ github.event.inputs.image_tag || 'latest' }}
-            ghcr.io/${{ github.repository }}/python-base:${{ github.sha }}
+          tags: ${{ env.REGISTRY_PREFIX }}/python-base:${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
   services:
+    name: Build ${{ matrix.name }} imutável
     needs: base
     runs-on: ubuntu-latest
     strategy:
@@ -48,11 +52,11 @@ jobs:
           - name: api
             file: infrastructure/docker/api/Dockerfile
             tag: api
-            build_args: "PYTHON_BASE_IMAGE=ghcr.io/${{ github.repository }}/python-base:${{ github.event.inputs.image_tag || 'latest' }}"
+            build_args: "PYTHON_BASE_IMAGE=ghcr.io/${{ github.repository }}/python-base:${{ github.sha }}"
           - name: worker
             file: infrastructure/docker/worker/Dockerfile
             tag: worker
-            build_args: "PYTHON_BASE_IMAGE=ghcr.io/${{ github.repository }}/python-base:${{ github.event.inputs.image_tag || 'latest' }}"
+            build_args: "PYTHON_BASE_IMAGE=ghcr.io/${{ github.repository }}/python-base:${{ github.sha }}"
           - name: web
             file: infrastructure/docker/web/Dockerfile
             tag: web
@@ -73,15 +77,56 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - name: Build and push ${{ matrix.name }}
+      - name: Build e push de ${{ matrix.name }} pelo SHA
         uses: docker/build-push-action@v6
         with:
           context: .
           file: ${{ matrix.file }}
           push: true
           build-args: ${{ matrix.build_args }}
-          tags: |
-            ghcr.io/${{ github.repository }}/${{ matrix.tag }}:${{ github.event.inputs.image_tag || 'latest' }}
-            ghcr.io/${{ github.repository }}/${{ matrix.tag }}:${{ github.sha }}
+          tags: ${{ env.REGISTRY_PREFIX }}/${{ matrix.tag }}:${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+  promote:
+    name: Promover conjunto validado
+    needs: [base, services]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Validar todos os manifests imutáveis antes da promoção
+        shell: bash
+        run: |
+          set -euo pipefail
+          for image in python-base api worker web admin proxy; do
+            docker buildx imagetools inspect "${REGISTRY_PREFIX}/${image}:${GITHUB_SHA}" >/dev/null
+          done
+      - name: Publicar a tag somente após o conjunto completo existir
+        shell: bash
+        env:
+          RELEASE_TAG: ${{ inputs.image_tag || 'latest' }}
+        run: |
+          set -euo pipefail
+          if [[ ! "${RELEASE_TAG}" =~ ^[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$ ]]; then
+            echo "Tag GHCR inválida: ${RELEASE_TAG}" >&2
+            exit 2
+          fi
+          for image in python-base api worker web admin proxy; do
+            source_ref="${REGISTRY_PREFIX}/${image}:${GITHUB_SHA}"
+            target_ref="${REGISTRY_PREFIX}/${image}:${RELEASE_TAG}"
+            docker buildx imagetools create --tag "${target_ref}" "${source_ref}"
+            docker buildx imagetools inspect "${target_ref}" >/dev/null
+          done
+          {
+            echo "## Conjunto de imagens promovido"
+            echo
+            echo "Tag: \`${RELEASE_TAG}\`"
+            echo "SHA imutável: \`${GITHUB_SHA}\`"
+            echo
+            echo "A tag somente foi publicada após base, API, workers, web, admin e proxy concluírem com sucesso."
+          } >> "${GITHUB_STEP_SUMMARY}"

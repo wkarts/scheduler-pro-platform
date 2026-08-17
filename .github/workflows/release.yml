@@ -112,6 +112,8 @@ jobs:
         run: npm install
       - name: Generate official Tauri desktop icons
         run: npx tauri icon packages/branding/scheduler-pro/brand-symbol.svg --output ${{ matrix.app_path }}/src-tauri/icons
+      - name: Validate bundled local desktop frontend
+        run: node scripts/build/validate-desktop-local.mjs "${{ matrix.app_path }}"
       - name: Build installable desktop app
         working-directory: ${{ matrix.app_path }}
         run: npm run tauri:build -- --bundles ${{ matrix.bundles }}
@@ -173,24 +175,23 @@ jobs:
         run: npx tauri icon packages/branding/scheduler-pro/brand-symbol.svg --output ${{ matrix.app_path }}/src-tauri/icons
       - name: Initialize Android project
         working-directory: ${{ matrix.app_path }}
-        run: npm run tauri:android:init || true
+        shell: bash
+        run: if [ ! -d src-tauri/gen/android ]; then npm run tauri:android:init; fi
       - name: Build debug signed APK for direct install
         working-directory: ${{ matrix.app_path }}
         run: npm run tauri:android:apk:debug
-      - name: Collect installable debug APK only
+      - name: Select, verify signature and validate installable APK
         shell: bash
         run: |
           set -euo pipefail
           TAG="${{ needs.prepare-release.outputs.tag }}"
-          mkdir -p artifacts
-          apk="$(find "${{ matrix.app_path }}/src-tauri" -type f -name '*debug*.apk' -print -quit)"
-          test -n "$apk"
-          cp "$apk" "artifacts/scheduler-pro-${{ matrix.app_name }}-android-${TAG}-debug-installable.apk"
+          output="artifacts/scheduler-pro-${{ matrix.app_name }}-android-${TAG}-debug-installable.apk"
+          python scripts/mobile/collect-android-apk.py \
+            "${{ matrix.app_path }}" "$output" --require-signature --max-mib 200
           cat > "artifacts/scheduler-pro-${{ matrix.app_name }}-android-${TAG}-README.txt" <<TXT
-          APK debug ARM64 assinado automaticamente pelo Gradle/Tauri para instalação direta.
-          Instale com: adb install -r scheduler-pro-${{ matrix.app_name }}-android-${TAG}-debug-installable.apk
+          APK debug ARM64 validado, assinado e selecionado exclusivamente de app/build/outputs/apk.
+          Instale com: adb install -r $(basename "$output")
           TXT
-          (cd artifacts && sha256sum * > "scheduler-pro-${{ matrix.app_name }}-android-${TAG}.sha256")
       - uses: actions/upload-artifact@v4
         with:
           name: scheduler-pro-${{ matrix.app_name }}-android-debug-installable-${{ needs.prepare-release.outputs.tag }}

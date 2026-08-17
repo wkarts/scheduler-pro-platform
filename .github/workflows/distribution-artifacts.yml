@@ -41,8 +41,8 @@ jobs:
           npm --workspace apps/admin run build
           npm --workspace apps/mobile run build
           npm --workspace apps/admin-mobile run build
-          npm --workspace apps/desktop run typecheck
-          npm --workspace apps/admin-desktop run typecheck
+          npm --workspace apps/desktop run build
+          npm --workspace apps/admin-desktop run build
       - name: Pack artifacts
         run: |
           set -euo pipefail
@@ -57,7 +57,7 @@ jobs:
           {
             "product": "Scheduler Pro",
             "source_sha": "${GITHUB_SHA}",
-            "desktop_architecture": "remote-webview",
+            "desktop_architecture": "bundled-vue-api-client",
             "mobile_architecture": "dedicated-api-client",
             "desktop_installers": "Desktop Artifacts workflow"
           }

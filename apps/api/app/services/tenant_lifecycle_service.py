@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
 from app.core.enums import TenantStatus
 from app.core.errors import APIError
+from app.db.postgres_admin import PostgresAdminConnectionError, connect_postgres_admin
 from app.services.cloudflare_service import CloudflareService
 from app.services.observability_service import ObservabilityService
 
@@ -162,7 +163,8 @@ class TenantLifecycleService:
                 """
                 update tenants
                 set status='DELETED',
-                    settings=coalesce(settings,'{}'::jsonb) || jsonb_build_object('deleted_at', :deleted_at)
+                    settings=coalesce(settings,'{}'::jsonb)
+                             || jsonb_build_object('deleted_at', cast(:deleted_at as text))
                 where id=cast(:id as uuid)
                 """
             ),
@@ -222,6 +224,13 @@ class TenantLifecycleService:
         return warnings
 
     @staticmethod
+    def _bucket_missing(exc: ClientError) -> bool:
+        error = exc.response.get("Error") or {}
+        code = str(error.get("Code") or "").strip()
+        status = (exc.response.get("ResponseMetadata") or {}).get("HTTPStatusCode")
+        return code in {"NoSuchBucket", "404", "NotFound"} or status == 404
+
+    @staticmethod
     def _empty_bucket(bucket: str) -> None:
         client = boto3.client(
             "s3",
@@ -239,22 +248,34 @@ class TenantLifecycleService:
                 ]
                 for offset in range(0, len(objects), 1000):
                     client.delete_objects(Bucket=bucket, Delete={"Objects": objects[offset : offset + 1000], "Quiet": True})
-        except (ClientError, BotoCoreError):
+        except ClientError as exc:
+            if TenantLifecycleService._bucket_missing(exc):
+                return
+            try:
+                paginator = client.get_paginator("list_objects_v2")
+                for page in paginator.paginate(Bucket=bucket):
+                    objects = [{"Key": item["Key"]} for item in page.get("Contents") or []]
+                    for offset in range(0, len(objects), 1000):
+                        client.delete_objects(Bucket=bucket, Delete={"Objects": objects[offset : offset + 1000], "Quiet": True})
+            except ClientError as fallback_exc:
+                if TenantLifecycleService._bucket_missing(fallback_exc):
+                    return
+                raise
+        except BotoCoreError:
             paginator = client.get_paginator("list_objects_v2")
             for page in paginator.paginate(Bucket=bucket):
                 objects = [{"Key": item["Key"]} for item in page.get("Contents") or []]
                 for offset in range(0, len(objects), 1000):
                     client.delete_objects(Bucket=bucket, Delete={"Objects": objects[offset : offset + 1000], "Quiet": True})
-        client.delete_bucket(Bucket=bucket)
+        try:
+            client.delete_bucket(Bucket=bucket)
+        except ClientError as exc:
+            if TenantLifecycleService._bucket_missing(exc):
+                return
+            raise
 
     async def _drop_database(self, database_name: str, database_user: str) -> None:
-        conn = await asyncpg.connect(
-            host=settings.postgres_host,
-            port=settings.postgres_port,
-            user=settings.postgres_admin_user,
-            password=settings.postgres_admin_password,
-            database=settings.postgres_db,
-        )
+        conn = await connect_postgres_admin()
         try:
             await conn.execute(
                 "select pg_terminate_backend(pid) from pg_stat_activity where datname=$1 and pid<>pg_backend_pid()",
@@ -302,7 +323,7 @@ class TenantLifecycleService:
         if database_name and database_user:
             try:
                 await self._drop_database(str(database_name), str(database_user))
-            except (asyncpg.PostgresError, OSError, APIError) as exc:
+            except (asyncpg.PostgresError, PostgresAdminConnectionError, OSError, APIError) as exc:
                 warnings.append(f"PostgreSQL {database_name}: {exc}")
 
         if warnings and not force:
@@ -352,7 +373,7 @@ class TenantLifecycleService:
                 set status='DELETED',
                     settings=jsonb_build_object(
                         'purged', true,
-                        'purged_at', :purged_at,
+                        'purged_at', cast(:purged_at as text),
                         'original_slug', slug,
                         'original_name', name
                     )
@@ -366,7 +387,8 @@ class TenantLifecycleService:
                 """
                 update tenant_resource_boundaries
                 set isolation_status='PURGED',
-                    details=coalesce(details,'{}'::jsonb) || jsonb_build_object('purged_at', :purged_at),
+                    details=coalesce(details,'{}'::jsonb)
+                            || jsonb_build_object('purged_at', cast(:purged_at as text)),
                     updated_at=now()
                 where tenant_id=cast(:id as uuid)
                 """
