@@ -1,19 +1,82 @@
 import asyncio
+import os
 import re
+from collections.abc import Awaitable
+from threading import Lock
 from typing import Any
 
+from celery.signals import worker_process_shutdown
 from sqlalchemy import text
 
-from app.db.session import platform_session, tenant_session
+from app.db.session import close_database_engines, platform_session, tenant_session
 from app.services.appointment_service import AppointmentService
 from app.services.notification_dispatcher import TenantNotificationDispatcher
 from app.services.provisioning_runtime import ProvisioningRuntime
 from app.services.tenant_resolver import TenantResolver
 from app.workers.celery_app import typed_task
 
+_worker_loop: asyncio.AbstractEventLoop | None = None
+_worker_loop_pid: int | None = None
+_worker_loop_guard = Lock()
 
-def _run(coro: Any) -> Any:
-    return asyncio.run(coro)
+
+def _worker_event_loop() -> asyncio.AbstractEventLoop:
+    """Return one persistent asyncio loop for the current Celery worker process.
+
+    Celery's prefork pool executes many synchronous tasks in the same child
+    process. Creating a fresh loop with ``asyncio.run`` for every task leaves
+    pooled asyncpg connections attached to a loop that is immediately closed.
+    SQLAlchemy can then hand that connection to the next task, which runs on a
+    different loop and fails with ``Future attached to a different loop``.
+    """
+
+    global _worker_loop, _worker_loop_pid
+
+    pid = os.getpid()
+    if _worker_loop_pid != pid:
+        # A prefork child must never reuse the parent's loop reference.
+        _worker_loop = None
+        _worker_loop_pid = pid
+
+    if _worker_loop is None or _worker_loop.is_closed():
+        _worker_loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(_worker_loop)
+
+    return _worker_loop
+
+
+def _run(coro: Awaitable[Any]) -> Any:
+    """Run an async worker operation on the process-persistent event loop."""
+
+    with _worker_loop_guard:
+        loop = _worker_event_loop()
+        asyncio.set_event_loop(loop)
+        return loop.run_until_complete(coro)
+
+
+def _shutdown_worker_async_runtime(*_args: Any, **_kwargs: Any) -> None:
+    """Dispose async DB pools on their owning loop before a worker exits."""
+
+    global _worker_loop, _worker_loop_pid
+
+    with _worker_loop_guard:
+        loop = _worker_loop
+        if loop is None or loop.is_closed():
+            _worker_loop = None
+            _worker_loop_pid = None
+            return
+
+        asyncio.set_event_loop(loop)
+        try:
+            loop.run_until_complete(close_database_engines())
+        finally:
+            loop.close()
+            asyncio.set_event_loop(None)
+            _worker_loop = None
+            _worker_loop_pid = None
+
+
+worker_process_shutdown.connect(_shutdown_worker_async_runtime, weak=False)
 
 
 async def _run_provisioning(job_id: str) -> dict[str, object]:
