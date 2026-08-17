@@ -25,10 +25,10 @@ fs.mkdirSync(target, { recursive: true })
 
 let result
 if (process.platform === 'win32') {
-  // Node 24 does not spawn .cmd files directly with spawnSync; invoke the local
-  // Tauri CLI through cmd.exe instead. This avoids the npx.cmd EINVAL failure.
-  const command = `"${tauriBin}" icon "${source}" --output "${target}"`
-  result = spawnSync(process.env.ComSpec || 'cmd.exe', ['/d', '/s', '/c', command], {
+  // Node 24 no longer spawns .cmd files directly with spawnSync. Use the
+  // Windows command processor and CALL the locally installed Tauri CLI.
+  const command = `call "${tauriBin}" icon "${source}" --output "${target}"`
+  result = spawnSync(process.env.ComSpec || 'cmd.exe', ['/d', '/c', command], {
     cwd: process.cwd(),
     stdio: 'inherit',
     windowsHide: true,
