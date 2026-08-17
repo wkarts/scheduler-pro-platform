@@ -1,0 +1,83 @@
+name: One-time harden provisioning retry
+
+on:
+  push:
+    branches:
+      - fix/complete-runtime-artifacts-cloudflare
+    paths:
+      - .github/workflows/one-time-harden-provisioning-retry.yml
+
+permissions:
+  contents: write
+
+jobs:
+  harden:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/complete-runtime-artifacts-cloudflare
+          fetch-depth: 0
+      - name: Patch stale retry contract
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          def replace_once(path: str, old: str, new: str) -> None:
+              target = Path(path)
+              content = target.read_text(encoding="utf-8")
+              if old not in content:
+                  raise SystemExit(f"expected block not found in {path}")
+              target.write_text(content.replace(old, new, 1), encoding="utf-8")
+
+          replace_once(
+              "apps/api/app/api/v1/routes/platform.py",
+              """                select pj.id::text, pj.tenant_id::text, t.name as tenant_name,\n                       t.slug, pj.status, pj.correlation_id, pj.created_at\n""",
+              """                select pj.id::text, pj.tenant_id::text, t.name as tenant_name,\n                       t.slug, pj.status, pj.correlation_id, pj.created_at, pj.updated_at\n""",
+          )
+
+          replace_once(
+              "apps/api/app/api/v1/routes/platform.py",
+              """                select id::text, tenant_id::text, correlation_id\n                from provisioning_jobs\n                where id=cast(:id as uuid)\n""",
+              """                select id::text, tenant_id::text, correlation_id, status, updated_at,\n                       (updated_at < now() - interval '10 minutes') as is_stale\n                from provisioning_jobs\n                where id=cast(:id as uuid)\n""",
+          )
+
+          replace_once(
+              "apps/api/app/api/v1/routes/platform.py",
+              '''    assert_platform_tenant_access(principal, row["tenant_id"])\n    await session.execute(\n''',
+              '''    assert_platform_tenant_access(principal, row["tenant_id"])\n    current_status = str(row["status"]).upper()\n    if current_status == "ACTIVE":\n        raise APIError(\n            "PROVISIONING_JOB_ACTIVE",\n            "O tenant já está provisionado e ativo.",\n            409,\n        )\n    if current_status in {"PENDING", "PROVISIONING"} and not bool(row["is_stale"]):\n        raise APIError(\n            "PROVISIONING_JOB_RUNNING",\n            "O provisionamento ainda está em execução. Aguarde antes de reprocessar.",\n            409,\n        )\n    await session.execute(\n''',
+          )
+
+          replace_once(
+              "apps/admin/src/AdminControlPlane.vue",
+              """  created_at?: string | null\n  steps: ProvisioningStep[]\n""",
+              """  created_at?: string | null\n  updated_at?: string | null\n  steps: ProvisioningStep[]\n""",
+          )
+
+          replace_once(
+              "apps/admin/src/AdminControlPlane.vue",
+              '''function statusClass(value?: string | null): string {\n  return String(value || '').toLowerCase().replace(/[^a-z0-9]+/g, '-')\n}\n\n''',
+              '''function statusClass(value?: string | null): string {\n  return String(value || '').toLowerCase().replace(/[^a-z0-9]+/g, '-')\n}\n\nfunction canRetryProvision(job: ProvisioningJob): boolean {\n  if (job.status === 'FAILED') return true\n  if (!['PENDING', 'PROVISIONING'].includes(job.status) || !job.updated_at) return false\n  const updatedAt = new Date(job.updated_at).getTime()\n  return Number.isFinite(updatedAt) && Date.now() - updatedAt >= 10 * 60 * 1000\n}\n\n''',
+          )
+
+          replace_once(
+              "apps/admin/src/AdminControlPlane.vue",
+              """<button v-if=\"hasPermission('tenants.provision') && ['FAILED','PROVISIONING'].includes(job.status)\" class=\"btn small\" @click=\"retryProvision(job.id)\">{{ job.status === 'PROVISIONING' ? 'Reprocessar' : 'Tentar novamente' }}</button>""",
+              """<button v-if=\"hasPermission('tenants.provision') && canRetryProvision(job)\" class=\"btn small\" @click=\"retryProvision(job.id)\">{{ job.status === 'FAILED' ? 'Tentar novamente' : 'Reprocessar' }}</button>""",
+          )
+
+          test_path = Path("apps/api/tests/test_provisioning_stuck_job_regression.py")
+          test_text = test_path.read_text(encoding="utf-8")
+          test_text += '''\n\ndef test_retry_requires_stale_pending_or_provisioning_job() -> None:\n    source = Path(__file__).parents[1] / "app" / "api" / "v1" / "routes" / "platform.py"\n    text = source.read_text(encoding="utf-8")\n    assert "interval '10 minutes'" in text\n    assert 'PROVISIONING_JOB_RUNNING' in text\n    assert "pj.updated_at" in text\n'''
+          test_path.write_text(test_text, encoding="utf-8")
+          PY
+      - name: Commit stale retry hardening
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add apps/api/app/api/v1/routes/platform.py apps/admin/src/AdminControlPlane.vue apps/api/tests/test_provisioning_stuck_job_regression.py
+          git rm .github/workflows/one-time-harden-provisioning-retry.yml
+          git commit -m "fix: limitar retry a provisionamento estagnado"
+          git push origin HEAD:fix/complete-runtime-artifacts-cloudflare
