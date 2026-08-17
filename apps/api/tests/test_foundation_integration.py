@@ -12,7 +12,7 @@ from app.core.security import hash_password
 
 pytestmark = pytest.mark.integration
 
-PLATFORM_MIGRATION_HEAD = "platform_0006"
+PLATFORM_MIGRATION_HEAD = "platform_0007"
 TENANT_MIGRATION_HEAD = "tenant_0004_product_complete"
 
 
