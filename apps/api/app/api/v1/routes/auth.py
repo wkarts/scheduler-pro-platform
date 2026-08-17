@@ -67,7 +67,9 @@ def _is_platform_login_host(hostname: str) -> bool:
 
 
 def _external_origin(request: Request, hostname: str) -> str:
-    forwarded_proto = request.headers.get("x-forwarded-proto", "").split(",", 1)[0].strip().lower()
+    forwarded_proto = (
+        request.headers.get("x-forwarded-proto", "").split(",", 1)[0].strip().lower()
+    )
     scheme = forwarded_proto or request.url.scheme or "https"
     if settings.app_env != "development" or scheme not in {"http", "https"}:
         scheme = "https"
@@ -78,9 +80,21 @@ def _accepted_reset_response() -> dict[str, Any]:
     return success(
         {
             "accepted": True,
-            "message": "Se o e-mail informado estiver cadastrado e ativo, enviaremos as instruções de recuperação.",
+            "message": (
+                "Se o e-mail informado estiver cadastrado e ativo, "
+                "enviaremos as instruções de recuperação."
+            ),
         }
     )
+
+
+def _require_smtp_configured() -> None:
+    if not mail_delivery.enabled:
+        raise APIError(
+            "SMTP_NOT_CONFIGURED",
+            "Recuperação de senha indisponível porque o SMTP da plataforma não está configurado.",
+            503,
+        )
 
 
 @router.post("/login")
@@ -109,6 +123,7 @@ async def forgot_password(
     context: TenantContext = Depends(get_tenant_context),
     session: AsyncSession = Depends(get_tenant_session),
 ) -> dict[str, Any]:
+    _require_smtp_configured()
     ip_address, _, correlation_id = _request_meta(request)
     created = await TenantPasswordRecoveryService(session).create_reset_token(
         str(payload.email),
@@ -144,7 +159,9 @@ async def reset_password(
         ip_address=ip_address,
         correlation_id=correlation_id,
     )
-    return success({"password_reset": True, "message": "Senha redefinida. Entre novamente."})
+    return success(
+        {"password_reset": True, "message": "Senha redefinida. Entre novamente."}
+    )
 
 
 @router.post("/refresh")
@@ -213,6 +230,7 @@ async def platform_forgot_password(
             "Recuperação administrativa indisponível neste domínio.",
             404,
         )
+    _require_smtp_configured()
     ip_address, _, correlation_id = _request_meta(request)
     created = await PlatformPasswordRecoveryService(session).create_reset_token(
         str(payload.email),
@@ -254,7 +272,9 @@ async def platform_reset_password(
         ip_address=ip_address,
         correlation_id=correlation_id,
     )
-    return success({"password_reset": True, "message": "Senha redefinida. Entre novamente."})
+    return success(
+        {"password_reset": True, "message": "Senha redefinida. Entre novamente."}
+    )
 
 
 @router.get("/platform/mail/status")
