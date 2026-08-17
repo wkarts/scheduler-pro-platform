@@ -21,7 +21,9 @@ class CloudflareService:
         self.configured_zone_id = (zone_id or "").strip() or None
         self.zone_id = self.configured_zone_id
         self.api_base_url = api_base_url.rstrip("/")
-        self.zone_name_hint = (zone_name_hint or "").strip().lower().rstrip(".") or None
+        self.zone_name_hint = (
+            zone_name_hint or custom_hostname_origin or ""
+        ).strip().lower().rstrip(".") or None
         self.dry_run = dry_run or not api_token or not (self.zone_id or self.zone_name_hint)
         self.custom_hostname_origin = custom_hostname_origin
         self._resolved_zone: dict[str, Any] | None = None
