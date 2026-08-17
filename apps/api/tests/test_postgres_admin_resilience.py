@@ -100,6 +100,7 @@ async def test_admin_connection_error_never_exposes_passwords(monkeypatch) -> No
     message = str(captured.value)
     assert "postgres" in message
     assert "scheduler" in message
+    assert "InvalidPasswordError" in message
     assert admin_password not in message
     assert platform_password not in message
 
