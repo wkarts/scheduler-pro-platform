@@ -1,31 +1,29 @@
 {
-  "brand": "Scheduler Pro",
+  "brand": "Scheduler PRO",
+  "version": "1.0.0",
   "tagline": "Agenda inteligente. Operação conectada.",
   "colors": {
-    "navy_950": "#061327",
-    "navy_900": "#081A33",
-    "navy_800": "#0B1D3A",
-    "navy_700": "#0C284D",
-    "blue_600": "#2F6BFF",
-    "blue_500": "#3B82F6",
-    "cyan_500": "#1DAAF5",
-    "cyan_400": "#22D3EE",
-    "violet_500": "#8B5CF6",
-    "surface": "#F4F7FB",
-    "surface_alt": "#EAF1F8",
-    "text": "#0B1D3A",
-    "muted": "#60708A",
+    "navy_900": "#0B132B",
+    "midnight_800": "#0F1E3A",
+    "azure_500": "#118AF5",
+    "cyan_400": "#00E5FF",
+    "teal_500": "#00C2B8",
+    "silver_100": "#E6E9EF",
+    "surface": "#FFFFFF",
+    "text": "#0B132B",
     "white": "#FFFFFF"
   },
+  "gradient": "linear-gradient(135deg, #118AF5 0%, #00E5FF 48%, #00C2B8 100%)",
   "typography": {
-    "family": "Inter, Segoe UI, Arial, sans-serif",
-    "heading_weight": 760,
-    "body_weight": 450,
+    "display_family": "Inter Display, Inter, Segoe UI, Arial, sans-serif",
+    "body_family": "Inter, Segoe UI, Arial, sans-serif",
+    "heading_weight": 700,
+    "body_weight": 400,
     "ui_weight": 600
   },
   "shape": {
     "app_icon_radius": 0.2266,
-    "card_radius_px": 16,
-    "button_radius_px": 10
+    "card_radius_px": 24,
+    "button_radius_px": 12
   }
 }

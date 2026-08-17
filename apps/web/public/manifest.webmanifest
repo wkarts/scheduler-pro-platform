@@ -1,14 +1,14 @@
 {
   "id": "/",
-  "name": "Scheduler Pro",
-  "short_name": "Scheduler Pro",
+  "name": "Scheduler PRO",
+  "short_name": "Scheduler PRO",
   "description": "Agenda inteligente, clientes, serviços, confirmações e operação conectada.",
   "start_url": "/#dashboard",
   "scope": "/",
   "display": "standalone",
   "orientation": "any",
-  "background_color": "#F4F7FB",
-  "theme_color": "#081A33",
+  "background_color": "#FFFFFF",
+  "theme_color": "#0B132B",
   "categories": ["business", "productivity"],
   "icons": [
     { "src": "/icons/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" },
