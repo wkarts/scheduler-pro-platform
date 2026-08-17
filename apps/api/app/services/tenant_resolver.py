@@ -75,7 +75,12 @@ class TenantResolver:
                     hostname=hostname,
                     database_credential_version=1,
                 )
-            raise APIError("TENANT_NOT_FOUND", "Tenant não encontrado para o hostname informado.", 404, {"hostname": hostname})
+            raise APIError(
+                "TENANT_NOT_FOUND",
+                "Tenant não encontrado para o hostname informado.",
+                404,
+                {"hostname": hostname},
+            )
         self._validate_status(row)
         return self._context(row)
 
@@ -92,18 +97,31 @@ class TenantResolver:
             join tenant_databases td on td.tenant_id=t.id
             join tenant_storage ts on ts.tenant_id=t.id
             left join lateral (
-              select hostname, status from domains where tenant_id=t.id and is_primary=true order by is_temporary desc limit 1
+              select hostname, status
+              from domains
+              where tenant_id=t.id and is_primary=true
+              order by is_temporary desc
+              limit 1
             ) dp on true
             left join lateral (
-              select hostname, status from domains where tenant_id=t.id order by is_temporary desc limit 1
+              select hostname, status
+              from domains
+              where tenant_id=t.id
+              order by is_temporary desc
+              limit 1
             ) da on true
-            where t.id=:tenant_id::uuid
+            where t.id=cast(:tenant_id as uuid)
             limit 1
             """
         )
         row = (await self.session.execute(stmt, {"tenant_id": tenant_id})).mappings().first()
         if row is None:
-            raise APIError("TENANT_NOT_FOUND", "Tenant não encontrado.", 404, {"tenant_id": tenant_id})
+            raise APIError(
+                "TENANT_NOT_FOUND",
+                "Tenant não encontrado.",
+                404,
+                {"tenant_id": tenant_id},
+            )
         if require_active:
             self._validate_status(row)
         hostname = row["hostname"] or f"{row['slug']}.{settings.tenant_domain_root}"
