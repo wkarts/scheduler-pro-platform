@@ -3,6 +3,7 @@ from pathlib import Path
 CONTROL_PLANE_ROUTE_MODULES = {
     "platform.py",
     "platform_access.py",
+    "tenant_management.py",
     "builds.py",
     "observability.py",
 }

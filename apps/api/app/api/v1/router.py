@@ -20,6 +20,7 @@ from app.api.v1.routes import (
     schedule,
     services,
     settings,
+    tenant_management,
     whatsapp,
 )
 
@@ -131,6 +132,11 @@ api_router.include_router(
 )
 api_router.include_router(branding.router, prefix="/branding", tags=["Branding"])
 api_router.include_router(platform.router, prefix="/platform", tags=["Platform"])
+api_router.include_router(
+    tenant_management.router,
+    prefix="/platform/tenant-management",
+    tags=["Tenant Management"],
+)
 api_router.include_router(
     platform_access.router,
     prefix="/platform/access",
