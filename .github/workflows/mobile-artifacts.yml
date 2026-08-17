@@ -7,7 +7,7 @@ on:
     paths:
       - 'apps/mobile/**'
       - 'apps/admin-mobile/**'
-      - 'scripts/build/ensure-tauri-icons.mjs'
+      - 'packages/branding/scheduler-pro/**'
       - 'scripts/mobile/build-ios-unsigned.sh'
       - 'scripts/release/package-ios-unsigned.sh'
       - 'package.json'
@@ -59,7 +59,10 @@ jobs:
       - run: npm install
       - name: Validate dedicated UI
         run: npm --workspace ${{ matrix.app_path }} run build
-      - run: node scripts/build/ensure-tauri-icons.mjs ${{ matrix.app_path }}/src-tauri/icons
+      - name: Generate canonical Tauri icon set
+        working-directory: ${{ matrix.app_path }}
+        shell: bash
+        run: npx tauri icon ../../packages/branding/scheduler-pro/brand-symbol.svg --output src-tauri/icons
       - name: Initialize Android
         working-directory: ${{ matrix.app_path }}
         shell: bash
@@ -115,7 +118,10 @@ jobs:
           pod --version
       - name: Validate dedicated UI
         run: npm --workspace ${{ matrix.app_path }} run build
-      - run: node scripts/build/ensure-tauri-icons.mjs ${{ matrix.app_path }}/src-tauri/icons
+      - name: Generate canonical Tauri icon set
+        working-directory: ${{ matrix.app_path }}
+        shell: bash
+        run: npx tauri icon ../../packages/branding/scheduler-pro/brand-symbol.svg --output src-tauri/icons
       - name: Build real unsigned iOS ARM64 application bundle
         shell: bash
         run: bash scripts/mobile/build-ios-unsigned.sh "${{ matrix.app_path }}" "release/${{ matrix.app_name }}-ios-app" "${{ matrix.app_name }}"
