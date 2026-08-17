@@ -5,6 +5,10 @@
 # This issues/renews a wildcard certificate for *.scheduler.argws.com.br using Cloudflare DNS.
 # CloudPanel can keep terminating TLS externally, or you can import/copy the generated certs
 # from ${SCHEDULER_PRO_DATA_ROOT}/certs into the front proxy/CloudPanel site.
+#
+# CF_Zone_ID is intentionally not exported here. The acme.sh Cloudflare plugin can resolve
+# the DNS zone from CF_Token when the token has Zone:Read + DNS:Edit. This avoids confusing
+# a Cloudflare Account ID with a Zone ID and also survives zone moves/rotations.
 
 services:
   scheduler-acme:
@@ -14,7 +18,6 @@ services:
       - ssl
     environment:
       CF_Token: ${CLOUDFLARE_API_TOKEN:?CLOUDFLARE_API_TOKEN obrigatória para DNS-01}
-      CF_Zone_ID: ${CLOUDFLARE_ZONE_ID:?CLOUDFLARE_ZONE_ID obrigatória para DNS-01}
       ACME_EMAIL: ${ACME_EMAIL:?ACME_EMAIL obrigatória}
       ACME_DOMAIN: ${ACME_DOMAIN:-scheduler.argws.com.br}
       ACME_STAGING: ${ACME_STAGING:-false}
