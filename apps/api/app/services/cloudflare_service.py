@@ -15,12 +15,16 @@ class CloudflareService:
         api_base_url: str = "https://api.cloudflare.com/client/v4",
         dry_run: bool = False,
         custom_hostname_origin: str | None = None,
+        zone_name_hint: str | None = None,
     ) -> None:
         self.api_token = api_token
-        self.zone_id = zone_id
+        self.configured_zone_id = (zone_id or "").strip() or None
+        self.zone_id = self.configured_zone_id
         self.api_base_url = api_base_url.rstrip("/")
-        self.dry_run = dry_run or not api_token or not zone_id
+        self.zone_name_hint = (zone_name_hint or "").strip().lower().rstrip(".") or None
+        self.dry_run = dry_run or not api_token or not (self.zone_id or self.zone_name_hint)
         self.custom_hostname_origin = custom_hostname_origin
+        self._resolved_zone: dict[str, Any] | None = None
 
     def _dry_result(self, action: str, payload: dict[str, Any]) -> dict[str, Any]:
         return {"success": True, "dry_run": True, "action": action, "result": payload}
@@ -36,33 +40,164 @@ class CloudflareService:
         code = first.get("code")
         return int(code) if isinstance(code, int) else None
 
+    @staticmethod
+    def _zone_name_matches(zone_name: str, hint: str | None) -> bool:
+        if not hint:
+            return True
+        clean_zone = zone_name.strip().lower().rstrip(".")
+        clean_hint = hint.strip().lower().rstrip(".")
+        return clean_hint == clean_zone or clean_hint.endswith(f".{clean_zone}")
+
+    def _zone_candidates(self) -> list[str]:
+        hint = self.zone_name_hint
+        if not hint:
+            return []
+        labels = [label for label in hint.split(".") if label]
+        candidates: list[str] = []
+        for index in range(max(len(labels) - 1, 1)):
+            candidate = ".".join(labels[index:])
+            if candidate and candidate not in candidates:
+                candidates.append(candidate)
+        return candidates
+
+    async def resolve_zone(self) -> dict[str, Any]:
+        if self.dry_run:
+            return {
+                "id": self.zone_id,
+                "name": self.zone_name_hint,
+                "configured_zone_id": self.configured_zone_id,
+                "auto_resolved": False,
+                "dry_run": True,
+            }
+        if self._resolved_zone is not None:
+            return self._resolved_zone
+
+        configured_error: dict[str, Any] | None = None
+        if self.configured_zone_id:
+            try:
+                response = await self._request("GET", f"/zones/{self.configured_zone_id}")
+                result = response.get("result")
+                if isinstance(result, dict):
+                    zone_name = str(result.get("name") or "")
+                    if self._zone_name_matches(zone_name, self.zone_name_hint):
+                        self.zone_id = str(result.get("id") or self.configured_zone_id)
+                        self._resolved_zone = {
+                            **result,
+                            "configured_zone_id": self.configured_zone_id,
+                            "auto_resolved": False,
+                        }
+                        return self._resolved_zone
+                    configured_error = {
+                        "code": "CLOUDFLARE_ZONE_NAME_MISMATCH",
+                        "message": (
+                            f"A Zone ID configurada pertence a {zone_name or 'outra zone'}, "
+                            f"mas a plataforma usa {self.zone_name_hint}."
+                        ),
+                    }
+            except APIError as exc:
+                configured_error = {
+                    "code": exc.code,
+                    "message": exc.message,
+                    "status_code": exc.status_code,
+                    "details": exc.details,
+                }
+
+        discovery_errors: list[dict[str, Any]] = []
+        for candidate in self._zone_candidates():
+            try:
+                response = await self._request(
+                    "GET",
+                    f"/zones?{urlencode({'name': candidate, 'status': 'active', 'per_page': '50'})}",
+                )
+            except APIError as exc:
+                discovery_errors.append(
+                    {
+                        "candidate": candidate,
+                        "code": exc.code,
+                        "message": exc.message,
+                        "status_code": exc.status_code,
+                    }
+                )
+                continue
+            result = response.get("result")
+            if not isinstance(result, list):
+                continue
+            for zone in result:
+                if not isinstance(zone, dict):
+                    continue
+                zone_id = str(zone.get("id") or "").strip()
+                zone_name = str(zone.get("name") or "").strip().lower().rstrip(".")
+                if not zone_id or not self._zone_name_matches(zone_name, self.zone_name_hint):
+                    continue
+                self.zone_id = zone_id
+                self._resolved_zone = {
+                    **zone,
+                    "configured_zone_id": self.configured_zone_id,
+                    "auto_resolved": zone_id != self.configured_zone_id,
+                }
+                return self._resolved_zone
+
+        raise APIError(
+            "CLOUDFLARE_ZONE_RESOLUTION_ERROR",
+            "Não foi possível resolver a Zone Cloudflare da plataforma.",
+            424,
+            {
+                "configured_zone_id": self.configured_zone_id,
+                "zone_name_hint": self.zone_name_hint,
+                "configured_zone_error": configured_error,
+                "discovery_errors": discovery_errors,
+                "hint": (
+                    "Use o Zone ID da zone DNS, nunca o Account ID. O backend também pode "
+                    "autodetectar a zone quando o token possui Zone:Read."
+                ),
+            },
+        )
+
     async def verify_token(self) -> dict[str, Any]:
         if self.dry_run:
-            return self._dry_result("VERIFY CLOUDFLARE", {"zone_id": self.zone_id})
+            return self._dry_result(
+                "VERIFY CLOUDFLARE",
+                {"zone_id": self.zone_id, "zone_name_hint": self.zone_name_hint},
+            )
+
+        token_error: APIError | None = None
+        token_verification: dict[str, Any] | None = None
         try:
-            verified = await self._request("GET", "/user/tokens/verify")
-            return {**verified, "verification_mode": "token_verify"}
-        except APIError as token_error:
-            if token_error.code != "CLOUDFLARE_AUTH_ERROR":
+            token_verification = await self._request("GET", "/user/tokens/verify")
+        except APIError as exc:
+            if exc.code != "CLOUDFLARE_AUTH_ERROR":
                 raise
-            try:
-                zone = await self._request("GET", self._zone_path(""))
-                return {
-                    "success": True,
-                    "verification_mode": "zone_access",
-                    "result": zone.get("result"),
-                    "warning": (
-                        "O endpoint /user/tokens/verify não aceitou a credencial, "
-                        "mas o token possui acesso real à Zone ID configurada."
-                    ),
-                    "token_verify_error": {
-                        "code": token_error.code,
-                        "message": token_error.message,
-                        "details": token_error.details,
-                    },
-                }
-            except APIError:
+            token_error = exc
+
+        try:
+            zone = await self.resolve_zone()
+        except APIError:
+            if token_error is not None:
                 raise token_error
+            raise
+
+        result: dict[str, Any] = {
+            "success": True,
+            "verification_mode": "token_and_zone_access",
+            "result": zone,
+            "configured_zone_id": self.configured_zone_id,
+            "resolved_zone_id": self.zone_id,
+            "zone_name": zone.get("name"),
+            "auto_resolved_zone": bool(zone.get("auto_resolved")),
+        }
+        if token_verification is not None:
+            result["token"] = token_verification.get("result")
+        if token_error is not None:
+            result["warning"] = (
+                "O endpoint /user/tokens/verify não aceitou a credencial, mas o token possui "
+                "acesso real à zone resolvida."
+            )
+            result["token_verify_error"] = {
+                "code": token_error.code,
+                "message": token_error.message,
+                "details": token_error.details,
+            }
+        return result
 
     async def _request(
         self,
@@ -91,7 +226,15 @@ class CloudflareService:
                 headers=headers,
                 json=payload,
             )
-        data = cast(dict[str, Any], response.json())
+        try:
+            data = cast(dict[str, Any], response.json())
+        except ValueError as exc:
+            raise APIError(
+                "CLOUDFLARE_INVALID_RESPONSE",
+                "A Cloudflare retornou uma resposta inválida.",
+                424,
+                {"status_code": response.status_code, "body": response.text[:2000]},
+            ) from exc
         if response.status_code >= 400 or not data.get("success", False):
             cf_code = self._cloudflare_error_code(data)
             if "/purge_cache" in path and response.status_code in {401, 403}:
@@ -103,8 +246,8 @@ class CloudflareService:
                         "status_code": response.status_code,
                         "response": data,
                         "hint": (
-                            "Adicione ao token a permissão Cache Purge para a zone "
-                            "configurada, além de Zone:Read e DNS:Edit."
+                            "Adicione ao token a permissão Cache Purge para a zone configurada, "
+                            "além de Zone:Read e DNS:Edit."
                         ),
                     },
                 )
@@ -117,8 +260,8 @@ class CloudflareService:
                         "status_code": response.status_code,
                         "response": data,
                         "hint": (
-                            "Confira a Zone ID e as permissões específicas da operação. "
-                            "DNS, Custom Hostnames e Cache Purge possuem permissões distintas."
+                            "Confira a Zone ID e as permissões específicas da operação. DNS, "
+                            "Custom Hostnames e Cache Purge possuem permissões distintas."
                         ),
                     },
                 )
@@ -130,14 +273,16 @@ class CloudflareService:
             )
         return data
 
-    def _zone_path(self, suffix: str) -> str:
-        if not self.zone_id:
+    async def _zone_path(self, suffix: str) -> str:
+        zone = await self.resolve_zone()
+        zone_id = str(zone.get("id") or self.zone_id or "").strip()
+        if not zone_id:
             raise APIError(
                 "CLOUDFLARE_ZONE_MISSING",
-                "Zone ID Cloudflare não configurado.",
+                "Zone ID Cloudflare não configurado ou resolvido.",
                 424,
             )
-        return f"/zones/{self.zone_id}{suffix}"
+        return f"/zones/{zone_id}{suffix}"
 
     async def list_dns_records(
         self,
@@ -152,10 +297,8 @@ class CloudflareService:
         params: dict[str, str] = {"name": hostname.strip().lower().rstrip(".")}
         if record_type:
             params["type"] = record_type.upper()
-        return await self._request(
-            "GET",
-            f"{self._zone_path('/dns_records')}?{urlencode(params)}",
-        )
+        path = await self._zone_path("/dns_records")
+        return await self._request("GET", f"{path}?{urlencode(params)}")
 
     async def create_dns_record(
         self,
@@ -179,7 +322,7 @@ class CloudflareService:
         }
         return await self._request(
             "POST",
-            self._zone_path("/dns_records"),
+            await self._zone_path("/dns_records"),
             payload=payload,
         )
 
@@ -250,7 +393,7 @@ class CloudflareService:
     async def delete_dns_record(self, record_id: str) -> dict[str, Any]:
         return await self._request(
             "DELETE",
-            self._zone_path(f"/dns_records/{record_id}"),
+            await self._zone_path(f"/dns_records/{record_id}"),
         )
 
     async def create_custom_hostname(self, hostname: str) -> dict[str, Any]:
@@ -266,20 +409,20 @@ class CloudflareService:
             payload["custom_origin_server"] = self.custom_hostname_origin
         return await self._request(
             "POST",
-            self._zone_path("/custom_hostnames"),
+            await self._zone_path("/custom_hostnames"),
             payload=payload,
         )
 
     async def delete_custom_hostname(self, hostname_id: str) -> dict[str, Any]:
         return await self._request(
             "DELETE",
-            self._zone_path(f"/custom_hostnames/{hostname_id}"),
+            await self._zone_path(f"/custom_hostnames/{hostname_id}"),
         )
 
     async def get_custom_hostname_status(self, hostname_id: str) -> dict[str, Any]:
         return await self._request(
             "GET",
-            self._zone_path(f"/custom_hostnames/{hostname_id}"),
+            await self._zone_path(f"/custom_hostnames/{hostname_id}"),
         )
 
     async def request_validation(self, hostname: str) -> dict[str, Any]:
@@ -292,6 +435,6 @@ class CloudflareService:
         payload = {"hosts": [hostname]}
         return await self._request(
             "POST",
-            self._zone_path("/purge_cache"),
+            await self._zone_path("/purge_cache"),
             payload=payload,
         )
