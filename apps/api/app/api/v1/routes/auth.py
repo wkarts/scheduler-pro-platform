@@ -118,8 +118,8 @@ async def forgot_password(
     if created is not None:
         recipient, raw_token = created
         reset_url = (
-            f"{_external_origin(request, context.hostname)}/"
-            f"?reset-token={quote(raw_token, safe='')}&reset-scope=tenant"
+            f"{_external_origin(request, context.hostname)}"
+            f"/api/v1/auth/password/reset-page?token={quote(raw_token, safe='')}"
         )
         await asyncio.to_thread(
             mail_delivery.send_password_reset,
@@ -222,8 +222,8 @@ async def platform_forgot_password(
     if created is not None:
         recipient, raw_token = created
         reset_url = (
-            f"{_external_origin(request, hostname)}/"
-            f"?reset-token={quote(raw_token, safe='')}&reset-scope=platform"
+            f"{_external_origin(request, hostname)}"
+            f"/api/v1/auth/platform/password/reset-page?token={quote(raw_token, safe='')}"
         )
         await asyncio.to_thread(
             mail_delivery.send_password_reset,
