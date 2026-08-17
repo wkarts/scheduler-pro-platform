@@ -59,10 +59,10 @@ async def test_log_agent_health_stays_alive_when_docker_socket_is_unavailable(mo
 @pytest.mark.asyncio
 async def test_existing_superadmin_is_preserved_when_env_has_legacy_short_password(monkeypatch) -> None:
     session = _FakeSession(
-        {"email": "admin@scheduler.argws.com.br", "is_super_admin": True, "is_active": True}
+        {"email": "legacy-admin@example.com", "is_super_admin": True, "is_active": True}
     )
     monkeypatch.setattr(platform_bootstrap, "PlatformSession", lambda: session)
-    monkeypatch.setattr(settings, "platform_admin_email", "admin@scheduler.argws.com.br")
+    monkeypatch.setattr(settings, "platform_admin_email", "new-admin@example.com")
     monkeypatch.setattr(settings, "platform_admin_password", "legacy")
 
     await platform_bootstrap.bootstrap_platform_admin()
@@ -75,8 +75,21 @@ async def test_existing_superadmin_is_preserved_when_env_has_legacy_short_passwo
 async def test_new_installation_still_rejects_short_platform_admin_password(monkeypatch) -> None:
     session = _FakeSession(None)
     monkeypatch.setattr(platform_bootstrap, "PlatformSession", lambda: session)
-    monkeypatch.setattr(settings, "platform_admin_email", "admin@scheduler.argws.com.br")
+    monkeypatch.setattr(settings, "platform_admin_email", "admin@example.com")
     monkeypatch.setattr(settings, "platform_admin_password", "legacy")
 
     with pytest.raises(RuntimeError, match="at least 12 characters"):
         await platform_bootstrap.bootstrap_platform_admin()
+
+
+@pytest.mark.asyncio
+async def test_valid_password_still_upserts_configured_superadmin(monkeypatch) -> None:
+    session = _FakeSession(None)
+    monkeypatch.setattr(platform_bootstrap, "PlatformSession", lambda: session)
+    monkeypatch.setattr(settings, "platform_admin_email", "admin@example.com")
+    monkeypatch.setattr(settings, "platform_admin_password", "a-valid-password-123")
+
+    await platform_bootstrap.bootstrap_platform_admin()
+
+    assert session.execute_calls == 1
+    assert session.committed is True
