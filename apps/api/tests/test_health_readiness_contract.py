@@ -1,15 +1,26 @@
 from pathlib import Path
 
 from app.api.v1.routes.health import PLATFORM_MIGRATION_HEAD, _tenant_probe_required
+from app.core.config import settings
 
 
-def test_platform_readiness_does_not_resolve_loopback_as_tenant() -> None:
+def test_production_platform_and_loopback_do_not_require_tenant_probe(monkeypatch) -> None:
+    monkeypatch.setattr(settings, "app_env", "production")
+    monkeypatch.setattr(settings, "public_platform_domain", "scheduler.example.com")
+
     assert _tenant_probe_required("localhost") is False
     assert _tenant_probe_required("127.0.0.1") is False
     assert _tenant_probe_required("::1") is False
+    assert _tenant_probe_required("scheduler.example.com") is False
+    assert _tenant_probe_required("tenant.scheduler.example.com") is True
 
 
-def test_real_development_tenant_hostname_still_requires_tenant_probe() -> None:
+def test_development_seeded_local_domains_require_tenant_probe(monkeypatch) -> None:
+    monkeypatch.setattr(settings, "app_env", "development")
+    monkeypatch.setattr(settings, "public_platform_domain", "localhost")
+
+    assert _tenant_probe_required("localhost") is True
+    assert _tenant_probe_required("127.0.0.1") is True
     assert _tenant_probe_required("dev.localhost") is True
 
 
