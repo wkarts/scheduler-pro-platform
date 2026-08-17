@@ -8,12 +8,15 @@ from app.core.tenant_context import TenantContext
 from app.db.models_platform import BuildProfile, TenantBrandingProfile
 
 DEFAULT_COLORS = {
-    "primary": "#0f172a",
-    "secondary": "#22d3ee",
-    "accent": "#38bdf8",
-    "background": "#020617",
-    "text": "#f8fafc",
+    "primary": "#2F6BFF",
+    "secondary": "#22D3EE",
+    "accent": "#1DAAF5",
+    "background": "#F4F7FB",
+    "text": "#0B1D3A",
 }
+DEFAULT_SLOGAN = "Agenda inteligente. Operação conectada."
+DEFAULT_ICON_URL = "/icons/icon.svg"
+DEFAULT_FAVICON_URL = "/favicon.svg"
 
 
 class BrandingService:
@@ -32,6 +35,16 @@ class BrandingService:
             tenant_id=tenant_id,
             app_name=tenant_name,
             public_name=tenant_name,
+            slogan=DEFAULT_SLOGAN,
+            icon_url=DEFAULT_ICON_URL,
+            favicon_url=DEFAULT_FAVICON_URL,
+            primary_color=DEFAULT_COLORS["primary"],
+            secondary_color=DEFAULT_COLORS["secondary"],
+            accent_color=DEFAULT_COLORS["accent"],
+            background_color=DEFAULT_COLORS["background"],
+            text_color=DEFAULT_COLORS["text"],
+            font_family="Inter, Segoe UI, Arial, sans-serif",
+            border_radius="1rem",
             timezone=timezone,
         )
         self.session.add(profile)
@@ -120,14 +133,14 @@ class BrandingService:
             "app": {
                 "name": profile.app_name,
                 "public_name": profile.public_name,
-                "slogan": profile.slogan,
+                "slogan": profile.slogan or DEFAULT_SLOGAN,
                 "locale": profile.locale,
                 "timezone": profile.timezone,
             },
             "assets": {
                 "logo_url": profile.logo_url,
-                "icon_url": profile.icon_url,
-                "favicon_url": profile.favicon_url,
+                "icon_url": profile.icon_url or DEFAULT_ICON_URL,
+                "favicon_url": profile.favicon_url or DEFAULT_FAVICON_URL,
             },
             "theme": {
                 "mode": profile.theme_mode,
