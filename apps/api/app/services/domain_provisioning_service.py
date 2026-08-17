@@ -215,7 +215,8 @@ class DomainProvisioningService:
                 if isinstance(result.get("result"), dict)
                 else {}
             )
-            ssl_data = cf_result.get("ssl") if isinstance(cf_result.get("ssl"), dict) else {}
+            raw_ssl = cf_result.get("ssl")
+            ssl_data: dict[str, Any] = raw_ssl if isinstance(raw_ssl, dict) else {}
             domain.validation = {
                 "mode": "custom_hostname",
                 "cloudflare": result,
@@ -286,11 +287,9 @@ class DomainProvisioningService:
                     if isinstance(result.get("result"), dict)
                     else {}
                 )
-                ssl_status = (
-                    cf_result.get("ssl", {}).get("status")
-                    if isinstance(cf_result.get("ssl"), dict)
-                    else None
-                )
+                raw_ssl = cf_result.get("ssl")
+                ssl_data: dict[str, Any] = raw_ssl if isinstance(raw_ssl, dict) else {}
+                ssl_status = ssl_data.get("status")
                 if (
                     result.get("dry_run")
                     or cf_result.get("status") == "active"
@@ -303,20 +302,20 @@ class DomainProvisioningService:
                     **(domain.validation or {}),
                     "custom_hostname_id": cf_result.get("id")
                     or (domain.validation or {}).get("custom_hostname_id"),
-                    "validation_records": (
-                        cf_result.get("ssl", {}).get("validation_records")
-                        if isinstance(cf_result.get("ssl"), dict)
-                        else cf_result.get("validation_records")
-                    ),
+                    "validation_records": ssl_data.get("validation_records")
+                    or cf_result.get("validation_records"),
                     "last_check": result,
                     "integration_status": "HEALTHY",
                 }
         except APIError as exc:
+            previous_validation = dict(domain.validation or {})
+            mode = str(
+                previous_validation.get("mode")
+                or ("temporary_dns" if domain.is_temporary else "custom_hostname")
+            )
             self._preserve_last_known_domain_state(
                 domain,
-                mode=(domain.validation or {}).get(
-                    "mode", "temporary_dns" if domain.is_temporary else "custom_hostname"
-                ),
+                mode=mode,
                 error_key="last_check_error",
                 error=exc,
             )
