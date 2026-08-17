@@ -1,26 +1,37 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title desc">
-  <title id="title">Scheduler Pro</title>
-  <desc id="desc">Símbolo abstrato de agenda e fluxo temporal formando um S.</desc>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Scheduler PRO">
+
   <defs>
-    <linearGradient id="bg" x1="72" y1="56" x2="446" y2="456" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#0B1D3A"/>
-      <stop offset="1" stop-color="#061327"/>
+    <linearGradient id="app-s-navy" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#102A5D"/>
+      <stop offset="0.55" stop-color="#0B132B"/>
+      <stop offset="1" stop-color="#061126"/>
     </linearGradient>
-    <linearGradient id="flow" x1="122" y1="116" x2="396" y2="398" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#2F6BFF"/>
-      <stop offset=".58" stop-color="#1DAAF5"/>
-      <stop offset="1" stop-color="#22D3EE"/>
+    <linearGradient id="app-s-accent" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#118AF5"/>
+      <stop offset="0.48" stop-color="#00E5FF"/>
+      <stop offset="1" stop-color="#00C2B8"/>
     </linearGradient>
-    <filter id="glow" x="-40%" y="-40%" width="180%" height="180%">
-      <feGaussianBlur stdDeviation="8"/>
+    <linearGradient id="app-s-silver" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FFFFFF"/>
+      <stop offset="1" stop-color="#E6E9EF"/>
+    </linearGradient>
+    <filter id="app-s-shadow" x="-30%" y="-30%" width="160%" height="160%">
+      <feDropShadow dx="0" dy="12" stdDeviation="12" flood-color="#061126" flood-opacity="0.18"/>
     </filter>
   </defs>
-  <rect x="32" y="32" width="448" height="448" rx="116" fill="url(#bg)"/>
-  <path d="M157 169c0-38 31-69 69-69h101c43 0 78 35 78 78s-35 78-78 78h-91c-42 0-76 34-76 76s34 76 76 76h89c42 0 76-34 76-76" fill="none" stroke="#0A2E59" stroke-width="46" stroke-linecap="round" stroke-linejoin="round" opacity=".72"/>
-  <path d="M157 169c0-38 31-69 69-69h101c43 0 78 35 78 78s-35 78-78 78h-91c-42 0-76 34-76 76s34 76 76 76h89c42 0 76-34 76-76" fill="none" stroke="url(#flow)" stroke-width="28" stroke-linecap="round" stroke-linejoin="round"/>
-  <circle cx="401" cy="112" r="20" fill="#7C3AED" opacity=".35" filter="url(#glow)"/>
-  <circle cx="401" cy="112" r="12" fill="#8B5CF6"/>
-  <circle cx="126" cy="398" r="9" fill="#22D3EE" opacity=".92"/>
-  <path d="M226 256h66" stroke="#E8F3FF" stroke-width="10" stroke-linecap="round" opacity=".82"/>
-  <circle cx="256" cy="256" r="10" fill="#FFFFFF"/>
+  <rect x="12" y="12" width="488" height="488" rx="116" fill="url(#app-s-navy)"/>
+  <g>
+    <rect x="82" y="108" width="306" height="298" rx="48" fill="none" stroke="#FFFFFF" stroke-width="34"/>
+    <path d="M150 72v78M310 72v78" fill="none" stroke="url(#app-s-accent)" stroke-width="34" stroke-linecap="round"/>
+    <rect x="128" y="188" width="54" height="54" rx="9" fill="#FFFFFF"/>
+    <rect x="214" y="188" width="54" height="54" rx="9" fill="#FFFFFF"/>
+    <rect x="300" y="188" width="54" height="54" rx="9" fill="url(#app-s-accent)"/>
+    <rect x="128" y="274" width="54" height="54" rx="9" fill="#FFFFFF"/>
+    <rect x="214" y="274" width="54" height="54" rx="9" fill="#FFFFFF"/>
+    <rect x="128" y="360" width="54" height="34" rx="9" fill="#FFFFFF"/>
+    <circle cx="354" cy="350" r="118" fill="url(#app-s-navy)"/>
+    <circle cx="354" cy="350" r="105" fill="none" stroke="#FFFFFF" stroke-width="28"/>
+    <path d="M354 296v58h46" fill="none" stroke="#FFFFFF" stroke-width="26" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M307 365l40 40 78-89" fill="none" stroke="url(#app-s-accent)" stroke-width="36" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
 </svg>

@@ -1,47 +1,39 @@
-# Scheduler Pro — Identidade Visual Canônica
+# Scheduler PRO — Identidade Visual Canônica
 
-A identidade padrão da plataforma utiliza o conceito **Time Flow**: um fluxo contínuo em forma de `S`, um ponto central de compromisso/agendamento e dois nós de entrada/saída que representam jornada, confirmação e continuidade.
+Versão oficial de marca: **1.0.0**.
+
+## Conceito
+
+A identidade combina calendário, relógio e confirmação para representar disponibilidade, compromisso e conclusão do agendamento.
 
 ## Arquivos canônicos
 
-- `brand-symbol.svg` — símbolo principal, fundo escuro e gradiente azul/ciano.
+- `brand-symbol.svg` — ícone oficial para aplicativos e geração Tauri.
 - `brand-symbol-mono.svg` — versão monocromática.
-- `brand-logo-horizontal.svg` — assinatura horizontal para fundos claros.
-- `brand-logo-light.svg` — assinatura horizontal para fundos escuros.
+- `brand-logo-horizontal.svg` — assinatura para fundos claros.
+- `brand-logo-light.svg` — assinatura para fundos escuros.
 - `favicon.svg` — favicon simplificado.
 - `maskable.svg` — ícone PWA maskable.
-- `splash.svg` — splash vertical 1080x1920.
-- `brand-tokens.json` — cores, tipografia e tokens visuais.
-
-## Diretrizes
-
-1. O símbolo substitui o antigo quadrado textual `SP` como marca principal.
-2. `Scheduler Pro` continua sendo a marca padrão da plataforma.
-3. Control Plane pode usar o descritor `Administração da plataforma` ou `Control Plane`, sempre separado da marca principal.
-4. Tenants podem substituir nome, logo, cores e assets por branding próprio; os arquivos desta pasta permanecem como fallback da plataforma.
-5. Não esticar, inclinar ou alterar proporções do símbolo.
-6. Preferir `brand-logo-light.svg` sobre fundos navy e `brand-logo-horizontal.svg` sobre superfícies claras.
-7. Em ícones pequenos, usar apenas o símbolo/fav, nunca a assinatura horizontal.
+- `splash.svg` — splash oficial.
+- `brand-tokens.json` — tokens de cor, tipografia e forma.
 
 ## Paleta
 
-- Navy 950 `#061327`
-- Navy 900 `#081A33`
-- Navy 800 `#0B1D3A`
-- Blue 600 `#2F6BFF`
-- Cyan 500 `#1DAAF5`
-- Cyan 400 `#22D3EE`
-- Violet 500 `#8B5CF6`
-- Surface `#F4F7FB`
+- Deep Navy `#0B132B`
+- Midnight Blue `#0F1E3A`
+- Azure Blue `#118AF5`
+- Electric Cyan `#00E5FF`
+- Teal `#00C2B8`
+- Silver Gray `#E6E9EF`
+- White `#FFFFFF`
+
+Gradiente de destaque: `#118AF5 → #00E5FF → #00C2B8`.
 
 ## Tipografia
 
-Sistema: `Inter, Segoe UI, Arial, sans-serif`.
+- Display: `Inter Display, Inter, Segoe UI, Arial, sans-serif`
+- Corpo: `Inter, Segoe UI, Arial, sans-serif`
 
-- Headings: 760
-- UI: 600
-- Texto: 450
+## Aplicação no produto
 
-## Tauri
-
-Os builds nativos devem executar `tauri icon` usando `brand-symbol.svg` como fonte. O Tauri 2 aceita SVG quadrado com transparência e gera PNG, ICO, ICNS, Android e iOS conforme o target.
+A marca canônica é o fallback da plataforma. Tenants continuam podendo personalizar nome, logo e cores. Customizações existentes não devem ser sobrescritas. Desktop cliente/admin usam WebView remoto e herdam a UI Web/Admin; seus instaladores recebem o ícone oficial no build Tauri. Mobile cliente/admin usam a mesma família de assets em seus shells nativos.
