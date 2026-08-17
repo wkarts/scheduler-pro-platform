@@ -2,6 +2,7 @@
 import { computed, onMounted, ref } from 'vue'
 
 type ModuleKey = 'overview' | 'clientes' | 'dominios' | 'builds' | 'provisionamento' | 'logs' | 'integracoes' | 'auditoria'
+type AuthMode = 'login' | 'forgot' | 'reset'
 type ApiEnvelope<T> = { data: T }
 type Tenant = { id: string; name: string; slug: string; status: string; primary_hostname?: string | null; created_at?: string | null }
 type Domain = { id: string; tenant_id: string; tenant_name?: string | null; hostname: string; status: string; is_temporary: boolean; is_primary: boolean }
@@ -29,11 +30,17 @@ const modules: ModuleItem[] = [
 ]
 
 const apiBase = (import.meta.env.VITE_ADMIN_API_BASE_URL || 'https://admin.scheduler.argws.com.br/api/v1').replace(/\/$/, '')
+const initialResetToken = new URLSearchParams(window.location.search).get('reset-token') || ''
 const active = ref<ModuleKey>('overview')
 const collapsed = ref(false)
 const email = ref(localStorage.getItem('scheduler_admin_desktop_email') || '')
 const password = ref('')
 const token = ref(localStorage.getItem('scheduler_admin_desktop_token') || '')
+const authMode = ref<AuthMode>(initialResetToken ? 'reset' : 'login')
+const resetToken = ref(initialResetToken)
+const newPassword = ref('')
+const confirmPassword = ref('')
+const recoveryMessage = ref('')
 const error = ref('')
 const toast = ref('')
 const loading = ref(false)
@@ -76,10 +83,12 @@ function setToast(message: string): void {
 }
 function statusClass(value?: string | null): string { return String(value || '').toLowerCase().replace(/[^a-z0-9]+/g, '-') }
 function formatDate(value?: string | null): string { return value ? new Date(value).toLocaleString('pt-BR') : '—' }
+function setAuthMode(mode: AuthMode): void { authMode.value = mode; error.value = ''; recoveryMessage.value = ''; password.value = ''; newPassword.value = ''; confirmPassword.value = '' }
 
 async function login(): Promise<void> {
   loading.value = true
   error.value = ''
+  recoveryMessage.value = ''
   try {
     const data = await api<{ access_token: string }>('/auth/platform/login', { method: 'POST', body: JSON.stringify({ email: email.value, password: password.value }) })
     token.value = data.access_token
@@ -92,6 +101,44 @@ async function login(): Promise<void> {
   } finally {
     loading.value = false
   }
+}
+async function forgotPassword(): Promise<void> {
+  loading.value = true
+  error.value = ''
+  recoveryMessage.value = ''
+  try {
+    const data = await api<{ accepted: boolean; message: string }>('/auth/platform/password/forgot', { method: 'POST', body: JSON.stringify({ email: email.value }) })
+    recoveryMessage.value = data.message || 'Se a conta existir, enviaremos as instruções por e-mail.'
+  } catch (err) {
+    error.value = err instanceof Error ? err.message : 'Não foi possível solicitar a recuperação.'
+  } finally {
+    loading.value = false
+  }
+}
+async function resetPassword(): Promise<void> {
+  error.value = ''
+  recoveryMessage.value = ''
+  if (newPassword.value.length < 12) { error.value = 'A nova senha deve possuir pelo menos 12 caracteres.'; return }
+  if (newPassword.value !== confirmPassword.value) { error.value = 'A confirmação da senha não confere.'; return }
+  loading.value = true
+  try {
+    const data = await api<{ password_reset: boolean; message: string }>('/auth/platform/password/reset', { method: 'POST', body: JSON.stringify({ token: resetToken.value, new_password: newPassword.value }) })
+    recoveryMessage.value = data.message || 'Senha redefinida. Entre novamente.'
+    history.replaceState({}, document.title, window.location.pathname)
+    resetToken.value = ''
+    authMode.value = 'login'
+    newPassword.value = ''
+    confirmPassword.value = ''
+  } catch (err) {
+    error.value = err instanceof Error ? err.message : 'Não foi possível redefinir a senha.'
+  } finally {
+    loading.value = false
+  }
+}
+async function submitAuth(): Promise<void> {
+  if (authMode.value === 'login') await login()
+  else if (authMode.value === 'forgot') await forgotPassword()
+  else await resetPassword()
 }
 function logout(): void {
   token.value = ''
@@ -162,13 +209,20 @@ onMounted(() => { if (token.value) void refreshAll() })
       <p>Administração da plataforma com o mesmo padrão visual do Hub Fiscal: sidebar escura, cards brancos, tabelas, logs e operação SaaS em uma aplicação instalada.</p>
       <div class="proof-grid"><span>Tenants</span><span>Domínios</span><span>Builds</span><span>Logs</span></div>
     </section>
-    <form class="login-card panel-card" @submit.prevent="login">
-      <p class="eyebrow">Entrar</p>
-      <h2>Acessar Control Plane</h2>
-      <label>E-mail<input v-model="email" type="email" autocomplete="username" required /></label>
-      <label>Senha<input v-model="password" type="password" autocomplete="current-password" required /></label>
+    <form class="login-card panel-card" @submit.prevent="submitAuth">
+      <p class="eyebrow">{{ authMode === 'login' ? 'Entrar' : authMode === 'forgot' ? 'Recuperar acesso' : 'Nova senha' }}</p>
+      <h2>{{ authMode === 'login' ? 'Acessar Control Plane' : authMode === 'forgot' ? 'Esqueci minha senha' : 'Redefinir senha' }}</h2>
+      <label v-if="authMode !== 'reset'">E-mail<input v-model="email" type="email" autocomplete="username" required /></label>
+      <label v-if="authMode === 'login'">Senha<input v-model="password" type="password" autocomplete="current-password" required /></label>
+      <template v-if="authMode === 'reset'">
+        <label>Nova senha<input v-model="newPassword" type="password" autocomplete="new-password" minlength="12" required /></label>
+        <label>Confirmar nova senha<input v-model="confirmPassword" type="password" autocomplete="new-password" minlength="12" required /></label>
+      </template>
       <p v-if="error" class="error-box">{{ error }}</p>
-      <button class="btn primary" type="submit" :disabled="loading">{{ loading ? 'Validando...' : 'Entrar no painel' }}</button>
+      <p v-if="recoveryMessage" class="toast-box">{{ recoveryMessage }}</p>
+      <button class="btn primary" type="submit" :disabled="loading">{{ loading ? 'Processando...' : authMode === 'login' ? 'Entrar no painel' : authMode === 'forgot' ? 'Enviar link de recuperação' : 'Salvar nova senha' }}</button>
+      <button v-if="authMode === 'login'" class="btn" type="button" @click="setAuthMode('forgot')">Esqueci minha senha</button>
+      <button v-else class="btn" type="button" @click="setAuthMode('login')">Voltar para o login</button>
     </form>
   </main>
 
