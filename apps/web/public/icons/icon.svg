@@ -1,12 +1,1 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Scheduler Pro">
-  <defs>
-    <linearGradient id="g" x1="0" x2="1" y1="0" y2="1"><stop stop-color="#3b82f6"/><stop offset="1" stop-color="#06b6d4"/></linearGradient>
-  </defs>
-  <rect width="512" height="512" rx="112" fill="#0c2244"/>
-  <circle cx="394" cy="412" r="150" fill="#ffffff" opacity=".06"/>
-  <rect x="118" y="124" width="276" height="268" rx="48" fill="url(#g)"/>
-  <rect x="150" y="176" width="212" height="36" rx="8" fill="#fff" opacity=".96"/>
-  <rect x="178" y="104" width="34" height="92" rx="17" fill="#fff"/>
-  <rect x="300" y="104" width="34" height="92" rx="17" fill="#fff"/>
-  <path d="M183 289l49 50 104-118" fill="none" stroke="#fff" stroke-width="44" stroke-linecap="round" stroke-linejoin="round"/>
-</svg>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Scheduler Pro"><defs><linearGradient id="bg" x1="72" y1="56" x2="446" y2="456" gradientUnits="userSpaceOnUse"><stop stop-color="#0B1D3A"/><stop offset="1" stop-color="#061327"/></linearGradient><linearGradient id="flow" x1="122" y1="116" x2="396" y2="398" gradientUnits="userSpaceOnUse"><stop stop-color="#2F6BFF"/><stop offset=".58" stop-color="#1DAAF5"/><stop offset="1" stop-color="#22D3EE"/></linearGradient></defs><rect x="32" y="32" width="448" height="448" rx="116" fill="url(#bg)"/><path d="M157 169c0-38 31-69 69-69h101c43 0 78 35 78 78s-35 78-78 78h-91c-42 0-76 34-76 76s34 76 76 76h89c42 0 76-34 76-76" fill="none" stroke="#0A2E59" stroke-width="46" stroke-linecap="round" stroke-linejoin="round" opacity=".72"/><path d="M157 169c0-38 31-69 69-69h101c43 0 78 35 78 78s-35 78-78 78h-91c-42 0-76 34-76 76s34 76 76 76h89c42 0 76-34 76-76" fill="none" stroke="url(#flow)" stroke-width="28" stroke-linecap="round" stroke-linejoin="round"/><circle cx="401" cy="112" r="12" fill="#8B5CF6"/><circle cx="126" cy="398" r="9" fill="#22D3EE"/><circle cx="256" cy="256" r="10" fill="#FFFFFF"/></svg>
