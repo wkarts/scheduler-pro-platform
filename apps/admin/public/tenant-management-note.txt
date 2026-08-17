@@ -1,0 +1,2 @@
+Scheduler PRO Admin
+Gerenciamento de tenant disponível pelo botão "Gerenciar tenant" do Control Plane.
