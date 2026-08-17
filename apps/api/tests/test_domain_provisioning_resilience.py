@@ -34,6 +34,26 @@ def test_remote_check_failure_preserves_last_known_active_domain() -> None:
     assert domain.validation["last_check_error"]["code"] == "CLOUDFLARE_AUTH_ERROR"
 
 
+def test_retry_recovers_legacy_pending_domain_when_dns_was_already_verified() -> None:
+    domain = SimpleNamespace(
+        status="PENDING_VALIDATION",
+        validation={"mode": "temporary_dns", "record_exists": True},
+    )
+
+    preserved = DomainProvisioningService._preserve_last_known_domain_state(
+        domain,
+        mode="temporary_dns",
+        error_key="last_check_error",
+        error=_error(),
+        record_exists=False,
+    )
+
+    assert preserved is True
+    assert domain.status == "ACTIVE"
+    assert domain.validation["record_exists"] is True
+    assert domain.validation["integration_status"] == "DEGRADED"
+
+
 def test_remote_failure_keeps_unverified_domain_pending() -> None:
     domain = SimpleNamespace(status="CONFIGURING", validation={})
 
