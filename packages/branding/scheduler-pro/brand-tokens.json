@@ -1,0 +1,31 @@
+{
+  "brand": "Scheduler Pro",
+  "tagline": "Agenda inteligente. Operação conectada.",
+  "colors": {
+    "navy_950": "#061327",
+    "navy_900": "#081A33",
+    "navy_800": "#0B1D3A",
+    "navy_700": "#0C284D",
+    "blue_600": "#2F6BFF",
+    "blue_500": "#3B82F6",
+    "cyan_500": "#1DAAF5",
+    "cyan_400": "#22D3EE",
+    "violet_500": "#8B5CF6",
+    "surface": "#F4F7FB",
+    "surface_alt": "#EAF1F8",
+    "text": "#0B1D3A",
+    "muted": "#60708A",
+    "white": "#FFFFFF"
+  },
+  "typography": {
+    "family": "Inter, Segoe UI, Arial, sans-serif",
+    "heading_weight": 760,
+    "body_weight": 450,
+    "ui_weight": 600
+  },
+  "shape": {
+    "app_icon_radius": 0.2266,
+    "card_radius_px": 16,
+    "button_radius_px": 10
+  }
+}
