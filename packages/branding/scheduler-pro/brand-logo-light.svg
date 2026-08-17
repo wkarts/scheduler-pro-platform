@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 920 240" role="img" aria-label="Scheduler Pro">
+  <defs>
+    <linearGradient id="bg" x1="32" y1="24" x2="220" y2="224" gradientUnits="userSpaceOnUse"><stop stop-color="#12315F"/><stop offset="1" stop-color="#081A33"/></linearGradient>
+    <linearGradient id="flow" x1="72" y1="56" x2="198" y2="202" gradientUnits="userSpaceOnUse"><stop stop-color="#68A0FF"/><stop offset=".58" stop-color="#45C2FF"/><stop offset="1" stop-color="#63E6F8"/></linearGradient>
+  </defs>
+  <g transform="translate(8 8) scale(.44)">
+    <rect x="32" y="32" width="448" height="448" rx="116" fill="url(#bg)"/>
+    <path d="M157 169c0-38 31-69 69-69h101c43 0 78 35 78 78s-35 78-78 78h-91c-42 0-76 34-76 76s34 76 76 76h89c42 0 76-34 76-76" fill="none" stroke="url(#flow)" stroke-width="30" stroke-linecap="round" stroke-linejoin="round"/>
+    <circle cx="401" cy="112" r="12" fill="#A78BFA"/><circle cx="126" cy="398" r="9" fill="#63E6F8"/><circle cx="256" cy="256" r="10" fill="#FFFFFF"/>
+  </g>
+  <text x="260" y="111" fill="#FFFFFF" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="78" font-weight="760" letter-spacing="-3">Scheduler</text>
+  <text x="686" y="111" fill="#68A0FF" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="78" font-weight="820" letter-spacing="-3">Pro</text>
+  <text x="265" y="164" fill="#AFC3DC" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="26" font-weight="550" letter-spacing="2">AGENDA INTELIGENTE · OPERAÇÃO CONECTADA</text>
+</svg>
