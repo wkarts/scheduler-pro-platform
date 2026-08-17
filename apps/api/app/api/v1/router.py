@@ -13,6 +13,7 @@ from app.api.v1.routes import (
     landing_pages,
     notifications,
     observability,
+    password_reset_pages,
     platform,
     platform_access,
     professionals,
@@ -28,6 +29,7 @@ api_router = APIRouter()
 api_router.include_router(health.router, tags=["Health"])
 api_router.include_router(public.router, prefix="/public", tags=["Public"])
 api_router.include_router(auth.router, prefix="/auth", tags=["Authentication"])
+api_router.include_router(password_reset_pages.router, prefix="/auth", tags=["Authentication"])
 api_router.include_router(
     customers.router,
     prefix="/customers",
