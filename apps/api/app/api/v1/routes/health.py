@@ -17,7 +17,7 @@ from app.db.session import PlatformSession, get_tenant_engine
 from app.services.tenant_resolver import TenantResolver
 
 router = APIRouter()
-PLATFORM_MIGRATION_HEAD = "platform_0005"
+PLATFORM_MIGRATION_HEAD = "platform_0006"
 TENANT_MIGRATION_HEAD = "tenant_0004_product_complete"
 
 
