@@ -1,185 +1,91 @@
-# Scheduler Pro no CloudPanel
+# Scheduler Pro — deployment Docker ARGWS
 
-Este diretório segue o padrão de implantação validado para stacks Docker gerenciadas pelo CloudPanel.
+O deployment canônico do Scheduler Pro não depende de `clpctl`, NGINX do CloudPanel nem scripts root no host para provisionar tenants ou certificados.
 
-## 1. Preparar arquivos
-
-```bash
-mkdir -p /home/scheduler-pro
-cd /home/scheduler-pro
-cp .env.example .env
-```
-
-Edite `.env` e configure domínio, senhas, Cloudflare, WhatsApp e o SMTP transacional.
-
-Para o ambiente ARGWS, confirme especialmente:
-
-```env
-PLATFORM_ADMIN_EMAIL=wallace.almeida@wwsoftwares.com.br
-PLATFORM_ADMIN_PASSWORD=COLOQUE_AQUI_UMA_SENHA_FORTE_COM_12_OU_MAIS_CARACTERES
-
-PASSWORD_RESET_TTL_MINUTES=30
-PASSWORD_RESET_MIN_LENGTH=12
-
-SMTP_HOST=smtp.seu-dominio.com.br
-SMTP_PORT=587
-SMTP_USERNAME=seu_usuario_smtp
-SMTP_PASSWORD=sua_senha_smtp
-SMTP_FROM_EMAIL=no-reply@seu-dominio.com.br
-SMTP_FROM_NAME=Scheduler Pro
-SMTP_REPLY_TO=suporte@seu-dominio.com.br
-SMTP_USE_TLS=true
-SMTP_USE_SSL=false
-SMTP_TIMEOUT_SECONDS=15
-
-# A imagem oficial PostgreSQL cria POSTGRES_USER como superusuário no primeiro initdb.
-POSTGRES_USER=scheduler
-POSTGRES_PASSWORD=COLOQUE_AQUI_A_SENHA_DO_POSTGRES
-POSTGRES_ADMIN_USER=scheduler
-POSTGRES_ADMIN_PASSWORD=COLOQUE_AQUI_A_MESMA_SENHA_DO_POSTGRES
-
-# TLS local gerenciado pelo próprio host/CloudPanel.
-TLS_PROVISIONING_MODE=local_acme
-CLOUDFLARE_TEMPORARY_RECORD_PROXIED=false
-LOCAL_ACME_DOMAIN=scheduler.argws.com.br
-LOCAL_ACME_CERT_DIR=/run/scheduler-pro-certs
-ACME_EMAIL=admin@scheduler.argws.com.br
-ACME_DOMAIN=scheduler.argws.com.br
-ACME_STAGING=false
-ACME_DNS_SLEEP=20
-```
-
-Nunca versione a senha administrativa ou credenciais SMTP/PostgreSQL/Cloudflare reais. Elas devem existir somente no `.env` do servidor/secret store.
-
-O SMTP é usado para recuperação de senha, teste de entrega e e-mail de boas-vindas ao administrador de um tenant provisionado. Se `SMTP_HOST`/`SMTP_FROM_EMAIL` não estiverem configurados, a recuperação retorna `SMTP_NOT_CONFIGURED` em vez de simular envio.
-
-## 2. Subir stack
-
-```bash
-docker compose --env-file .env -f compose.yaml pull
-docker compose --env-file .env -f compose.yaml up -d
-```
-
-As variáveis de autenticação/reset/SMTP/TLS são propagadas pelo bloco comum de ambiente para migration/bootstrap, API e workers. O diretório `${SCHEDULER_PRO_DATA_ROOT}/certs` é montado read-only na API e no worker de provisionamento para diagnóstico; a chave privada permanece root-only no host.
-
-## 3. TLS local ACME/Let's Encrypt no CloudPanel
-
-O modo padrão ARGWS é `TLS_PROVISIONING_MODE=local_acme`. Ele evita depender de **Cloudflare SSL for SaaS / Custom Hostnames**, inclusive em contas que retornam o erro Cloudflare `1404 No quota has been allocated`.
-
-A arquitetura fica:
+## Arquitetura
 
 ```text
 Internet
-  -> DNS Cloudflare (DNS-only para *.scheduler.argws.com.br)
-  -> CloudPanel / NGINX :443
-  -> certificado Let's Encrypt local
-     scheduler.argws.com.br + *.scheduler.argws.com.br
-  -> reverse proxy http://127.0.0.1:18080
-  -> scheduler-proxy -> API/Web/Admin
+  -> DNS Cloudflare (DNS-only)
+  -> scheduler-edge (Traefik em Docker :80/:443)
+  -> scheduler-proxy (Docker)
+  -> API / Web / Admin
 ```
 
-O wildcard cobre automaticamente, sem emissão por tenant:
-
-- `scheduler.argws.com.br`;
-- `admin.scheduler.argws.com.br`;
-- `api.scheduler.argws.com.br`;
-- `proxy.scheduler.argws.com.br`;
-- qualquer tenant `tenant.scheduler.argws.com.br`.
-
-### 3.1 Permissões do token Cloudflare
-
-Para este modo o token é usado **somente para DNS**. Use escopos equivalentes a:
-
-- Zone / Zone / Read;
-- Zone / DNS / Edit;
-- recurso limitado à zone `argws.com.br`.
-
-Não é necessário contratar `SSL and Certificates Read/Write` ou Cloudflare for SaaS para os hostnames sob `*.scheduler.argws.com.br`.
-
-### 3.2 Emitir e instalar o wildcard
-
-Execute uma vez no host CloudPanel, como root:
-
-```bash
-cd /home/scheduler-pro/deployments/cloudpanel
-bash scripts/install-local-acme-cloudpanel.sh .env
-```
-
-O instalador:
-
-1. instala `acme.sh` no host se necessário;
-2. emite `scheduler.argws.com.br` + `*.scheduler.argws.com.br` via Let's Encrypt ACME v2 e Cloudflare DNS-01;
-3. grava a cópia operacional em `${SCHEDULER_PRO_DATA_ROOT}/certs`;
-4. instala o certificado no site CloudPanel usando `clpctl site:install:certificate`;
-5. adiciona `*.scheduler.argws.com.br` ao `server_name` do VHost do site, com backup e `nginx -t` antes do reload;
-6. mantém o `reloadcmd` no acme.sh para que toda renovação seja reinstalada automaticamente no CloudPanel.
-
-O acme.sh instala um cron diário de renovação. Não use diretamente os certificados internos de `~/.acme.sh`; a cópia em `${SCHEDULER_PRO_DATA_ROOT}/certs` é mantida por `--install-cert`.
-
-### 3.3 DNS dos tenants
-
-Em `local_acme`, os CNAMEs dos tenants precisam ser **DNS-only**. O Scheduler Pro reconcilia:
+O `scheduler-edge` emite e renova automaticamente um único certificado Let's Encrypt via DNS-01 para:
 
 ```text
-tenant.scheduler.argws.com.br CNAME proxy.scheduler.argws.com.br
-proxied = false
+scheduler.argws.com.br
+*.scheduler.argws.com.br
 ```
 
-Se um registro antigo estiver laranja/proxied, use **Domínios e SSL -> Verificar** após o deploy. A reconciliação o converte para DNS-only. Se o proxy Cloudflare continuar ligado, o navegador verá o certificado do edge Cloudflare e não o wildcard local.
+Esse wildcard cobre automaticamente `admin`, `api`, `proxy` e todos os tenants de um nível sob `scheduler.argws.com.br`. Nenhum tenant exige novo reverse proxy ou novo certificado.
 
-### 3.4 Diagnóstico
-
-Em **Integrações**, o Control Plane passa a mostrar `local_acme` com:
-
-- presença do `fullchain.pem`;
-- presença da chave privada sem ler/expor seu conteúdo;
-- SANs do certificado;
-- data de expiração;
-- dias restantes;
-- confirmação de instalação no CloudPanel;
-- estado final `READY`, `INCOMPLETE` ou `MISSING_CERTIFICATE`.
-
-## 4. Domínios próprios externos
-
-Um domínio como `agenda.cliente.com.br` não é coberto por `*.scheduler.argws.com.br`.
-
-No modo `local_acme`, o backend **não chama Cloudflare Custom Hostnames** para hostnames gerenciados da plataforma. Domínios externos ficam `PENDING_VALIDATION` e são identificados como `custom_domain_local_acme`, aguardando provisionamento ACME próprio no host. Instalações que realmente contrataram Cloudflare SSL for SaaS podem usar `TLS_PROVISIONING_MODE=cloudflare_saas` como fallback.
-
-## 5. CloudPanel
-
-Crie ou mantenha o site reverse proxy `scheduler.argws.com.br` apontando para:
-
-```text
-http://127.0.0.1:18080
-```
-
-O proxy interno roteia:
-
-- `/api/*` para FastAPI;
-- `admin.*` ou `/admin/` para Super Admin;
-- demais hosts para webapp tenant PWA.
-
-O arquivo `compose.acme.yaml` permanece como emissor container legado/opcional. Para CloudPanel, o provisionador **canônico** é `scripts/install-local-acme-cloudpanel.sh`, porque somente o host consegue executar `clpctl` e recarregar corretamente o NGINX que ocupa a porta 443.
-
-## 6. Atualização
+## Subir a stack com edge Docker
 
 ```bash
-docker compose --env-file .env -f compose.yaml pull
-docker compose --env-file .env -f compose.yaml up -d --remove-orphans
+docker compose --env-file .env \
+  -f compose.argws.yaml \
+  -f compose.docker-edge.yaml \
+  pull
+
+docker compose --env-file .env \
+  -f compose.argws.yaml \
+  -f compose.docker-edge.yaml \
+  up -d --remove-orphans
 ```
 
-Após alterar a configuração TLS, rode novamente:
+O overlay `compose.docker-edge.yaml` adiciona o Traefik à mesma rede Docker e roteia o wildcard para `scheduler-proxy:80`.
 
-```bash
-bash scripts/install-local-acme-cloudpanel.sh .env
+## DNS e Let's Encrypt
+
+Use no `.env`:
+
+```env
+TLS_PROVISIONING_MODE=local_acme
+CLOUDFLARE_TEMPORARY_RECORD_PROXIED=false
+LOCAL_ACME_DOMAIN=scheduler.argws.com.br
+LOCAL_ACME_PROBE_HOST=scheduler-edge
+LOCAL_ACME_PROBE_PORT=443
+TRAEFIK_IMAGE=traefik:v3.7
+EDGE_BIND_HOST=0.0.0.0
+EDGE_HTTP_PORT=80
+EDGE_HTTPS_PORT=443
+ACME_EMAIL=admin@scheduler.argws.com.br
+ACME_CA_SERVER=https://acme-v02.api.letsencrypt.org/directory
 ```
 
-## 7. Recuperar provisionamento estagnado
+O token Cloudflare precisa de acesso à zone para leitura e edição DNS. O Traefik usa esse token somente para criar/remover os TXT do challenge DNS-01. Os CNAMEs dos tenants permanecem DNS-only; o Scheduler Pro os reconcilia periodicamente.
 
-O provisionamento é idempotente por passo. Passos marcados como `completed` não são repetidos em um retry; somente passos ainda pendentes, em execução ou que falharam são reenfileirados.
+## Restrição de portas
 
-O runtime faz `rollback` da sessão antes de persistir uma falha, impedindo que um erro PostgreSQL deixe o job indefinidamente em `RUNNING/PROVISIONING`. Jobs `FAILED` podem ser reenfileirados imediatamente. Jobs `PENDING/PROVISIONING` só podem ser reprocessados quando estiverem sem atualização por pelo menos 10 minutos, evitando execução concorrente do mesmo job.
+No mesmo endereço IP, apenas um processo pode possuir as portas públicas 80/443. Para que o certificado do Traefik seja apresentado diretamente ao navegador, `scheduler-edge` precisa receber essas portas.
 
-No Control Plane, abra **Provisionamento** e use **Tentar novamente** ou **Reprocessar** no job existente. Não crie outro tenant apenas para recuperar uma execução interrompida: banco, migrations, storage, DNS, administrador e demais passos já concluídos são preservados.
+Se outro software já ocupa 80/443 no mesmo IP, há somente duas alternativas tecnicamente corretas sem colocar esse software no caminho do Scheduler Pro:
 
-Após `ActivateTenant`, o tenant, o domínio validado e `tenant_resource_boundaries.isolation_status` devem convergir para `ACTIVE`; somente então o login pelo hostname do tenant é liberado.
+- usar outro IP público já disponível e configurar `EDGE_BIND_HOST` para esse IP; ou
+- liberar 80/443 desse IP para o edge Docker.
+
+Não existe forma de dois terminadores TLS independentes compartilharem a mesma combinação IP:443 sem um proxy frontal comum.
+
+## Provisionamento dos tenants
+
+Depois que o edge Docker está de pé, todo tenant novo é automático:
+
+1. cria banco/role isolado;
+2. executa migrations;
+3. cria storage;
+4. cria administrador;
+5. cria `tenant.scheduler.argws.com.br -> proxy.scheduler.argws.com.br` em DNS-only;
+6. usa imediatamente o wildcard já administrado pelo Traefik;
+7. ativa o tenant.
+
+Não há criação manual de site, reverse proxy ou SSL por cliente.
+
+## SMTP
+
+O SMTP é usado para recuperação de senha, teste de entrega e e-mail de boas-vindas. Configure `SMTP_*` no `.env`; não versione credenciais reais.
+
+## Diagnóstico TLS
+
+A API não monta nem lê a chave privada do Traefik. O diagnóstico `local_acme` abre uma conexão TLS interna contra `scheduler-edge:443` usando SNI de `scheduler.argws.com.br` e inspeciona apenas o certificado público apresentado.
