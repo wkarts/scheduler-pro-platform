@@ -6,7 +6,7 @@ DEPLOYMENT_DIR="$(cd -- "$SCRIPT_DIR/.." && pwd)"
 ENV_FILE="${1:-$DEPLOYMENT_DIR/.env}"
 
 if [[ ${EUID:-$(id -u)} -ne 0 ]]; then
-  echo "[ERRO] Execute como root. O instalador precisa integrar o certificado ao CloudPanel/NGINX." >&2
+  echo "[ERRO] Execute como root. O instalador precisa preparar CloudPanel/NGINX e o certificado ACME." >&2
   exit 1
 fi
 
@@ -44,6 +44,15 @@ for raw in path.read_text(encoding="utf-8").splitlines():
 PY
 }
 
+find_site_vhost() {
+  local exact="/etc/nginx/sites-enabled/${SITE_DOMAIN}.conf"
+  if [[ -f "$exact" ]]; then
+    printf '%s\n' "$exact"
+    return 0
+  fi
+  find /etc/nginx/sites-enabled -maxdepth 1 -type f -name "*${SITE_DOMAIN}*.conf" -print -quit 2>/dev/null || true
+}
+
 CF_TOKEN="$(env_get CLOUDFLARE_API_TOKEN)"
 EMAIL="$(env_get ACME_EMAIL)"
 DOMAIN="$(env_get ACME_DOMAIN)"
@@ -51,6 +60,9 @@ SITE_DOMAIN="$(env_get PUBLIC_PLATFORM_DOMAIN)"
 DATA_ROOT="$(env_get SCHEDULER_PRO_DATA_ROOT)"
 STAGING="$(env_get ACME_STAGING)"
 DNS_SLEEP="$(env_get ACME_DNS_SLEEP)"
+REVERSE_PROXY_URL="$(env_get CLOUDPANEL_REVERSE_PROXY_URL)"
+SITE_USER="$(env_get CLOUDPANEL_SITE_USER)"
+SITE_PASSWORD="$(env_get CLOUDPANEL_SITE_PASSWORD)"
 
 DOMAIN="${DOMAIN:-scheduler.argws.com.br}"
 SITE_DOMAIN="${SITE_DOMAIN:-$DOMAIN}"
@@ -58,6 +70,8 @@ EMAIL="${EMAIL:-admin@$DOMAIN}"
 DATA_ROOT="${DATA_ROOT:-./scheduler-pro-data}"
 STAGING="${STAGING:-false}"
 DNS_SLEEP="${DNS_SLEEP:-20}"
+REVERSE_PROXY_URL="${REVERSE_PROXY_URL:-http://127.0.0.1:18080}"
+SITE_USER="${SITE_USER:-schedulerpro}"
 
 [[ -n "$CF_TOKEN" ]] || {
   echo "[ERRO] CLOUDFLARE_API_TOKEN é obrigatório para DNS-01." >&2
@@ -68,12 +82,56 @@ if [[ "$DATA_ROOT" != /* ]]; then
   DATA_ROOT="$(cd -- "$(dirname -- "$ENV_FILE")" && pwd)/${DATA_ROOT#./}"
 fi
 CERT_DIR="$DATA_ROOT/certs"
+EDGE_DIR="$DATA_ROOT/edge"
 ACME_HOME="/root/.acme.sh"
 ACME_BIN="$ACME_HOME/acme.sh"
 DEPLOY_HOOK="/usr/local/sbin/scheduler-pro-cloudpanel-cert-deploy"
 
 install -d -m 0755 "$CERT_DIR"
+install -d -m 0700 "$EDGE_DIR"
 install -m 0755 "$SCRIPT_DIR/cloudpanel-cert-deploy.sh" "$DEPLOY_HOOK"
+
+# Zero-touch do edge CloudPanel: se o reverse proxy ainda não existe, cria-o
+# automaticamente apontando para a porta loopback publicada pelo Scheduler Pro.
+VHOST="$(find_site_vhost)"
+if [[ -z "$VHOST" ]]; then
+  GENERATED_PASSWORD=false
+  if [[ -z "$SITE_PASSWORD" ]]; then
+    SITE_PASSWORD="$(python3 - <<'PY'
+import secrets
+import string
+alphabet = string.ascii_letters + string.digits
+print("".join(secrets.choice(alphabet) for _ in range(32)))
+PY
+)"
+    GENERATED_PASSWORD=true
+  fi
+
+  echo "[INFO] Criando reverse proxy CloudPanel para $SITE_DOMAIN -> $REVERSE_PROXY_URL ..."
+  clpctl site:add:reverse-proxy \
+    --domainName="$SITE_DOMAIN" \
+    --reverseProxyUrl="$REVERSE_PROXY_URL" \
+    --siteUser="$SITE_USER" \
+    --siteUserPassword="$SITE_PASSWORD"
+
+  VHOST="$(find_site_vhost)"
+  if [[ -z "$VHOST" ]]; then
+    echo "[ERRO] O CloudPanel informou criação do site, mas o VHost de $SITE_DOMAIN não foi localizado." >&2
+    exit 1
+  fi
+
+  if [[ "$GENERATED_PASSWORD" == "true" ]]; then
+    CREDENTIALS_FILE="$EDGE_DIR/cloudpanel-site.credentials"
+    {
+      printf 'CLOUDPANEL_SITE_USER=%q\n' "$SITE_USER"
+      printf 'CLOUDPANEL_SITE_PASSWORD=%q\n' "$SITE_PASSWORD"
+    } > "$CREDENTIALS_FILE"
+    chmod 0600 "$CREDENTIALS_FILE"
+    echo "[INFO] Credencial aleatória do site armazenada somente em $CREDENTIALS_FILE (0600)."
+  fi
+else
+  echo "[OK] Reverse proxy CloudPanel já existe: $VHOST"
+fi
 
 if [[ ! -x "$ACME_BIN" ]]; then
   echo "[INFO] Instalando acme.sh no host..."
@@ -134,6 +192,7 @@ Scheduler Pro - TLS local ACME
 Base: $DOMAIN
 Wildcard: *.$DOMAIN
 Site CloudPanel: $SITE_DOMAIN
+Reverse proxy: $REVERSE_PROXY_URL
 Método: Let's Encrypt ACME v2 + Cloudflare DNS-01
 
 O acme.sh renova automaticamente pelo cron do host e executa:
@@ -142,9 +201,9 @@ EOF
 chmod 0644 "$CERT_DIR/README.txt"
 
 echo ""
-echo "[OK] TLS local configurado."
+echo "[OK] Edge Scheduler Pro configurado automaticamente."
+echo "[OK] Reverse proxy: $SITE_DOMAIN -> $REVERSE_PROXY_URL"
 echo "[OK] Certificado: $DOMAIN + *.$DOMAIN"
-echo "[OK] CloudPanel: $SITE_DOMAIN"
 echo "[OK] Renovação: cron do acme.sh + clpctl site:install:certificate"
 echo ""
 echo "IMPORTANTE: registros de tenant sob *.$DOMAIN precisam permanecer DNS-only (proxy Cloudflare desligado)."
