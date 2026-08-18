@@ -31,7 +31,7 @@ class FakeAdminConnection:
 
 
 @pytest.mark.asyncio
-async def test_admin_connection_falls_back_when_postgres_password_is_wrong(monkeypatch) -> None:
+async def test_admin_connection_prefers_postgres_user_created_by_official_image(monkeypatch) -> None:
     monkeypatch.setattr(settings, "postgres_admin_user", "postgres")
     monkeypatch.setattr(settings, "postgres_admin_password", "wrong-admin-password")
     monkeypatch.setattr(settings, "postgres_user", "scheduler")
@@ -52,7 +52,7 @@ async def test_admin_connection_falls_back_when_postgres_password_is_wrong(monke
     conn = await postgres_admin.connect_postgres_admin()
 
     assert conn is platform_conn
-    assert attempted_users == ["postgres", "scheduler"]
+    assert attempted_users == ["scheduler"]
     assert platform_conn.closed is False
 
 
@@ -63,21 +63,21 @@ async def test_admin_connection_skips_authenticated_user_without_create_privileg
     monkeypatch.setattr(settings, "postgres_user", "scheduler")
     monkeypatch.setattr(settings, "postgres_password", "platform-password")
 
-    limited_conn = FakeAdminConnection(privileged=False)
-    platform_conn = FakeAdminConnection(privileged=True)
+    platform_conn = FakeAdminConnection(privileged=False)
+    admin_conn = FakeAdminConnection(privileged=True)
 
     async def fake_connect(**kwargs: Any) -> Any:
-        if kwargs["user"] == "postgres":
-            return limited_conn
-        return platform_conn
+        if kwargs["user"] == "scheduler":
+            return platform_conn
+        return admin_conn
 
     monkeypatch.setattr(postgres_admin.asyncpg, "connect", fake_connect)
 
     conn = await postgres_admin.connect_postgres_admin()
 
-    assert conn is platform_conn
-    assert limited_conn.closed is True
-    assert platform_conn.closed is False
+    assert conn is admin_conn
+    assert platform_conn.closed is True
+    assert admin_conn.closed is False
 
 
 @pytest.mark.asyncio
