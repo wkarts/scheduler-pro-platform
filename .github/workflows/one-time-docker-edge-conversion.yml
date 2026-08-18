@@ -1,0 +1,103 @@
+name: One-time Docker Edge Conversion
+
+on:
+  push:
+    branches:
+      - fix/complete-runtime-artifacts-cloudflare
+    paths:
+      - .github/workflows/one-time-docker-edge-conversion.yml
+
+permissions:
+  contents: write
+
+jobs:
+  convert:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/complete-runtime-artifacts-cloudflare
+          fetch-depth: 0
+      - name: Convert ARGWS compose to Docker-owned TLS edge
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('deployments/cloudpanel/compose.argws.yaml')
+          text = path.read_text(encoding='utf-8')
+
+          old_storage = '    command: ["/bin/sh", "-ec", "mkdir -p /data/postgres /data/redis /data/rabbitmq /data/minio /data/backups /data/celery /data/certs && chmod 0777 /data/postgres /data/redis /data/rabbitmq /data/minio /data/celery && chmod 0755 /data/certs"]'
+          new_storage = '    command: ["/bin/sh", "-ec", "mkdir -p /data/postgres /data/redis /data/rabbitmq /data/minio /data/backups /data/celery /data/traefik && touch /data/traefik/acme.json && chmod 0777 /data/postgres /data/redis /data/rabbitmq /data/minio /data/celery && chmod 0700 /data/traefik && chmod 0600 /data/traefik/acme.json"]'
+          if old_storage not in text:
+              raise SystemExit('storage-init contract not found')
+          text = text.replace(old_storage, new_storage, 1)
+
+          cert_mount = '    volumes:\n      - ${SCHEDULER_PRO_DATA_ROOT:-./scheduler-pro-data}/certs:${LOCAL_ACME_CERT_DIR:-/run/scheduler-pro-certs}:ro\n'
+          text = text.replace(cert_mount, '', 2)
+
+          old_proxy_port = '    ports: ["${APP_BIND_HOST:-127.0.0.1}:${APP_PORT:-18080}:80"]\n'
+          docker_edge = '''    expose: ["80"]
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.scheduler.rule=Host(`${PUBLIC_PLATFORM_DOMAIN:-scheduler.argws.com.br}`) || Host(`*.${TENANT_DEFAULT_DOMAIN_ROOT:-scheduler.argws.com.br}`)"
+      - "traefik.http.routers.scheduler.entrypoints=websecure"
+      - "traefik.http.routers.scheduler.tls=true"
+      - "traefik.http.routers.scheduler.tls.certresolver=scheduler"
+      - "traefik.http.routers.scheduler.tls.domains[0].main=${LOCAL_ACME_DOMAIN:-scheduler.argws.com.br}"
+      - "traefik.http.routers.scheduler.tls.domains[0].sans=*.${LOCAL_ACME_DOMAIN:-scheduler.argws.com.br}"
+      - "traefik.http.routers.scheduler.service=scheduler-proxy"
+      - "traefik.http.services.scheduler-proxy.loadbalancer.server.port=80"
+
+  scheduler-edge:
+    image: ${TRAEFIK_IMAGE:-traefik:v3.7}
+    pull_policy: always
+    restart: unless-stopped
+    depends_on:
+      scheduler-storage-init: {condition: service_completed_successfully}
+      scheduler-proxy: {condition: service_started}
+    command:
+      - --providers.docker=true
+      - --providers.docker.exposedbydefault=false
+      - --entrypoints.web.address=:80
+      - --entrypoints.web.http.redirections.entrypoint.to=websecure
+      - --entrypoints.web.http.redirections.entrypoint.scheme=https
+      - --entrypoints.websecure.address=:443
+      - --certificatesresolvers.scheduler.acme.email=${ACME_EMAIL:-admin@scheduler.argws.com.br}
+      - --certificatesresolvers.scheduler.acme.storage=/letsencrypt/acme.json
+      - --certificatesresolvers.scheduler.acme.keytype=EC256
+      - --certificatesresolvers.scheduler.acme.caserver=${ACME_CA_SERVER:-https://acme-v02.api.letsencrypt.org/directory}
+      - --certificatesresolvers.scheduler.acme.dnschallenge=true
+      - --certificatesresolvers.scheduler.acme.dnschallenge.provider=cloudflare
+      - --certificatesresolvers.scheduler.acme.dnschallenge.resolvers=1.1.1.1:53,8.8.8.8:53
+      - --ping=true
+      - --api.dashboard=false
+      - --log.level=${EDGE_LOG_LEVEL:-INFO}
+    environment:
+      CF_DNS_API_TOKEN: ${CLOUDFLARE_API_TOKEN:-}
+      CF_ZONE_API_TOKEN: ${CLOUDFLARE_API_TOKEN:-}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ${SCHEDULER_PRO_DATA_ROOT:-./scheduler-pro-data}/traefik:/letsencrypt
+    ports:
+      - "${EDGE_BIND_HOST:-0.0.0.0}:${EDGE_HTTP_PORT:-80}:80"
+      - "${EDGE_BIND_HOST:-0.0.0.0}:${EDGE_HTTPS_PORT:-443}:443"
+    healthcheck:
+      test: ["CMD", "traefik", "healthcheck", "--ping"]
+      interval: 20s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+'''
+          if old_proxy_port not in text:
+              raise SystemExit('scheduler-proxy host port contract not found')
+          text = text.replace(old_proxy_port, docker_edge, 1)
+          path.write_text(text, encoding='utf-8')
+          PY
+
+          git rm .github/workflows/one-time-docker-edge-conversion.yml
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add deployments/cloudpanel/compose.argws.yaml
+          git commit -m "refactor: mover edge TLS ARGWS inteiramente para Docker"
+          git push origin HEAD:fix/complete-runtime-artifacts-cloudflare
