@@ -117,9 +117,23 @@ class DomainProvisioningService:
         domain: Domain,
         dns_result: dict[str, Any],
     ) -> None:
+        # Ao migrar um hostname gerenciado de Cloudflare SaaS para ACME local,
+        # remova do estado atual os artefatos/erros do produto SaaS. O evento
+        # histórico permanece nos logs de observabilidade para auditoria.
+        previous = dict(domain.validation or {})
+        for stale_key in (
+            "cloudflare_error",
+            "last_check_error",
+            "custom_hostname_id",
+            "validation_records",
+            "certificate_authority",
+            "cloudflare",
+            "last_check",
+        ):
+            previous.pop(stale_key, None)
         domain.status = "ACTIVE"
         domain.validation = {
-            **(domain.validation or {}),
+            **previous,
             "mode": "temporary_dns",
             "record_exists": True,
             "target": settings.tenant_domain_target,
@@ -351,9 +365,11 @@ class DomainProvisioningService:
         try:
             if domain.is_temporary or self._is_managed_hostname(domain.hostname):
                 await self._ensure_managed_domain_dns(domain)
+                raw_dns = (domain.validation or {}).get("dns")
+                dns_data: dict[str, Any] = raw_dns if isinstance(raw_dns, dict) else {}
                 domain.validation = {
                     **(domain.validation or {}),
-                    "dns": {**((domain.validation or {}).get("dns") or {}), "check": True},
+                    "dns": {**dns_data, "check": True},
                 }
             elif settings.tls_provisioning_mode == "local_acme":
                 domain.status = "PENDING_VALIDATION"
