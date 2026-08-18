@@ -44,10 +44,16 @@ x-api-env: &api-env
   CLOUDFLARE_API_BASE_URL: ${CLOUDFLARE_API_BASE_URL:-https://api.cloudflare.com/client/v4}
   CLOUDFLARE_API_TOKEN: ${CLOUDFLARE_API_TOKEN:-}
   CLOUDFLARE_ZONE_ID: ${CLOUDFLARE_ZONE_ID:-}
+  CLOUDFLARE_ZONE_NAME: ${CLOUDFLARE_ZONE_NAME:-argws.com.br}
   CLOUDFLARE_DRY_RUN: ${CLOUDFLARE_DRY_RUN:-false}
   CLOUDFLARE_CUSTOM_HOSTNAME_ORIGIN: ${CLOUDFLARE_CUSTOM_HOSTNAME_ORIGIN:-proxy.scheduler.argws.com.br}
+  CLOUDFLARE_CUSTOM_HOSTNAME_CA: ${CLOUDFLARE_CUSTOM_HOSTNAME_CA:-lets_encrypt}
   CLOUDFLARE_TEMPORARY_RECORD_TYPE: ${CLOUDFLARE_TEMPORARY_RECORD_TYPE:-CNAME}
   CLOUDFLARE_TEMPORARY_RECORD_TARGET: ${CLOUDFLARE_TEMPORARY_RECORD_TARGET:-proxy.scheduler.argws.com.br}
+  CLOUDFLARE_TEMPORARY_RECORD_PROXIED: ${CLOUDFLARE_TEMPORARY_RECORD_PROXIED:-false}
+  TLS_PROVISIONING_MODE: ${TLS_PROVISIONING_MODE:-local_acme}
+  LOCAL_ACME_DOMAIN: ${LOCAL_ACME_DOMAIN:-scheduler.argws.com.br}
+  LOCAL_ACME_CERT_DIR: ${LOCAL_ACME_CERT_DIR:-/run/scheduler-pro-certs}
   WHATSAPP_PROVIDER: ${WHATSAPP_PROVIDER:-evolution}
   EVOLUTION_API_URL: ${EVOLUTION_API_URL:-}
   EVOLUTION_API_TOKEN: ${EVOLUTION_API_TOKEN:-}
@@ -70,7 +76,7 @@ services:
     restart: "no"
     user: "0:0"
     volumes: ["${SCHEDULER_PRO_DATA_ROOT:-./scheduler-pro-data}:/data"]
-    command: ["/bin/sh", "-ec", "mkdir -p /data/postgres /data/redis /data/rabbitmq /data/minio /data/backups /data/celery && chmod 0777 /data/postgres /data/redis /data/rabbitmq /data/minio /data/celery"]
+    command: ["/bin/sh", "-ec", "mkdir -p /data/postgres /data/redis /data/rabbitmq /data/minio /data/backups /data/celery /data/certs && chmod 0777 /data/postgres /data/redis /data/rabbitmq /data/minio /data/celery && chmod 0755 /data/certs"]
 
   scheduler-postgres:
     image: ${POSTGRES_IMAGE:-postgres:17-alpine}
@@ -155,6 +161,8 @@ services:
     pull_policy: always
     restart: unless-stopped
     environment: *api-env
+    volumes:
+      - ${SCHEDULER_PRO_DATA_ROOT:-./scheduler-pro-data}/certs:${LOCAL_ACME_CERT_DIR:-/run/scheduler-pro-certs}:ro
     depends_on:
       scheduler-platform-bootstrap: {condition: service_completed_successfully}
       scheduler-log-agent: {condition: service_healthy}
@@ -168,6 +176,8 @@ services:
     pull_policy: always
     restart: unless-stopped
     environment: *api-env
+    volumes:
+      - ${SCHEDULER_PRO_DATA_ROOT:-./scheduler-pro-data}/certs:${LOCAL_ACME_CERT_DIR:-/run/scheduler-pro-certs}:ro
     depends_on: {scheduler-api: {condition: service_healthy}}
     command: ["celery", "-A", "app.workers.celery_app.celery_app", "worker", "-Q", "default,provisioning,domains,builds,maintenance", "--loglevel=INFO", "--concurrency=2", "--without-gossip", "--without-mingle", "--without-heartbeat"]
 
@@ -185,7 +195,8 @@ services:
     restart: unless-stopped
     environment: *api-env
     depends_on: {scheduler-api: {condition: service_healthy}}
-    volumes: ["${SCHEDULER_PRO_DATA_ROOT:-./scheduler-pro-data}/celery:/var/lib/celery"]
+    volumes:
+      - ${SCHEDULER_PRO_DATA_ROOT:-./scheduler-pro-data}/celery:/var/lib/celery
     command: ["celery", "-A", "app.workers.celery_app.celery_app", "beat", "--loglevel=INFO", "--schedule=/var/lib/celery/celerybeat-schedule"]
 
   scheduler-web:
