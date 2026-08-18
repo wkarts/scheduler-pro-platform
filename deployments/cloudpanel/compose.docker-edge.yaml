@@ -1,0 +1,77 @@
+# Scheduler Pro — edge TLS 100% Docker.
+# Uso:
+#   docker compose --env-file .env -f compose.argws.yaml -f compose.docker-edge.yaml up -d
+#
+# Não usa clpctl, NGINX do host nem arquivos do CloudPanel.
+# Traefik termina TLS, emite/renova o wildcard via Let's Encrypt DNS-01 e
+# encaminha todas as requisições para scheduler-proxy dentro da rede Docker.
+
+services:
+  scheduler-edge-init:
+    image: ${STORAGE_INIT_IMAGE:-alpine:3.22}
+    restart: "no"
+    user: "0:0"
+    volumes:
+      - ${SCHEDULER_PRO_DATA_ROOT:-./scheduler-pro-data}:/data
+    command:
+      - /bin/sh
+      - -ec
+      - >-
+        mkdir -p /data/traefik &&
+        touch /data/traefik/acme.json &&
+        chmod 0700 /data/traefik &&
+        chmod 0600 /data/traefik/acme.json
+
+  scheduler-edge:
+    image: ${TRAEFIK_IMAGE:-traefik:v3.7}
+    pull_policy: always
+    restart: unless-stopped
+    depends_on:
+      scheduler-edge-init:
+        condition: service_completed_successfully
+      scheduler-proxy:
+        condition: service_started
+    command:
+      - --providers.docker=true
+      - --providers.docker.exposedbydefault=false
+      - --entrypoints.web.address=:80
+      - --entrypoints.web.http.redirections.entrypoint.to=websecure
+      - --entrypoints.web.http.redirections.entrypoint.scheme=https
+      - --entrypoints.websecure.address=:443
+      - --certificatesresolvers.scheduler.acme.email=${ACME_EMAIL:-admin@scheduler.argws.com.br}
+      - --certificatesresolvers.scheduler.acme.storage=/letsencrypt/acme.json
+      - --certificatesresolvers.scheduler.acme.keytype=EC256
+      - --certificatesresolvers.scheduler.acme.caserver=${ACME_CA_SERVER:-https://acme-v02.api.letsencrypt.org/directory}
+      - --certificatesresolvers.scheduler.acme.dnschallenge=true
+      - --certificatesresolvers.scheduler.acme.dnschallenge.provider=cloudflare
+      - --certificatesresolvers.scheduler.acme.dnschallenge.resolvers=1.1.1.1:53,8.8.8.8:53
+      - --ping=true
+      - --api.dashboard=false
+      - --log.level=${EDGE_LOG_LEVEL:-INFO}
+    environment:
+      CF_DNS_API_TOKEN: ${CLOUDFLARE_API_TOKEN:-}
+      CF_ZONE_API_TOKEN: ${CLOUDFLARE_API_TOKEN:-}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ${SCHEDULER_PRO_DATA_ROOT:-./scheduler-pro-data}/traefik:/letsencrypt
+    ports:
+      - "${EDGE_BIND_HOST:-0.0.0.0}:${EDGE_HTTP_PORT:-80}:80"
+      - "${EDGE_BIND_HOST:-0.0.0.0}:${EDGE_HTTPS_PORT:-443}:443"
+    healthcheck:
+      test: ["CMD", "traefik", "healthcheck", "--ping"]
+      interval: 20s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  scheduler-proxy:
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.scheduler.rule=Host(`${PUBLIC_PLATFORM_DOMAIN:-scheduler.argws.com.br}`) || Host(`*.${TENANT_DEFAULT_DOMAIN_ROOT:-scheduler.argws.com.br}`)"
+      - "traefik.http.routers.scheduler.entrypoints=websecure"
+      - "traefik.http.routers.scheduler.tls=true"
+      - "traefik.http.routers.scheduler.tls.certresolver=scheduler"
+      - "traefik.http.routers.scheduler.tls.domains[0].main=${LOCAL_ACME_DOMAIN:-scheduler.argws.com.br}"
+      - "traefik.http.routers.scheduler.tls.domains[0].sans=*.${LOCAL_ACME_DOMAIN:-scheduler.argws.com.br}"
+      - "traefik.http.routers.scheduler.service=scheduler-proxy"
+      - "traefik.http.services.scheduler-proxy.loadbalancer.server.port=80"
