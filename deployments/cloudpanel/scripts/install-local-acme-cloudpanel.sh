@@ -80,7 +80,8 @@ if [[ ! -x "$ACME_BIN" ]]; then
   INSTALLER="$(mktemp)"
   trap 'rm -f "$INSTALLER"' EXIT
   curl -fsSL https://get.acme.sh -o "$INSTALLER"
-  sh "$INSTALLER" --home "$ACME_HOME" --accountemail "$EMAIL"
+  # Equivalente suportado a: curl https://get.acme.sh | sh -s email=...
+  sh "$INSTALLER" "email=$EMAIL" --home "$ACME_HOME"
   rm -f "$INSTALLER"
   trap - EXIT
 fi
