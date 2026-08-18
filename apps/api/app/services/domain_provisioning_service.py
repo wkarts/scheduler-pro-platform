@@ -53,6 +53,28 @@ class DomainProvisioningService:
                 {"hostname": domain.hostname},
             )
 
+    @staticmethod
+    def _is_managed_hostname(hostname: str) -> bool:
+        clean = hostname.strip().lower().rstrip(".")
+        root = settings.tenant_domain_root.strip().lower().rstrip(".")
+        return clean == root or clean.endswith(f".{root}")
+
+    @staticmethod
+    def _managed_tls_metadata() -> dict[str, Any]:
+        if settings.tls_provisioning_mode == "local_acme":
+            return {
+                "mode": "local_acme",
+                "certificate_domain": settings.effective_local_acme_domain,
+                "wildcard": f"*.{settings.effective_local_acme_domain}",
+                "dns_proxied": settings.cloudflare_temporary_record_proxied,
+                "issuer": "letsencrypt",
+            }
+        return {
+            "mode": "cloudflare_saas",
+            "certificate_authority": settings.cloudflare_custom_hostname_ca,
+            "dns_proxied": settings.cloudflare_temporary_record_proxied,
+        }
+
     async def _record_cloudflare_failure(
         self,
         *,
@@ -95,13 +117,28 @@ class DomainProvisioningService:
         domain: Domain,
         dns_result: dict[str, Any],
     ) -> None:
+        # Ao migrar um hostname gerenciado de Cloudflare SaaS para ACME local,
+        # remova do estado atual os artefatos/erros do produto SaaS. O evento
+        # histórico permanece nos logs de observabilidade para auditoria.
+        previous = dict(domain.validation or {})
+        for stale_key in (
+            "cloudflare_error",
+            "last_check_error",
+            "custom_hostname_id",
+            "validation_records",
+            "certificate_authority",
+            "cloudflare",
+            "last_check",
+        ):
+            previous.pop(stale_key, None)
         domain.status = "ACTIVE"
         domain.validation = {
-            **(domain.validation or {}),
+            **previous,
             "mode": "temporary_dns",
             "record_exists": True,
             "target": settings.tenant_domain_target,
             "dns": dns_result,
+            "tls": self._managed_tls_metadata(),
             "integration_status": "HEALTHY",
         }
 
@@ -144,6 +181,16 @@ class DomainProvisioningService:
         domain.validation = validation
         return resource_was_verified
 
+    async def _ensure_managed_domain_dns(self, domain: Domain) -> None:
+        result = await self.cloudflare.ensure_dns_record(
+            domain.hostname,
+            settings.tenant_domain_target,
+            record_type=settings.cloudflare_temporary_record_type,
+            proxied=settings.cloudflare_temporary_record_proxied,
+        )
+        domain.is_temporary = True
+        await self._mark_temporary_dns_active(domain, result)
+
     async def create_temporary_domain(self, tenant_id: str) -> dict[str, Any]:
         tenant = await self._tenant(tenant_id)
         hostname = f"{tenant.slug}.{settings.tenant_domain_root}".lower()
@@ -162,13 +209,7 @@ class DomainProvisioningService:
             self.session.add(domain)
             await self.session.flush()
         try:
-            result = await self.cloudflare.ensure_dns_record(
-                hostname,
-                settings.tenant_domain_target,
-                record_type=settings.cloudflare_temporary_record_type,
-                proxied=True,
-            )
-            await self._mark_temporary_dns_active(domain, result)
+            await self._ensure_managed_domain_dns(domain)
         except APIError as exc:
             self._preserve_last_known_domain_state(
                 domain,
@@ -199,6 +240,50 @@ class DomainProvisioningService:
         domain = await self._domain_by_hostname(clean_hostname)
         if domain is not None:
             self._assert_domain_owner(domain, tenant_id)
+
+        # Hostnames internos do Scheduler Pro (ex. tenant.scheduler.argws.com.br)
+        # são cobertos por um único wildcard local e nunca devem consumir
+        # Cloudflare Custom Hostnames/SSL for SaaS. Isso evita o erro CF 1404
+        # em contas sem quota SSL for SaaS e mantém o provisionamento gratuito.
+        if self._is_managed_hostname(clean_hostname):
+            if domain is None:
+                domain = Domain(
+                    tenant_id=tenant_id,
+                    hostname=clean_hostname,
+                    is_primary=make_primary,
+                    is_temporary=True,
+                    status="CONFIGURING",
+                    validation={},
+                )
+                self.session.add(domain)
+                await self.session.flush()
+            try:
+                await self._ensure_managed_domain_dns(domain)
+            except APIError as exc:
+                self._preserve_last_known_domain_state(
+                    domain,
+                    mode="temporary_dns",
+                    error_key="cloudflare_error",
+                    error=exc,
+                    record_exists=False,
+                )
+                await self._record_cloudflare_failure(
+                    tenant_id=tenant_id,
+                    event="managed_domain_dns_failed",
+                    message="Falha ao reconciliar DNS do hostname gerenciado.",
+                    error=exc,
+                    hostname=clean_hostname,
+                )
+            if make_primary:
+                await self.session.execute(
+                    update(Domain)
+                    .where(Domain.tenant_id == tenant_id)
+                    .values(is_primary=False)
+                )
+                domain.is_primary = True
+            await self.session.commit()
+            return self.serialize(domain)
+
         if domain is None:
             domain = Domain(
                 tenant_id=tenant_id,
@@ -210,44 +295,61 @@ class DomainProvisioningService:
             )
             self.session.add(domain)
             await self.session.flush()
-        try:
-            result = await self.cloudflare.ensure_custom_hostname(clean_hostname)
-            cf_result = (
-                result.get("result", {})
-                if isinstance(result.get("result"), dict)
-                else {}
-            )
-            raw_ssl = cf_result.get("ssl")
-            ssl_data: dict[str, Any] = raw_ssl if isinstance(raw_ssl, dict) else {}
+
+        if settings.tls_provisioning_mode == "local_acme":
             domain.validation = {
-                "mode": "custom_hostname",
-                "cloudflare": result,
-                "custom_hostname_id": cf_result.get("id"),
-                "validation_records": ssl_data.get("validation_records") or cf_result.get("validation_records"),
-                "certificate_authority": ssl_data.get("certificate_authority") or settings.cloudflare_custom_hostname_ca,
-                "integration_status": "HEALTHY",
+                **(domain.validation or {}),
+                "mode": "custom_domain_local_acme",
+                "tls": {
+                    "mode": "local_acme",
+                    "status": "REQUIRES_HOST_PROVISIONING",
+                    "note": (
+                        "Domínios externos não são cobertos pelo wildcard da plataforma; "
+                        "devem ser adicionados ao provisionador ACME/CloudPanel local."
+                    ),
+                },
+                "integration_status": "PENDING",
             }
-            domain.status = (
-                "ACTIVE"
-                if result.get("dry_run")
-                or str(cf_result.get("status") or "").lower() == "active"
-                or str(ssl_data.get("status") or "").lower() == "active"
-                else "PENDING_VALIDATION"
-            )
-        except APIError as exc:
-            self._preserve_last_known_domain_state(
-                domain,
-                mode="custom_hostname",
-                error_key="cloudflare_error",
-                error=exc,
-            )
-            await self._record_cloudflare_failure(
-                tenant_id=tenant_id,
-                event="custom_hostname_failed",
-                message="Falha ao registrar hostname customizado na Cloudflare.",
-                error=exc,
-                hostname=clean_hostname,
-            )
+            domain.status = "PENDING_VALIDATION"
+        else:
+            try:
+                result = await self.cloudflare.ensure_custom_hostname(clean_hostname)
+                cf_result = (
+                    result.get("result", {})
+                    if isinstance(result.get("result"), dict)
+                    else {}
+                )
+                raw_ssl = cf_result.get("ssl")
+                ssl_data: dict[str, Any] = raw_ssl if isinstance(raw_ssl, dict) else {}
+                domain.validation = {
+                    "mode": "custom_hostname",
+                    "cloudflare": result,
+                    "custom_hostname_id": cf_result.get("id"),
+                    "validation_records": ssl_data.get("validation_records") or cf_result.get("validation_records"),
+                    "certificate_authority": ssl_data.get("certificate_authority") or settings.cloudflare_custom_hostname_ca,
+                    "integration_status": "HEALTHY",
+                }
+                domain.status = (
+                    "ACTIVE"
+                    if result.get("dry_run")
+                    or str(cf_result.get("status") or "").lower() == "active"
+                    or str(ssl_data.get("status") or "").lower() == "active"
+                    else "PENDING_VALIDATION"
+                )
+            except APIError as exc:
+                self._preserve_last_known_domain_state(
+                    domain,
+                    mode="custom_hostname",
+                    error_key="cloudflare_error",
+                    error=exc,
+                )
+                await self._record_cloudflare_failure(
+                    tenant_id=tenant_id,
+                    event="custom_hostname_failed",
+                    message="Falha ao registrar hostname customizado na Cloudflare.",
+                    error=exc,
+                    hostname=clean_hostname,
+                )
         if make_primary:
             await self.session.execute(
                 update(Domain)
@@ -261,17 +363,25 @@ class DomainProvisioningService:
     async def check_domain(self, domain_id: str) -> dict[str, Any]:
         domain = await self._domain_by_id(domain_id)
         try:
-            if domain.is_temporary:
-                result = await self.cloudflare.ensure_dns_record(
-                    domain.hostname,
-                    settings.tenant_domain_target,
-                    record_type=settings.cloudflare_temporary_record_type,
-                    proxied=True,
-                )
-                await self._mark_temporary_dns_active(
-                    domain,
-                    {**result, "check": True},
-                )
+            if domain.is_temporary or self._is_managed_hostname(domain.hostname):
+                await self._ensure_managed_domain_dns(domain)
+                raw_dns = (domain.validation or {}).get("dns")
+                dns_data: dict[str, Any] = raw_dns if isinstance(raw_dns, dict) else {}
+                domain.validation = {
+                    **(domain.validation or {}),
+                    "dns": {**dns_data, "check": True},
+                }
+            elif settings.tls_provisioning_mode == "local_acme":
+                domain.status = "PENDING_VALIDATION"
+                domain.validation = {
+                    **(domain.validation or {}),
+                    "mode": "custom_domain_local_acme",
+                    "tls": {
+                        "mode": "local_acme",
+                        "status": "REQUIRES_HOST_PROVISIONING",
+                    },
+                    "integration_status": "PENDING",
+                }
             else:
                 hostname_id = (
                     domain.validation.get("custom_hostname_id")
@@ -333,6 +443,15 @@ class DomainProvisioningService:
 
     async def purge_domain_cache(self, domain_id: str) -> dict[str, Any]:
         domain = await self._domain_by_id(domain_id)
+        if settings.tls_provisioning_mode == "local_acme" and self._is_managed_hostname(domain.hostname):
+            return {
+                "domain": self.serialize(domain),
+                "purge": {
+                    "success": True,
+                    "skipped": True,
+                    "reason": "DNS-only/local ACME: não há cache de edge Cloudflare para purgar.",
+                },
+            }
         try:
             result = await self.cloudflare.purge_cache(domain.hostname)
             domain.validation = {

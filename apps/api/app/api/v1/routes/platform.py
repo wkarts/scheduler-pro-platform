@@ -18,6 +18,7 @@ from app.core.security import AuthPrincipal
 from app.services.cloudflare_service import CloudflareService
 from app.services.domain_provisioning_service import DomainProvisioningService
 from app.services.feature_service import FeatureService
+from app.services.local_acme_service import local_acme_status
 from app.services.provisioning import ProvisioningService
 from app.services.tenant_lifecycle_service import TenantLifecycleService
 from app.workers.celery_app import celery_app
@@ -377,8 +378,11 @@ async def integration_status(
     _: AuthPrincipal = Depends(require_platform_permission("integrations.read")),
 ) -> dict[str, Any]:
     cloudflare: dict[str, Any] = {
-        "configured": bool(settings.cloudflare_api_token and settings.cloudflare_zone_id),
+        "configured": bool(settings.cloudflare_api_token),
         "ok": False,
+        "zone_id_configured": bool(settings.cloudflare_zone_id),
+        "zone_name_hint": settings.cloudflare_zone_name,
+        "temporary_dns_proxied": settings.cloudflare_temporary_record_proxied,
     }
     if cloudflare["configured"]:
         service = CloudflareService(
@@ -387,6 +391,8 @@ async def integration_status(
             api_base_url=settings.cloudflare_api_base_url,
             dry_run=settings.cloudflare_dry_run,
             custom_hostname_origin=settings.cloudflare_custom_hostname_origin,
+            zone_name_hint=settings.cloudflare_zone_name,
+            custom_hostname_ca=settings.cloudflare_custom_hostname_ca,
         )
         try:
             result = await service.verify_token()
@@ -398,6 +404,7 @@ async def integration_status(
     return success(
         {
             "cloudflare": cloudflare,
+            "local_acme": local_acme_status(),
             "evolution": {
                 "configured": bool(settings.evolution_api_url and settings.evolution_api_token),
                 "instance_prefix": settings.evolution_instance_name,

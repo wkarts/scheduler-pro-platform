@@ -87,6 +87,12 @@ jobs:
         run: |
           docker compose -f deployments/cloudpanel/compose.yaml config --quiet
           docker compose -f deployments/cloudpanel/compose.argws.yaml config --quiet
+      - name: Validate CloudPanel ACME scripts
+        shell: bash
+        run: |
+          bash -n deployments/cloudpanel/scripts/install-local-acme-cloudpanel.sh
+          bash -n deployments/cloudpanel/scripts/cloudpanel-cert-deploy.sh
+          sh -n deployments/cloudpanel/scripts/acme-dns01-cloudflare.sh
       - name: Docker build API fallback image
         run: docker build -t scheduler-pro-api:ci .
       - name: Docker build web image
