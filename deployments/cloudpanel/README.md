@@ -47,6 +47,11 @@ ACME_EMAIL=admin@scheduler.argws.com.br
 ACME_DOMAIN=scheduler.argws.com.br
 ACME_STAGING=false
 ACME_DNS_SLEEP=20
+
+# Edge CloudPanel criado automaticamente pelo bootstrap se ainda não existir.
+CLOUDPANEL_REVERSE_PROXY_URL=http://127.0.0.1:18080
+CLOUDPANEL_SITE_USER=schedulerpro
+CLOUDPANEL_SITE_PASSWORD=
 ```
 
 Nunca versione a senha administrativa ou credenciais SMTP/PostgreSQL/Cloudflare reais. Elas devem existir somente no `.env` do servidor/secret store.
@@ -62,7 +67,7 @@ docker compose --env-file .env -f compose.yaml up -d
 
 As variáveis de autenticação/reset/SMTP/TLS são propagadas pelo bloco comum de ambiente para migration/bootstrap, API e workers. O diretório `${SCHEDULER_PRO_DATA_ROOT}/certs` é montado read-only na API e no worker de provisionamento para diagnóstico; a chave privada permanece root-only no host.
 
-## 3. TLS local ACME/Let's Encrypt no CloudPanel
+## 3. Bootstrap automático do edge + TLS local ACME/Let's Encrypt
 
 O modo padrão ARGWS é `TLS_PROVISIONING_MODE=local_acme`. Ele evita depender de **Cloudflare SSL for SaaS / Custom Hostnames**, inclusive em contas que retornam o erro Cloudflare `1404 No quota has been allocated`.
 
@@ -96,7 +101,7 @@ Para este modo o token é usado **somente para DNS**. Use escopos equivalentes a
 
 Não é necessário contratar `SSL and Certificates Read/Write` ou Cloudflare for SaaS para os hostnames sob `*.scheduler.argws.com.br`.
 
-### 3.2 Emitir e instalar o wildcard
+### 3.2 Preparar reverse proxy e wildcard sem usar a UI do CloudPanel
 
 Execute uma vez no host CloudPanel, como root:
 
@@ -105,31 +110,40 @@ cd /home/scheduler-pro/deployments/cloudpanel
 bash scripts/install-local-acme-cloudpanel.sh .env
 ```
 
+Esse é o bootstrap de host. Ele é idempotente e substitui a criação manual do site/reverse proxy e do SSL pela interface do CloudPanel.
+
 O instalador:
 
-1. instala `acme.sh` no host se necessário;
-2. emite `scheduler.argws.com.br` + `*.scheduler.argws.com.br` via Let's Encrypt ACME v2 e Cloudflare DNS-01;
-3. grava a cópia operacional em `${SCHEDULER_PRO_DATA_ROOT}/certs`;
-4. instala o certificado no site CloudPanel usando `clpctl site:install:certificate`;
-5. adiciona `*.scheduler.argws.com.br` ao `server_name` do VHost do site, com backup e `nginx -t` antes do reload;
-6. mantém o `reloadcmd` no acme.sh para que toda renovação seja reinstalada automaticamente no CloudPanel.
+1. verifica se já existe o site `scheduler.argws.com.br` no CloudPanel;
+2. se não existir, cria automaticamente um **Reverse Proxy** com `clpctl site:add:reverse-proxy`, apontando para `http://127.0.0.1:18080`;
+3. se `CLOUDPANEL_SITE_PASSWORD` estiver vazio, gera uma senha aleatória e a guarda somente no host em `${SCHEDULER_PRO_DATA_ROOT}/edge/cloudpanel-site.credentials` com modo `0600`;
+4. instala `acme.sh` no host se necessário;
+5. emite `scheduler.argws.com.br` + `*.scheduler.argws.com.br` via Let's Encrypt ACME v2 e Cloudflare DNS-01;
+6. grava a cópia operacional em `${SCHEDULER_PRO_DATA_ROOT}/certs`;
+7. instala o certificado no site usando `clpctl site:install:certificate`;
+8. adiciona `*.scheduler.argws.com.br` ao `server_name` do VHost, com backup e `nginx -t` antes do reload;
+9. mantém o `reloadcmd` no acme.sh para que toda renovação seja reinstalada automaticamente no CloudPanel.
 
-O acme.sh instala um cron diário de renovação. Não use diretamente os certificados internos de `~/.acme.sh`; a cópia em `${SCHEDULER_PRO_DATA_ROOT}/certs` é mantida por `--install-cert`.
+Portanto, **não é necessário abrir o CloudPanel para criar o Reverse Proxy ou instalar o SSL manualmente**. O único passo privilegiado é executar o bootstrap no host, porque o CloudPanel/NGINX pertence ao sistema operacional e não aos containers da aplicação.
+
+O acme.sh instala um cron de renovação. Não use diretamente os certificados internos de `~/.acme.sh`; a cópia em `${SCHEDULER_PRO_DATA_ROOT}/certs` é mantida por `--install-cert`.
 
 ### 3.3 DNS dos tenants
 
-Em `local_acme`, os CNAMEs dos tenants precisam ser **DNS-only**. O Scheduler Pro reconcilia:
+Em `local_acme`, os CNAMEs dos tenants precisam ser **DNS-only**. O Scheduler Pro reconcilia automaticamente:
 
 ```text
 tenant.scheduler.argws.com.br CNAME proxy.scheduler.argws.com.br
 proxied = false
 ```
 
-Se um registro antigo estiver laranja/proxied, use **Domínios e SSL -> Verificar** após o deploy. A reconciliação o converte para DNS-only. Se o proxy Cloudflare continuar ligado, o navegador verá o certificado do edge Cloudflare e não o wildcard local.
+A tarefa Celery `app.workers.tasks.reconcile_managed_domains` roda a cada 10 minutos na fila `domains` e corrige registros legados proxied/orange para DNS-only. O botão **Domínios e SSL -> Verificar** continua disponível para reconciliação imediata.
+
+Se o proxy Cloudflare continuar ligado, o navegador verá o certificado do edge Cloudflare e não o wildcard local; por isso `CLOUDFLARE_TEMPORARY_RECORD_PROXIED=false` é obrigatório neste modo.
 
 ### 3.4 Diagnóstico
 
-Em **Integrações**, o Control Plane passa a mostrar `local_acme` com:
+Em **Integrações**, o Control Plane mostra `local_acme` com:
 
 - presença do `fullchain.pem`;
 - presença da chave privada sem ler/expor seu conteúdo;
@@ -145,13 +159,17 @@ Um domínio como `agenda.cliente.com.br` não é coberto por `*.scheduler.argws.
 
 No modo `local_acme`, o backend **não chama Cloudflare Custom Hostnames** para hostnames gerenciados da plataforma. Domínios externos ficam `PENDING_VALIDATION` e são identificados como `custom_domain_local_acme`, aguardando provisionamento ACME próprio no host. Instalações que realmente contrataram Cloudflare SSL for SaaS podem usar `TLS_PROVISIONING_MODE=cloudflare_saas` como fallback.
 
-## 5. CloudPanel
+## 5. Operação normal após o bootstrap
 
-Crie ou mantenha o site reverse proxy `scheduler.argws.com.br` apontando para:
+Depois que o edge foi preparado uma vez:
 
-```text
-http://127.0.0.1:18080
-```
+- não existe site CloudPanel por tenant;
+- não existe certificado por tenant;
+- não existe criação manual de reverse proxy por tenant;
+- novos tenants apenas recebem seu CNAME DNS-only e passam a usar o wildcard existente;
+- o cron do acme.sh renova o wildcard;
+- o hook reinstala o certificado renovado no CloudPanel;
+- o Celery reconcilia os DNS gerenciados periodicamente.
 
 O proxy interno roteia:
 
@@ -168,11 +186,13 @@ docker compose --env-file .env -f compose.yaml pull
 docker compose --env-file .env -f compose.yaml up -d --remove-orphans
 ```
 
-Após alterar a configuração TLS, rode novamente:
+Após alterar domínio/base TLS ou migrar um host antigo, rode novamente:
 
 ```bash
 bash scripts/install-local-acme-cloudpanel.sh .env
 ```
+
+O script é idempotente: mantém o Reverse Proxy já existente e reconcilia o certificado/VHost.
 
 ## 7. Recuperar provisionamento estagnado
 
