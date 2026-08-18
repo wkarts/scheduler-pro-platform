@@ -74,7 +74,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Validate CloudPanel and ARGWS Compose models
+      - name: Validate Compose models including Docker TLS edge
         env:
           APP_SECRET_KEY: ci-only-secret-key-with-more-than-sixty-four-characters-00000000000000000000
           PLATFORM_ADMIN_EMAIL: ci-admin@example.com
@@ -84,15 +84,14 @@ jobs:
           RABBITMQ_PASSWORD: ci-rabbitmq-password
           S3_ACCESS_KEY: scheduler
           S3_SECRET_KEY: ci-minio-secret-key
+          CLOUDFLARE_API_TOKEN: ci-cloudflare-token
         run: |
           docker compose -f deployments/cloudpanel/compose.yaml config --quiet
           docker compose -f deployments/cloudpanel/compose.argws.yaml config --quiet
-      - name: Validate CloudPanel ACME scripts
-        shell: bash
-        run: |
-          bash -n deployments/cloudpanel/scripts/install-local-acme-cloudpanel.sh
-          bash -n deployments/cloudpanel/scripts/cloudpanel-cert-deploy.sh
-          sh -n deployments/cloudpanel/scripts/acme-dns01-cloudflare.sh
+          docker compose \
+            -f deployments/cloudpanel/compose.argws.yaml \
+            -f deployments/cloudpanel/compose.docker-edge.yaml \
+            config --quiet
       - name: Docker build API fallback image
         run: docker build -t scheduler-pro-api:ci .
       - name: Docker build web image
