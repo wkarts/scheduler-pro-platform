@@ -81,10 +81,15 @@ else
   nginx -s reload
 fi
 
-install -d -m 0700 "$CERT_DIR"
+# A API lê somente certificado público e marcadores para diagnóstico. A chave
+# privada continua root-only e nunca é lida/exposta pela aplicação.
+install -d -m 0755 "$CERT_DIR"
+chmod 0600 "$CERT_DIR/privkey.pem"
+chmod 0644 "$CERT_DIR/cert.pem" "$CERT_DIR/ca.pem" "$CERT_DIR/fullchain.pem"
 date -Iseconds > "$CERT_DIR/last-cloudpanel-installed-at.txt"
 printf '%s\n' "$SITE_DOMAIN" > "$CERT_DIR/cloudpanel-site-domain.txt"
 printf '%s\n' "$WILDCARD" > "$CERT_DIR/wildcard-domain.txt"
+chmod 0644 "$CERT_DIR/last-cloudpanel-installed-at.txt" "$CERT_DIR/cloudpanel-site-domain.txt" "$CERT_DIR/wildcard-domain.txt"
 
 # Mantém apenas alguns backups recentes do VHost.
 ls -1t "${VHOST}.scheduler-pro."*.bak 2>/dev/null | tail -n +6 | xargs -r rm -f
