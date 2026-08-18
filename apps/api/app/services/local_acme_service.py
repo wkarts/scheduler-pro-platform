@@ -1,5 +1,7 @@
+import os
+import socket
+import ssl
 from datetime import UTC, datetime
-from pathlib import Path
 from typing import Any, cast
 
 from cryptography import x509
@@ -9,43 +11,43 @@ from app.core.config import settings
 
 
 def local_acme_status() -> dict[str, Any]:
-    """Return non-secret diagnostics for the locally managed wildcard certificate."""
+    """Return non-secret diagnostics for the Docker-managed wildcard TLS edge.
 
-    cert_dir = Path(settings.local_acme_cert_dir)
-    fullchain = cert_dir / "fullchain.pem"
-    private_key = cert_dir / "privkey.pem"
-    installed_marker = cert_dir / "last-cloudpanel-installed-at.txt"
+    O certificado e a chave privada pertencem ao Traefik. A API não monta nem lê
+    o acme.json: ela apenas abre uma conexão TLS interna contra o edge Docker e
+    inspeciona o certificado público apresentado com SNI do domínio da plataforma.
+    """
+
     domain = settings.effective_local_acme_domain
     wildcard = f"*.{domain}"
+    probe_host = os.getenv("LOCAL_ACME_PROBE_HOST", "scheduler-edge").strip() or "scheduler-edge"
+    try:
+        probe_port = int(os.getenv("LOCAL_ACME_PROBE_PORT", "443"))
+    except ValueError:
+        probe_port = 443
 
     result: dict[str, Any] = {
         "configured": settings.tls_provisioning_mode == "local_acme",
         "mode": settings.tls_provisioning_mode,
+        "edge": "docker_traefik",
         "domain": domain,
         "wildcard": wildcard,
-        "cert_dir": str(cert_dir),
-        "certificate_present": fullchain.is_file(),
-        "private_key_present": private_key.is_file(),
-        "cloudpanel_installed": installed_marker.is_file(),
+        "probe_host": probe_host,
+        "probe_port": probe_port,
+        "certificate_present": False,
         "ok": False,
     }
-    if installed_marker.is_file():
-        try:
-            result["cloudpanel_installed_at"] = installed_marker.read_text(
-                encoding="utf-8"
-            ).strip()
-        except OSError:
-            pass
-
-    if not fullchain.is_file():
-        result["status"] = "MISSING_CERTIFICATE"
-        return result
 
     try:
-        pem = fullchain.read_bytes()
-        first_certificate = pem.split(b"-----END CERTIFICATE-----", 1)[0]
-        first_certificate += b"-----END CERTIFICATE-----\n"
-        certificate = x509.load_pem_x509_certificate(first_certificate)
+        context = ssl.create_default_context()
+        with socket.create_connection((probe_host, probe_port), timeout=3) as raw_socket:
+            with context.wrap_socket(raw_socket, server_hostname=domain) as tls_socket:
+                der_certificate = tls_socket.getpeercert(binary_form=True)
+        if not der_certificate:
+            result["status"] = "MISSING_CERTIFICATE"
+            return result
+
+        certificate = x509.load_der_x509_certificate(der_certificate)
         try:
             extension = certificate.extensions.get_extension_for_oid(
                 ExtensionOID.SUBJECT_ALTERNATIVE_NAME
@@ -64,6 +66,7 @@ def local_acme_status() -> dict[str, Any]:
         covers_wildcard = wildcard in dns_names
         result.update(
             {
+                "certificate_present": True,
                 "dns_names": dns_names,
                 "not_after": not_after.isoformat(),
                 "days_remaining": days_remaining,
@@ -71,15 +74,9 @@ def local_acme_status() -> dict[str, Any]:
                 "covers_wildcard": covers_wildcard,
             }
         )
-        result["ok"] = bool(
-            private_key.is_file()
-            and installed_marker.is_file()
-            and covers_domain
-            and covers_wildcard
-            and days_remaining >= 1
-        )
+        result["ok"] = bool(covers_domain and covers_wildcard and days_remaining >= 1)
         result["status"] = "READY" if result["ok"] else "INCOMPLETE"
-    except (OSError, ValueError) as exc:
-        result["status"] = "INVALID_CERTIFICATE"
+    except (OSError, ssl.SSLError, ValueError) as exc:
+        result["status"] = "EDGE_UNREACHABLE"
         result["error"] = exc.__class__.__name__
     return result
