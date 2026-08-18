@@ -72,7 +72,7 @@ ACME_HOME="/root/.acme.sh"
 ACME_BIN="$ACME_HOME/acme.sh"
 DEPLOY_HOOK="/usr/local/sbin/scheduler-pro-cloudpanel-cert-deploy"
 
-install -d -m 0700 "$CERT_DIR"
+install -d -m 0755 "$CERT_DIR"
 install -m 0755 "$SCRIPT_DIR/cloudpanel-cert-deploy.sh" "$DEPLOY_HOOK"
 
 if [[ ! -x "$ACME_BIN" ]]; then
@@ -124,9 +124,11 @@ RELOAD_CMD="$DEPLOY_HOOK '$SITE_DOMAIN' '$DOMAIN' '$CERT_DIR'"
   --cert-file "$CERT_DIR/cert.pem" \
   --reloadcmd "$RELOAD_CMD"
 
-chmod 0600 "$CERT_DIR"/*.pem
+chmod 0600 "$CERT_DIR/privkey.pem"
+chmod 0644 "$CERT_DIR/cert.pem" "$CERT_DIR/ca.pem" "$CERT_DIR/fullchain.pem"
 
 date -Iseconds > "$CERT_DIR/last-acme-install-at.txt"
+chmod 0644 "$CERT_DIR/last-acme-install-at.txt"
 cat > "$CERT_DIR/README.txt" <<EOF
 Scheduler Pro - TLS local ACME
 Base: $DOMAIN
@@ -137,6 +139,7 @@ Método: Let's Encrypt ACME v2 + Cloudflare DNS-01
 O acme.sh renova automaticamente pelo cron do host e executa:
 $RELOAD_CMD
 EOF
+chmod 0644 "$CERT_DIR/README.txt"
 
 echo ""
 echo "[OK] TLS local configurado."
