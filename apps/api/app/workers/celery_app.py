@@ -45,6 +45,10 @@ celery_app.conf.update(
             "queue": "provisioning",
             "routing_key": "provisioning",
         },
+        "app.workers.tasks.reconcile_managed_domains": {
+            "queue": "domains",
+            "routing_key": "domains",
+        },
         "app.workers.tasks.process_whatsapp_webhook": {
             "queue": "whatsapp",
             "routing_key": "whatsapp",
@@ -66,6 +70,10 @@ celery_app.conf.update(
         "notification-sweep-every-minute": {
             "task": "app.workers.tasks.process_all_due_notifications",
             "schedule": crontab(minute="*"),
+        },
+        "managed-domain-reconcile-every-ten-minutes": {
+            "task": "app.workers.tasks.reconcile_managed_domains",
+            "schedule": crontab(minute="*/10"),
         },
     },
     timezone="America/Bahia",
