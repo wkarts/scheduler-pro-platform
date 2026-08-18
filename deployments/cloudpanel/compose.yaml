@@ -49,6 +49,10 @@ x-api-environment: &api-environment
   CLOUDFLARE_CUSTOM_HOSTNAME_CA: ${CLOUDFLARE_CUSTOM_HOSTNAME_CA:-lets_encrypt}
   CLOUDFLARE_TEMPORARY_RECORD_TYPE: ${CLOUDFLARE_TEMPORARY_RECORD_TYPE:-CNAME}
   CLOUDFLARE_TEMPORARY_RECORD_TARGET: ${CLOUDFLARE_TEMPORARY_RECORD_TARGET:-proxy.scheduler.argws.com.br}
+  CLOUDFLARE_TEMPORARY_RECORD_PROXIED: ${CLOUDFLARE_TEMPORARY_RECORD_PROXIED:-false}
+  TLS_PROVISIONING_MODE: ${TLS_PROVISIONING_MODE:-local_acme}
+  LOCAL_ACME_DOMAIN: ${LOCAL_ACME_DOMAIN:-scheduler.argws.com.br}
+  LOCAL_ACME_CERT_DIR: ${LOCAL_ACME_CERT_DIR:-/run/scheduler-pro-certs}
   WHATSAPP_PROVIDER: ${WHATSAPP_PROVIDER:-evolution}
   EVOLUTION_API_URL: ${EVOLUTION_API_URL:-}
   EVOLUTION_API_TOKEN: ${EVOLUTION_API_TOKEN:-}
@@ -66,7 +70,7 @@ services:
     user: "0:0"
     volumes:
       - ${SCHEDULER_PRO_DATA_ROOT:-./scheduler-pro-data}:/data
-    command: ["/bin/sh", "-ec", "mkdir -p /data/postgres /data/redis /data/rabbitmq /data/minio /data/app /data/backups /data/celery && chmod 0755 /data && chmod 0777 /data/postgres /data/redis /data/rabbitmq /data/minio /data/celery"]
+    command: ["/bin/sh", "-ec", "mkdir -p /data/postgres /data/redis /data/rabbitmq /data/minio /data/app /data/backups /data/celery /data/certs && chmod 0755 /data /data/certs && chmod 0777 /data/postgres /data/redis /data/rabbitmq /data/minio /data/celery"]
 
   scheduler-postgres:
     image: ${POSTGRES_IMAGE:-postgres:17-alpine}
@@ -142,8 +146,6 @@ services:
     image: ${IMAGE_REGISTRY:-ghcr.io}/${IMAGE_NAMESPACE:-wkarts/scheduler-pro-platform}/api:${APP_IMAGE_TAG:-latest}
     pull_policy: always
     restart: unless-stopped
-    # A imagem da API usa usuário sem privilégios. Somente este agente interno
-    # precisa abrir o socket Docker montado como read-only.
     user: "0:0"
     security_opt: ["no-new-privileges:true"]
     environment:
@@ -166,6 +168,8 @@ services:
     pull_policy: always
     restart: unless-stopped
     environment: *api-environment
+    volumes:
+      - ${SCHEDULER_PRO_DATA_ROOT:-./scheduler-pro-data}/certs:${LOCAL_ACME_CERT_DIR:-/run/scheduler-pro-certs}:ro
     depends_on:
       scheduler-platform-bootstrap: {condition: service_completed_successfully}
       scheduler-log-agent: {condition: service_healthy}
@@ -184,6 +188,8 @@ services:
     pull_policy: always
     restart: unless-stopped
     environment: *api-environment
+    volumes:
+      - ${SCHEDULER_PRO_DATA_ROOT:-./scheduler-pro-data}/certs:${LOCAL_ACME_CERT_DIR:-/run/scheduler-pro-certs}:ro
     depends_on: {scheduler-api: {condition: service_healthy}}
     command: ["celery", "-A", "app.workers.celery_app.celery_app", "worker", "-Q", "default,provisioning,domains,builds,maintenance", "--loglevel=INFO", "--concurrency=2", "--without-gossip", "--without-mingle", "--without-heartbeat"]
 
