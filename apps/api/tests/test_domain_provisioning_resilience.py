@@ -1,5 +1,7 @@
 from types import SimpleNamespace
 
+import pytest
+
 from app.core.config import settings
 from app.core.errors import APIError
 from app.services.domain_provisioning_service import DomainProvisioningService
@@ -95,3 +97,75 @@ def test_local_acme_metadata_uses_wildcard_and_dns_only(monkeypatch) -> None:
     assert metadata["wildcard"] == "*.scheduler.argws.com.br"
     assert metadata["dns_proxied"] is False
     assert metadata["issuer"] == "letsencrypt"
+
+
+@pytest.mark.asyncio
+async def test_connect_managed_hostname_reconciles_dns_without_custom_hostname_api(monkeypatch) -> None:
+    monkeypatch.setattr(settings, "tenant_default_domain_root", "scheduler.argws.com.br")
+    monkeypatch.setattr(settings, "tls_provisioning_mode", "local_acme")
+    monkeypatch.setattr(settings, "cloudflare_temporary_record_proxied", False)
+
+    class FakeSession:
+        async def commit(self) -> None:
+            return None
+
+    service = DomainProvisioningService(FakeSession())  # type: ignore[arg-type]
+    domain = SimpleNamespace(
+        id="domain-1",
+        tenant_id="tenant-1",
+        hostname="wwsoftwares-48ec0e67.scheduler.argws.com.br",
+        is_primary=True,
+        is_temporary=True,
+        status="ACTIVE",
+        validation={},
+    )
+
+    async def fake_tenant(_tenant_id: str) -> SimpleNamespace:
+        return SimpleNamespace(id="tenant-1")
+
+    async def fake_domain(_hostname: str) -> SimpleNamespace:
+        return domain
+
+    dns_calls: list[dict[str, object]] = []
+
+    async def fake_dns_record(
+        hostname: str,
+        target: str,
+        *,
+        record_type: str,
+        proxied: bool,
+    ) -> dict[str, object]:
+        dns_calls.append(
+            {
+                "hostname": hostname,
+                "target": target,
+                "record_type": record_type,
+                "proxied": proxied,
+            }
+        )
+        return {"success": True, "record": {"proxied": proxied}}
+
+    async def forbidden_custom_hostname(_hostname: str) -> dict[str, object]:
+        raise AssertionError("Cloudflare Custom Hostnames não deve ser chamado")
+
+    monkeypatch.setattr(service, "_tenant", fake_tenant)
+    monkeypatch.setattr(service, "_domain_by_hostname", fake_domain)
+    monkeypatch.setattr(service.cloudflare, "ensure_dns_record", fake_dns_record)
+    monkeypatch.setattr(service.cloudflare, "ensure_custom_hostname", forbidden_custom_hostname)
+
+    result = await service.connect_custom_domain(
+        "tenant-1",
+        "wwsoftwares-48ec0e67.scheduler.argws.com.br",
+        make_primary=False,
+    )
+
+    assert result["status"] == "ACTIVE"
+    assert result["validation"]["tls"]["mode"] == "local_acme"
+    assert dns_calls == [
+        {
+            "hostname": "wwsoftwares-48ec0e67.scheduler.argws.com.br",
+            "target": settings.tenant_domain_target,
+            "record_type": settings.cloudflare_temporary_record_type,
+            "proxied": False,
+        }
+    ]
