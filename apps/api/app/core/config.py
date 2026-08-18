@@ -71,6 +71,14 @@ class Settings(BaseSettings):
     cloudflare_custom_hostname_ca: str = "lets_encrypt"
     cloudflare_temporary_record_type: str = "CNAME"
     cloudflare_temporary_record_target: str | None = None
+    cloudflare_temporary_record_proxied: bool = False
+
+    # TLS dos hostnames internos do Scheduler Pro. No modo local_acme, o navegador
+    # precisa alcançar o CloudPanel diretamente (DNS-only) e o certificado wildcard
+    # é emitido localmente via ACME DNS-01.
+    tls_provisioning_mode: str = "local_acme"
+    local_acme_cert_dir: str = "/run/scheduler-pro-certs"
+    local_acme_domain: str | None = None
 
     whatsapp_provider: str = "evolution"
     evolution_api_url: str | None = None
@@ -96,6 +104,14 @@ class Settings(BaseSettings):
         if isinstance(value, str):
             return [item.strip() for item in value.split(",") if item.strip()]
         return value
+
+    @field_validator("tls_provisioning_mode", mode="before")
+    @classmethod
+    def normalize_tls_mode(cls, value: Any) -> str:
+        mode = str(value or "local_acme").strip().lower()
+        if mode not in {"local_acme", "cloudflare_saas"}:
+            raise ValueError("TLS_PROVISIONING_MODE must be local_acme or cloudflare_saas")
+        return mode
 
     @model_validator(mode="after")
     def validate_production_secrets(self) -> "Settings":
@@ -129,6 +145,10 @@ class Settings(BaseSettings):
     @property
     def tenant_domain_target(self) -> str:
         return (self.cloudflare_temporary_record_target or self.public_platform_domain).strip()
+
+    @property
+    def effective_local_acme_domain(self) -> str:
+        return (self.local_acme_domain or self.tenant_domain_root).strip().lower().rstrip(".")
 
     @property
     def platform_public_url(self) -> str:
