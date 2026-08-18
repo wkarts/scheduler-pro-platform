@@ -1,6 +1,6 @@
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from cryptography import x509
 from cryptography.x509.oid import ExtensionOID
@@ -47,9 +47,10 @@ def local_acme_status() -> dict[str, Any]:
         first_certificate += b"-----END CERTIFICATE-----\n"
         certificate = x509.load_pem_x509_certificate(first_certificate)
         try:
-            san = certificate.extensions.get_extension_for_oid(
+            extension = certificate.extensions.get_extension_for_oid(
                 ExtensionOID.SUBJECT_ALTERNATIVE_NAME
-            ).value
+            )
+            san = cast(x509.SubjectAlternativeName, extension.value)
             dns_names = sorted(set(san.get_values_for_type(x509.DNSName)))
         except x509.ExtensionNotFound:
             dns_names = []
