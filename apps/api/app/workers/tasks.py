@@ -8,8 +8,10 @@ from typing import Any
 from celery.signals import worker_process_shutdown
 from sqlalchemy import text
 
+from app.core.config import settings
 from app.db.session import close_database_engines, platform_session, tenant_session
 from app.services.appointment_service import AppointmentService
+from app.services.domain_provisioning_service import DomainProvisioningService
 from app.services.notification_dispatcher import TenantNotificationDispatcher
 from app.services.provisioning_runtime import ProvisioningRuntime
 from app.services.tenant_resolver import TenantResolver
@@ -95,6 +97,68 @@ def run_provisioning(
     result = dict(_run(_run_provisioning(job_id)))
     result.update({"tenant_id": tenant_id, "correlation_id": correlation_id})
     return result
+
+
+async def _reconcile_managed_domains() -> dict[str, object]:
+    """Converge managed tenant DNS to the TLS mode configured for the platform.
+
+    In local_acme mode this automatically flips legacy orange/proxied tenant
+    records to DNS-only. One failed hostname must not block all other tenants.
+    """
+
+    if settings.tls_provisioning_mode != "local_acme":
+        return {"enabled": False, "checked": 0, "active": 0, "failed": 0}
+
+    root = settings.tenant_domain_root.strip().lower().rstrip(".")
+    suffix = f"%.{root}"
+    checked = 0
+    active = 0
+    failed = 0
+
+    async for session in platform_session():
+        domain_ids = list(
+            (
+                await session.execute(
+                    text(
+                        """
+                        select id::text
+                        from domains
+                        where is_temporary=true
+                           or lower(hostname)=:root
+                           or lower(hostname) like :suffix
+                        order by created_at asc
+                        """
+                    ),
+                    {"root": root, "suffix": suffix},
+                )
+            ).scalars()
+        )
+        service = DomainProvisioningService(session)
+        for domain_id in domain_ids:
+            checked += 1
+            try:
+                result = await service.check_domain(str(domain_id))
+                if str(result.get("status") or "").upper() == "ACTIVE":
+                    active += 1
+                else:
+                    failed += 1
+            except Exception:  # noqa: BLE001 - one hostname must not stop convergence
+                await session.rollback()
+                failed += 1
+        return {
+            "enabled": True,
+            "checked": checked,
+            "active": active,
+            "failed": failed,
+            "dns_proxied": settings.cloudflare_temporary_record_proxied,
+        }
+
+    return {"enabled": True, "checked": 0, "active": 0, "failed": 0}
+
+
+@typed_task(name="app.workers.tasks.reconcile_managed_domains")
+def reconcile_managed_domains() -> dict[str, object]:
+    return dict(_run(_reconcile_managed_domains()))
 
 
 def _text_from_webhook(payload: dict[str, Any]) -> str:
