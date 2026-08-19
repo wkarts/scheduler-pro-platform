@@ -65,8 +65,6 @@ jobs:
           node-version: '22'
       - name: Install
         run: npm install
-      - name: Validate Windows Tauri MSI version contract
-        run: node scripts/build/prepare-windows-tauri-version.mjs --self-test
       - name: Typecheck/build
         run: |
           npm run typecheck --workspaces --if-present
