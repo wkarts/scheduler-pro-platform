@@ -1,5 +1,6 @@
 from pathlib import Path
 
+from app.services.link_shortener import LinkShortener
 from app.services.realtime_service import _EVENT_MESSAGES
 
 
@@ -79,10 +80,4 @@ def test_service_worker_handles_push_and_does_not_cache_live_api() -> None:
 
 
 def test_link_shortener_remains_optional_and_external_provider_is_not_enabled() -> None:
-    shortener = (API_ROOT / "app" / "services" / "link_shortener.py").read_text(
-        encoding="utf-8"
-    )
-
-    assert 'provider="none"' in shortener or 'provider = "none"' in shortener
-    assert "goo.su" not in shortener.lower()
-    assert "bitly" not in shortener.lower()
+    assert LinkShortener.SUPPORTED_PROVIDERS == {"none"}
