@@ -24,7 +24,7 @@ class DockerConsoleService:
         if not self.enabled:
             raise APIError("DOCKER_CONSOLE_DISABLED", "Console Docker não está habilitado neste ambiente.", 503)
         try:
-            async with httpx.AsyncClient(base_url=self.base_url, timeout=25.0) as client:
+            async with httpx.AsyncClient(base_url=self.base_url, timeout=90.0) as client:
                 response = await client.get(path, params=params, headers=self._headers())
         except httpx.HTTPError as exc:
             raise APIError("DOCKER_CONSOLE_UNAVAILABLE", "Agente de logs Docker indisponível.", 503, {"error": str(exc)}) from exc
@@ -45,8 +45,20 @@ class DockerConsoleService:
         rows = payload.get("containers", [])
         return rows if isinstance(rows, list) else []
 
-    async def logs(self, container: str, *, tail: int = 500, since: int | None = None, search: str | None = None) -> dict[str, Any]:
-        params: dict[str, Any] = {"container": container, "tail": tail}
+    async def logs(
+        self,
+        container: str,
+        *,
+        tail: int = 500,
+        since: int | None = None,
+        search: str | None = None,
+        all_lines: bool = False,
+    ) -> dict[str, Any]:
+        params: dict[str, Any] = {
+            "container": container,
+            "tail": tail,
+            "all_lines": "true" if all_lines else "false",
+        }
         if since is not None:
             params["since"] = since
         if search:
