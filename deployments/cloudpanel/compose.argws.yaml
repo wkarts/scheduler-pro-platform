@@ -28,7 +28,6 @@ x-api-env: &api-env
   POSTGRES_DB: ${POSTGRES_DB:-platform}
   POSTGRES_USER: ${POSTGRES_USER:-scheduler}
   POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD obrigatória}
-  # POSTGRES_USER é o superusuário criado pelo initdb desta stack.
   POSTGRES_ADMIN_USER: ${POSTGRES_ADMIN_USER:-scheduler}
   POSTGRES_ADMIN_PASSWORD: ${POSTGRES_ADMIN_PASSWORD:-${POSTGRES_PASSWORD:?POSTGRES_PASSWORD obrigatória}}
   REDIS_URL: redis://scheduler-redis:6379/0
@@ -71,6 +70,8 @@ x-worker-image: &worker-image ${IMAGE_REGISTRY:-ghcr.io}/${IMAGE_NAMESPACE:-wkar
 x-web-image: &web-image ${IMAGE_REGISTRY:-ghcr.io}/${IMAGE_NAMESPACE:-wkarts/scheduler-pro-platform}/web:${APP_IMAGE_TAG:-latest}
 x-admin-image: &admin-image ${IMAGE_REGISTRY:-ghcr.io}/${IMAGE_NAMESPACE:-wkarts/scheduler-pro-platform}/admin:${APP_IMAGE_TAG:-latest}
 x-proxy-image: &proxy-image ${IMAGE_REGISTRY:-ghcr.io}/${IMAGE_NAMESPACE:-wkarts/scheduler-pro-platform}/proxy:${APP_IMAGE_TAG:-latest}
+x-acme-image: &acme-image ${IMAGE_REGISTRY:-ghcr.io}/${IMAGE_NAMESPACE:-wkarts/scheduler-pro-platform}/acme:${APP_IMAGE_TAG:-latest}
+x-cloudpanel-agent-image: &cloudpanel-agent-image ${IMAGE_REGISTRY:-ghcr.io}/${IMAGE_NAMESPACE:-wkarts/scheduler-pro-platform}/cloudpanel-agent:${APP_IMAGE_TAG:-latest}
 
 services:
   scheduler-storage-init:
@@ -78,13 +79,11 @@ services:
     restart: "no"
     user: "0:0"
     volumes: ["${SCHEDULER_PRO_DATA_ROOT:-./scheduler-pro-data}:/data"]
-    command: ["/bin/sh", "-ec", "mkdir -p /data/postgres /data/redis /data/rabbitmq /data/minio /data/backups /data/celery /data/certs /data/acme && chmod 0777 /data/postgres /data/redis /data/rabbitmq /data/minio /data/celery && chmod 0755 /data/certs /data/acme"]
+    command: ["/bin/sh", "-ec", "mkdir -p /data/postgres /data/redis /data/rabbitmq /data/minio /data/backups /data/celery /data/certs /data/acme /data/cloudpanel-agent && chmod 0777 /data/postgres /data/redis /data/rabbitmq /data/minio /data/celery && chmod 0755 /data/certs /data/acme && chmod 0700 /data/cloudpanel-agent"]
 
-  # Emissor/renovador wildcard. O plugin dns_cf recebe o token Cloudflare,
-  # cria o TXT _acme-challenge durante o order DNS-01 e o remove após validar.
-  # Não abre 80/443 e não disputa portas com o CloudPanel.
   scheduler-acme:
-    image: ${ACME_IMAGE:-neilpang/acme.sh:3.1.0}
+    image: *acme-image
+    pull_policy: always
     restart: unless-stopped
     depends_on:
       scheduler-storage-init: {condition: service_completed_successfully}
@@ -94,11 +93,39 @@ services:
       ACME_DOMAIN: ${ACME_DOMAIN:-scheduler.argws.com.br}
       ACME_STAGING: ${ACME_STAGING:-false}
       ACME_DNS_SLEEP: ${ACME_DNS_SLEEP:-20}
+      ACME_CHECK_INTERVAL_SECONDS: ${ACME_CHECK_INTERVAL_SECONDS:-43200}
     volumes:
       - ${SCHEDULER_PRO_DATA_ROOT:-./scheduler-pro-data}/acme:/acme.sh
       - ${SCHEDULER_PRO_DATA_ROOT:-./scheduler-pro-data}/certs:/certs
-      - ./scripts/acme-dns01-cloudflare.sh:/opt/scheduler-pro/acme-dns01-cloudflare.sh:ro
-    command: ["/bin/sh", "/opt/scheduler-pro/acme-dns01-cloudflare.sh"]
+
+  # Único serviço com privilégio de host. Não publica portas e não possui rede.
+  # Ele aguarda o Reverse Proxy criado manualmente no CloudPanel, adiciona o
+  # server_name wildcard com rollback + nginx -t e instala/renova o certificado
+  # via clpctl. Nenhum script precisa ser executado manualmente no VPS.
+  scheduler-cloudpanel-agent:
+    image: *cloudpanel-agent-image
+    pull_policy: always
+    restart: unless-stopped
+    user: "0:0"
+    privileged: true
+    network_mode: none
+    read_only: true
+    depends_on:
+      scheduler-storage-init: {condition: service_completed_successfully}
+      scheduler-acme: {condition: service_started}
+    environment:
+      CLOUDPANEL_SITE_DOMAIN: ${CLOUDPANEL_SITE_DOMAIN:-scheduler.argws.com.br}
+      CLOUDPANEL_WILDCARD_DOMAIN: ${CLOUDPANEL_WILDCARD_DOMAIN:-*.scheduler.argws.com.br}
+      CLOUDPANEL_SYNC_INTERVAL_SECONDS: ${CLOUDPANEL_SYNC_INTERVAL_SECONDS:-60}
+      HOST_ROOT: /host
+      CERT_DIR: /certs
+      STATE_DIR: /state
+    volumes:
+      - /:/host:rw
+      - ${SCHEDULER_PRO_DATA_ROOT:-./scheduler-pro-data}/certs:/certs:rw
+      - ${SCHEDULER_PRO_DATA_ROOT:-./scheduler-pro-data}/cloudpanel-agent:/state:rw
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=16m
 
   scheduler-postgres:
     image: ${POSTGRES_IMAGE:-postgres:17-alpine}
@@ -162,7 +189,7 @@ services:
     image: *api-image
     pull_policy: always
     restart: unless-stopped
-    user: 0:0
+    user: "0:0"
     security_opt: ["no-new-privileges:true"]
     environment:
       APP_ENV: ${APP_ENV:-production}
