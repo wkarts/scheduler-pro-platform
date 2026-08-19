@@ -176,12 +176,11 @@ class DiagnosticsExportService:
             "domains",
             f"""
             select d.id::text, d.tenant_id::text, t.name as tenant_name,
-                   d.hostname, d.is_primary, d.is_temporary, d.status, d.validation,
-                   d.created_at
+                   d.hostname, d.is_primary, d.is_temporary, d.status, d.validation
             from domains d
             join tenants t on t.id=d.tenant_id
             where true {domain_scope}
-            order by d.created_at desc, d.id::text
+            order by d.id::text
             """,
             domain_params,
         )
