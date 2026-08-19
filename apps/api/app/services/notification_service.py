@@ -7,11 +7,10 @@ from sqlalchemy import text
 from sqlalchemy.engine import RowMapping
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.services.whatsapp_provider import WhatsAppProviderFactory
-
 DEFAULT_TEMPLATES = {
     "appointment_created": "Olá, {{customer_name}}! Seu atendimento de {{service_name}} com {{professional_name}} foi reservado para {{starts_at_br}}.",
     "appointment_confirmation_request": "Olá, {{customer_name}}! Seu atendimento de {{service_name}} com {{professional_name}} está reservado para {{starts_at_br}}. Confirme ou cancele pelo link: {{confirmation_url}}",
+    "appointment_rescheduled": "Olá, {{customer_name}}! Seu atendimento de {{service_name}} foi reagendado para {{starts_at_br}}. Confirme ou cancele pelo link: {{confirmation_url}}",
     "appointment_confirmed": "Olá, {{customer_name}}! Seu agendamento de {{service_name}} com {{professional_name}} foi confirmado para {{starts_at_br}}.",
     "appointment_cancelled": "Olá, {{customer_name}}. Seu agendamento de {{service_name}} para {{starts_at_br}} foi cancelado. Motivo: {{reason}}",
     "appointment_completed": "Olá, {{customer_name}}! Obrigado por realizar {{service_name}} com a gente. Até a próxima!",
@@ -25,7 +24,7 @@ DEFAULT_TEMPLATES = {
 
 DEFAULT_EMAIL_TEMPLATES = {
     "appointment_confirmation_request": DEFAULT_TEMPLATES["appointment_confirmation_request"],
-    "appointment_rescheduled": "Olá, {{customer_name}}! Seu atendimento de {{service_name}} foi reagendado para {{starts_at_br}}. Confirme ou cancele pelo link: {{confirmation_url}}",
+    "appointment_rescheduled": DEFAULT_TEMPLATES["appointment_rescheduled"],
     "appointment_created": DEFAULT_TEMPLATES["appointment_created"],
     "appointment_confirmed": DEFAULT_TEMPLATES["appointment_confirmed"],
     "appointment_cancelled": DEFAULT_TEMPLATES["appointment_cancelled"],
@@ -61,7 +60,10 @@ class NotificationService:
     def _render(body: str, variables: dict[str, Any]) -> str:
         rendered = body
         for key, value in variables.items():
-            rendered = rendered.replace("{{" + key + "}}", "" if value is None else str(value))
+            rendered = rendered.replace(
+                "{{" + key + "}}",
+                "" if value is None else str(value),
+            )
         return rendered
 
     @staticmethod
@@ -97,13 +99,16 @@ class NotificationService:
         enabled = await self.session.scalar(
             text(
                 "select enabled from tenant_smtp_settings "
-                "where singleton=1 and host is not null and from_email is not null and password_ref is not null"
+                "where singleton=1 and host is not null and from_email is not null "
+                "and password_ref is not null"
             )
         )
         return bool(enabled)
 
     async def _timezone(self) -> ZoneInfo:
-        context_timezone = str(self.session.info.get("tenant_timezone") or "America/Bahia")
+        context_timezone = str(
+            self.session.info.get("tenant_timezone") or "America/Bahia"
+        )
         name = str(await self._setting("timezone", context_timezone) or context_timezone)
         try:
             return ZoneInfo(name)
@@ -117,7 +122,8 @@ class NotificationService:
         body = await self.session.scalar(
             text(
                 """
-                select body from notification_templates
+                select body
+                from notification_templates
                 where key=:template_key and channel=:channel and active=true
                 limit 1
                 """
@@ -125,10 +131,24 @@ class NotificationService:
             {"template_key": template_key, "channel": channel},
         )
         defaults = DEFAULT_EMAIL_TEMPLATES if channel == "email" else DEFAULT_TEMPLATES
-        normalized = template_key[:-6] if channel == "email" and template_key.endswith("_email") else template_key
-        return str(body or defaults.get(normalized) or DEFAULT_TEMPLATES.get(normalized) or "{{message}}")
+        normalized = (
+            template_key[:-6]
+            if channel == "email" and template_key.endswith("_email")
+            else template_key
+        )
+        return str(
+            body
+            or defaults.get(normalized)
+            or DEFAULT_TEMPLATES.get(normalized)
+            or "{{message}}"
+        )
 
-    async def _appointment_context(self, appointment_id: str, *, reason: str | None = None) -> dict[str, Any] | None:
+    async def _appointment_context(
+        self,
+        appointment_id: str,
+        *,
+        reason: str | None = None,
+    ) -> dict[str, Any] | None:
         row = (
             await self.session.execute(
                 text(
@@ -150,17 +170,30 @@ class NotificationService:
         ).mappings().first()
         if row is None:
             return None
+
         timezone = await self._timezone()
         starts_at = row["starts_at"]
         ends_at = row["ends_at"]
-        starts_at_br = starts_at.astimezone(timezone).strftime("%d/%m/%Y %H:%M") if isinstance(starts_at, datetime) else ""
-        ends_at_br = ends_at.astimezone(timezone).strftime("%d/%m/%Y %H:%M") if isinstance(ends_at, datetime) else ""
+        starts_at_br = (
+            starts_at.astimezone(timezone).strftime("%d/%m/%Y %H:%M")
+            if isinstance(starts_at, datetime)
+            else ""
+        )
+        ends_at_br = (
+            ends_at.astimezone(timezone).strftime("%d/%m/%Y %H:%M")
+            if isinstance(ends_at, datetime)
+            else ""
+        )
         data = self._row(row)
         data.update(
             {
                 "appointment_id": row["id"],
-                "starts_at_iso": starts_at.isoformat() if isinstance(starts_at, datetime) else "",
-                "ends_at_iso": ends_at.isoformat() if isinstance(ends_at, datetime) else "",
+                "starts_at_iso": starts_at.isoformat()
+                if isinstance(starts_at, datetime)
+                else "",
+                "ends_at_iso": ends_at.isoformat()
+                if isinstance(ends_at, datetime)
+                else "",
                 "starts_at_br": starts_at_br,
                 "ends_at_br": ends_at_br,
                 "reason": reason or "não informado",
@@ -181,7 +214,11 @@ class NotificationService:
     @staticmethod
     def _templates_for_event(event_name: str) -> list[str]:
         if event_name == "appointment_confirmed":
-            return ["appointment_confirmed", "appointment_reminder_24h", "appointment_reminder_2h"]
+            return [
+                "appointment_confirmed",
+                "appointment_reminder_24h",
+                "appointment_reminder_2h",
+            ]
         return [event_name]
 
     async def _enqueue(
@@ -210,7 +247,11 @@ class NotificationService:
                     recipient = excluded.recipient,
                     payload = excluded.payload,
                     scheduled_at = excluded.scheduled_at,
-                    status = case when notification_jobs.status = 'SENT' then notification_jobs.status else 'PENDING' end,
+                    status = case
+                        when notification_jobs.status = 'SENT'
+                        then notification_jobs.status
+                        else 'PENDING'
+                    end,
                     error = null
                 """
             ),
@@ -277,7 +318,9 @@ class NotificationService:
 
         event_for_delivery = event_name
         if event_name in {"appointment_created", "appointment_rescheduled"}:
-            from app.services.appointment_confirmation_service import AppointmentConfirmationService
+            from app.services.appointment_confirmation_service import (
+                AppointmentConfirmationService,
+            )
 
             confirmation_service = AppointmentConfirmationService(self.session)
             if await confirmation_service.confirmation_required():
@@ -289,7 +332,11 @@ class NotificationService:
                 if request is not None:
                     context["confirmation_url"] = request["url"]
                     context["confirmation_deadline"] = request["confirmation_deadline"]
-                    event_for_delivery = "appointment_confirmation_request" if event_name == "appointment_created" else "appointment_rescheduled"
+                    event_for_delivery = (
+                        "appointment_confirmation_request"
+                        if event_name == "appointment_created"
+                        else "appointment_rescheduled"
+                    )
 
         if phone:
             await self._enqueue_channel_templates(
@@ -308,8 +355,14 @@ class NotificationService:
                 recipient=email,
             )
 
-    async def notify_tenant_confirmation_result(self, appointment_id: str, template_key: str) -> bool:
-        recipient = str(await self._setting("tenant_notification_whatsapp", "") or "").strip()
+    async def notify_tenant_confirmation_result(
+        self,
+        appointment_id: str,
+        template_key: str,
+    ) -> bool:
+        recipient = str(
+            await self._setting("tenant_notification_whatsapp", "") or ""
+        ).strip()
         if not recipient:
             return False
         context = await self._appointment_context(appointment_id)
@@ -327,7 +380,12 @@ class NotificationService:
         )
         return True
 
-    async def list_templates(self, *, channel: str | None = None, active: bool | None = None) -> list[dict[str, Any]]:
+    async def list_templates(
+        self,
+        *,
+        channel: str | None = None,
+        active: bool | None = None,
+    ) -> list[dict[str, Any]]:
         clauses = ["1=1"]
         params: dict[str, Any] = {}
         if channel:
@@ -351,24 +409,44 @@ class NotificationService:
         ).mappings().all()
         return [self._row(row) for row in rows]
 
-    async def upsert_template(self, *, key: str, channel: str, body: str, active: bool = True) -> dict[str, Any]:
+    async def upsert_template(
+        self,
+        *,
+        key: str,
+        channel: str,
+        body: str,
+        active: bool = True,
+    ) -> dict[str, Any]:
         row = (
             await self.session.execute(
                 text(
                     """
                     insert into notification_templates(key, channel, body, active)
                     values(:key, :channel, :body, :active)
-                    on conflict (key) do update set channel=excluded.channel, body=excluded.body, active=excluded.active
+                    on conflict (key) do update set
+                        channel=excluded.channel,
+                        body=excluded.body,
+                        active=excluded.active
                     returning id::text, key, channel, body, active, created_at
                     """
                 ),
-                {"key": key, "channel": channel, "body": body, "active": active},
+                {
+                    "key": key,
+                    "channel": channel,
+                    "body": body,
+                    "active": active,
+                },
             )
         ).mappings().one()
         await self.session.commit()
         return self._row(row)
 
-    async def list_jobs(self, *, status: str | None = None, limit: int = 100) -> list[dict[str, Any]]:
+    async def list_jobs(
+        self,
+        *,
+        status: str | None = None,
+        limit: int = 100,
+    ) -> list[dict[str, Any]]:
         where = "where status=:status" if status else ""
         params: dict[str, Any] = {"limit": limit}
         if status:
