@@ -36,13 +36,26 @@ PROVISIONING_STEPS = [
     "ActivateTenant",
 ]
 
-BUILD_TARGETS = ["web", "pwa", "desktop", "android", "ios", "admin-desktop", "admin-android", "admin-ios"]
+BUILD_TARGETS = [
+    "web",
+    "pwa",
+    "desktop",
+    "android",
+    "ios",
+    "admin-desktop",
+    "admin-android",
+    "admin-ios",
+]
 
 
 def _slug_fragment(value: str) -> str:
-    normalized = unicodedata.normalize("NFKD", value).encode("ascii", "ignore").decode("ascii")
+    normalized = (
+        unicodedata.normalize("NFKD", value)
+        .encode("ascii", "ignore")
+        .decode("ascii")
+    )
     cleaned = re.sub(r"[^a-z0-9]+", "-", normalized.lower()).strip("-")
-    return (cleaned[:36].strip("-") or "cliente")
+    return cleaned[:36].strip("-") or "cliente"
 
 
 class ProvisioningService:
@@ -55,11 +68,17 @@ class ProvisioningService:
         for _ in range(40):
             candidate = f"{prefix}-{secrets.token_hex(4)}"
             exists = (
-                await self.session.execute(select(Tenant.id).where(Tenant.slug == candidate))
+                await self.session.execute(
+                    select(Tenant.id).where(Tenant.slug == candidate)
+                )
             ).scalar_one_or_none()
             if exists is None:
                 return candidate
-        raise APIError("TENANT_SLUG_EXHAUSTED", "Não foi possível gerar código único do cliente.", 500)
+        raise APIError(
+            "TENANT_SLUG_EXHAUSTED",
+            "Não foi possível gerar código único do cliente.",
+            500,
+        )
 
     async def enqueue_tenant(
         self,
@@ -82,6 +101,22 @@ class ProvisioningService:
         )
         self.session.add(tenant)
         await self.session.flush()
+
+        # A migration de IAM mantém o catálogo completo de capabilities. No
+        # fluxo oficial de contratação, porém, o tenant nasce sem módulos
+        # liberados. O Control Plane é a única autoridade que liga cada recurso
+        # através de /platform/access/tenants/{id}/capabilities/{key}.
+        # Isso não altera tenants antigos nem o bootstrap de desenvolvimento.
+        await self.session.execute(
+            text(
+                """
+                update tenant_capabilities
+                set enabled=false, config='{}'::jsonb, updated_at=now()
+                where tenant_id=cast(:tenant_id as uuid)
+                """
+            ),
+            {"tenant_id": str(tenant.id)},
+        )
 
         short_id = str(tenant.id).replace("-", "")[:8]
         database_name = f"tenant_{short_id}"
@@ -126,7 +161,11 @@ class ProvisioningService:
                 "storage_bucket": storage_bucket,
                 "storage_prefix": storage_prefix,
                 "artifact_prefix": artifact_prefix,
-                "details": '{"database_per_tenant":true,"storage_per_tenant":true,"artifacts_per_tenant":true,"logs_per_tenant":true,"unique_database_credential":true}',
+                "details": (
+                    '{"database_per_tenant":true,"storage_per_tenant":true,'
+                    '"artifacts_per_tenant":true,"logs_per_tenant":true,'
+                    '"unique_database_credential":true}'
+                ),
             },
         )
 
@@ -148,12 +187,19 @@ class ProvisioningService:
             app_name=name,
             public_name=name,
             slogan="Agendamento online simples, profissional e conectado.",
-            settings={"admin_email": admin_email.lower(), "tenant_slug": reserved_slug},
+            settings={
+                "admin_email": admin_email.lower(),
+                "tenant_slug": reserved_slug,
+            },
         )
         self.session.add(branding)
         await self.session.flush()
 
-        api_url = f"https://{hostname}/api/v1" if hostname != "localhost" else "http://localhost:8000/api/v1"
+        api_url = (
+            f"https://{hostname}/api/v1"
+            if hostname != "localhost"
+            else "http://localhost:8000/api/v1"
+        )
         package_slug = reserved_slug.replace("-", "")
         for target in BUILD_TARGETS:
             self.session.add(
@@ -162,10 +208,21 @@ class ProvisioningService:
                     branding_profile_id=branding.id,
                     name=f"{name} {target.upper()}",
                     target=target,
-                    bundle_identifier=f"br.com.argws.schedulerpro.{package_slug}.{target.replace('-', '')}",
-                    package_name=f"br.com.argws.schedulerpro.{package_slug}.{target.replace('-', '')}" if target in {"android", "ios", "admin-android", "admin-ios"} else None,
+                    bundle_identifier=(
+                        f"br.com.argws.schedulerpro.{package_slug}."
+                        f"{target.replace('-', '')}"
+                    ),
+                    package_name=(
+                        f"br.com.argws.schedulerpro.{package_slug}."
+                        f"{target.replace('-', '')}"
+                        if target
+                        in {"android", "ios", "admin-android", "admin-ios"}
+                        else None
+                    ),
                     api_url=api_url,
-                    features=["appointments", "customers", "services", "professionals", "whatsapp", "notifications", "landing", "branding"],
+                    # Features de produto não são implicitamente liberadas no
+                    # perfil de build. A fonte de verdade é tenant_capabilities.
+                    features=[],
                     config={
                         "tenant_slug": reserved_slug,
                         "hostname": hostname,
@@ -192,7 +249,10 @@ class ProvisioningService:
             service="control-plane",
             level="INFO",
             event="tenant_enqueued",
-            message="Tenant criado com credenciais e recursos isolados; job de provisionamento enfileirado.",
+            message=(
+                "Tenant criado com isolamento e capabilities bloqueadas; "
+                "job de provisionamento enfileirado."
+            ),
             correlation_id=job.correlation_id,
             details={
                 "database_name": database_name,
@@ -200,6 +260,7 @@ class ProvisioningService:
                 "storage_prefix": storage_prefix,
                 "artifact_prefix": artifact_prefix,
                 "build_targets": BUILD_TARGETS,
+                "capabilities_default": "disabled",
             },
         )
         await self.session.commit()
