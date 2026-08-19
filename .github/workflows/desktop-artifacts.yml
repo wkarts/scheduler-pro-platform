@@ -80,6 +80,14 @@ jobs:
           node scripts/build/configure-desktop-webview.mjs "${{ matrix.app_path }}" "$api_url" "$product_name" "$identifier"
           node scripts/build/validate-desktop-local.mjs "${{ matrix.app_path }}"
           echo "DISTRIBUTION_SLUG=$slug" >> "$GITHUB_ENV"
+      - name: Normalize Windows installer version for MSI
+        if: matrix.label == 'windows'
+        shell: bash
+        run: |
+          set -euo pipefail
+          node scripts/build/normalize-tauri-windows-version.mjs \
+            "${{ matrix.app_path }}" \
+            "src-tauri/tauri.generated.conf.json"
       - name: Build installable desktop with bundled Vue UI
         working-directory: ${{ matrix.app_path }}
         run: npm run tauri:build -- --config src-tauri/tauri.generated.conf.json --bundles ${{ matrix.bundles }}
@@ -99,7 +107,6 @@ jobs:
           path: artifacts/output/*
           if-no-files-found: error
           retention-days: 1
-
 
   aggregate:
     name: Desktop package / all supported systems
