@@ -60,6 +60,18 @@ def upgrade() -> None:
     )
     op.execute(
         """
+        create table if not exists web_push_vapid_keys (
+          singleton smallint primary key default 1,
+          public_key text not null,
+          private_key_ref text not null,
+          created_at timestamptz not null default now(),
+          updated_at timestamptz not null default now(),
+          constraint ck_web_push_vapid_singleton check (singleton = 1)
+        )
+        """
+    )
+    op.execute(
+        """
         create table if not exists web_push_subscriptions (
           id uuid primary key default uuid_generate_v4(),
           user_id uuid not null references users(id) on delete cascade,
@@ -100,6 +112,7 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     op.execute("drop table if exists web_push_subscriptions cascade")
+    op.execute("drop table if exists web_push_vapid_keys cascade")
     op.execute("drop table if exists tenant_realtime_events cascade")
     op.execute("delete from notification_templates where key in ('appointment_confirmation_request','tenant_confirmation_confirmed','tenant_confirmation_cancelled','tenant_confirmation_expired')")
     op.execute("drop table if exists appointment_confirmation_requests cascade")
