@@ -53,7 +53,7 @@ class AppointmentService:
 
     async def _require_reference(self, table: str, entity_id: str, code: str) -> None:
         exists = await self.session.scalar(
-            text(f"select exists(select 1 from {table} where id=:id::uuid)"),
+            text(f"select exists(select 1 from {table} where id=cast(:id as uuid))"),
             {"id": entity_id},
         )
         if not exists:
@@ -83,9 +83,12 @@ class AppointmentService:
                   select 1 from business_hours
                   where is_open = true
                     and day_of_week = :dow
-                    and (professional_id is null or professional_id = :professional_id::uuid)
-                    and :start_time::time >= opens_at
-                    and :end_time::time <= closes_at
+                    and (
+                      professional_id is null
+                      or professional_id = cast(:professional_id as uuid)
+                    )
+                    and cast(:start_time as time) >= opens_at
+                    and cast(:end_time as time) <= closes_at
                 )
                 """
             ),
@@ -109,7 +112,10 @@ class AppointmentService:
                 """
                 select exists(
                   select 1 from blocked_periods
-                  where (professional_id is null or professional_id = :professional_id::uuid)
+                  where (
+                    professional_id is null
+                    or professional_id = cast(:professional_id as uuid)
+                  )
                     and tstzrange(starts_at, ends_at, '[)')
                         && tstzrange(:starts_at, :ends_at, '[)')
                 )
@@ -134,7 +140,7 @@ class AppointmentService:
         base = """
             select exists(
               select 1 from appointments
-              where professional_id = :professional_id::uuid
+              where professional_id = cast(:professional_id as uuid)
                 and status = any(:busy_statuses)
                 and tstzrange(starts_at, ends_at, '[)')
                     && tstzrange(:starts_at, :ends_at, '[)')
@@ -146,7 +152,7 @@ class AppointmentService:
             "busy_statuses": list(BUSY_STATUSES),
         }
         if ignore_appointment_id:
-            base += " and id <> :ignore_appointment_id::uuid"
+            base += " and id <> cast(:ignore_appointment_id as uuid)"
             params["ignore_appointment_id"] = ignore_appointment_id
         base += ")"
         return bool(await self.session.scalar(text(base), params))
@@ -188,7 +194,10 @@ class AppointmentService:
         payload["starts_at"] = self._aware(payload["starts_at"])
         payload["ends_at"] = self._aware(payload["ends_at"])
         lock_key = f"appointment:{payload['professional_id']}:{payload['starts_at'].isoformat()}:{payload['ends_at'].isoformat()}"
-        appointment = Appointment(**payload, status=AppointmentStatus.awaiting_confirmation.value)
+        appointment = Appointment(
+            **payload,
+            status=AppointmentStatus.awaiting_confirmation.value,
+        )
         try:
             # FastAPI/RBAC pode ter feito SELECTs usando esta mesma AsyncSession
             # antes de a rota chegar aqui. SQLAlchemy 2 inicia uma transação
@@ -197,10 +206,14 @@ class AppointmentService:
             # autobegin iniciada pelo primeiro comando abaixo) e a finalizamos
             # explicitamente ao concluir a operação de domínio.
             await self._require_reference(
-                "customers", str(payload["customer_id"]), "CUSTOMER_NOT_FOUND"
+                "customers",
+                str(payload["customer_id"]),
+                "CUSTOMER_NOT_FOUND",
             )
             await self._require_reference(
-                "services", str(payload["service_id"]), "SERVICE_NOT_FOUND"
+                "services",
+                str(payload["service_id"]),
+                "SERVICE_NOT_FOUND",
             )
             await self._require_reference(
                 "professionals",
@@ -218,27 +231,47 @@ class AppointmentService:
             )
             self.session.add(appointment)
             await self.session.flush()
-            await self._add_history(appointment.id, appointment.status, "created")
+            await self._add_history(
+                str(appointment.id),
+                appointment.status,
+                "created",
+            )
             await NotificationService(
                 self.session,
                 public_base_url=self.public_base_url,
-            ).schedule_for_appointment(str(appointment.id), "appointment_created")
+            ).schedule_for_appointment(
+                str(appointment.id),
+                "appointment_created",
+            )
             await self.session.commit()
             return appointment
         except IntegrityError as exc:
             await self.session.rollback()
-            raise APIError("APPOINTMENT_SLOT_UNAVAILABLE", "Horário não disponível.", 409) from exc
+            raise APIError(
+                "APPOINTMENT_SLOT_UNAVAILABLE",
+                "Horário não disponível.",
+                409,
+            ) from exc
         except Exception:
             await self.session.rollback()
             raise
 
-    async def _add_history(self, appointment_id: str, status: str, reason: str | None = None) -> None:
+    async def _add_history(
+        self,
+        appointment_id: str,
+        status: str,
+        reason: str | None = None,
+    ) -> None:
         await self.session.execute(
             text(
                 "insert into appointment_status_history(appointment_id, status, reason) "
-                "values(:appointment_id::uuid, :status, :reason)"
+                "values(cast(:appointment_id as uuid), :status, :reason)"
             ),
-            {"appointment_id": appointment_id, "status": status, "reason": reason},
+            {
+                "appointment_id": appointment_id,
+                "status": status,
+                "reason": reason,
+            },
         )
 
     @staticmethod
@@ -262,10 +295,10 @@ class AppointmentService:
             params["day_start"] = local_start.astimezone(UTC)
             params["day_end"] = local_end.astimezone(UTC)
         if professional_id:
-            clauses.append("a.professional_id = :professional_id::uuid")
+            clauses.append("a.professional_id = cast(:professional_id as uuid)")
             params["professional_id"] = professional_id
         if customer_id:
-            clauses.append("a.customer_id = :customer_id::uuid")
+            clauses.append("a.customer_id = cast(:customer_id as uuid)")
             params["customer_id"] = customer_id
         if status:
             clauses.append("a.status = :status")
@@ -311,25 +344,42 @@ class AppointmentService:
                     join customers c on c.id = a.customer_id
                     join services s on s.id = a.service_id
                     join professionals p on p.id = a.professional_id
-                    where a.id=:appointment_id::uuid
+                    where a.id=cast(:appointment_id as uuid)
                     """
                 ),
                 {"appointment_id": appointment_id},
             )
         ).mappings().first()
         if row is None:
-            raise APIError("APPOINTMENT_NOT_FOUND", "Agendamento não encontrado.", 404)
+            raise APIError(
+                "APPOINTMENT_NOT_FOUND",
+                "Agendamento não encontrado.",
+                404,
+            )
         return self._row(row)
 
-    async def update_status(self, appointment_id: str, status: str, reason: str | None = None) -> dict[str, Any]:
+    async def update_status(
+        self,
+        appointment_id: str,
+        status: str,
+        reason: str | None = None,
+    ) -> dict[str, Any]:
         if status not in {item.value for item in AppointmentStatus}:
-            raise APIError("APPOINTMENT_STATUS_INVALID", "Status de agendamento inválido.", 422)
+            raise APIError(
+                "APPOINTMENT_STATUS_INVALID",
+                "Status de agendamento inválido.",
+                422,
+            )
         current = await self.session.scalar(
-            text("select status from appointments where id=:id::uuid"),
+            text("select status from appointments where id=cast(:id as uuid)"),
             {"id": appointment_id},
         )
         if current is None:
-            raise APIError("APPOINTMENT_NOT_FOUND", "Agendamento não encontrado.", 404)
+            raise APIError(
+                "APPOINTMENT_NOT_FOUND",
+                "Agendamento não encontrado.",
+                404,
+            )
         if str(current) in FINAL_STATUSES and status not in FINAL_STATUSES:
             raise APIError(
                 "APPOINTMENT_FINAL_STATUS",
@@ -337,7 +387,10 @@ class AppointmentService:
                 409,
             )
         await self.session.execute(
-            text("update appointments set status=:status where id=:id::uuid"),
+            text(
+                "update appointments set status=:status "
+                "where id=cast(:id as uuid)"
+            ),
             {"id": appointment_id, "status": status},
         )
         await self._add_history(appointment_id, status, reason)
@@ -354,7 +407,8 @@ class AppointmentService:
                 text(
                     """
                     update appointment_confirmation_requests
-                    set state='CONFIRMED', response='CONFIRMED', responded_at=coalesce(responded_at, now()), updated_at=now()
+                    set state='CONFIRMED', response='CONFIRMED',
+                        responded_at=coalesce(responded_at, now()), updated_at=now()
                     where appointment_id=cast(:id as uuid) and state='PENDING'
                     """
                 ),
@@ -365,8 +419,14 @@ class AppointmentService:
                 text(
                     """
                     update appointment_confirmation_requests
-                    set state=case when :status='CANCELLED' then 'CANCELLED' else 'REVOKED' end,
-                        response=case when :status='CANCELLED' then 'CANCELLED' else response end,
+                    set state=case
+                            when :status='CANCELLED' then 'CANCELLED'
+                            else 'REVOKED'
+                        end,
+                        response=case
+                            when :status='CANCELLED' then 'CANCELLED'
+                            else response
+                        end,
                         responded_at=coalesce(responded_at, now()), updated_at=now()
                     where appointment_id=cast(:id as uuid) and state='PENDING'
                     """
@@ -376,8 +436,16 @@ class AppointmentService:
         await self.session.commit()
         return await self.get(appointment_id)
 
-    async def cancel(self, appointment_id: str, reason: str | None = None) -> dict[str, Any]:
-        return await self.update_status(appointment_id, AppointmentStatus.cancelled.value, reason)
+    async def cancel(
+        self,
+        appointment_id: str,
+        reason: str | None = None,
+    ) -> dict[str, Any]:
+        return await self.update_status(
+            appointment_id,
+            AppointmentStatus.cancelled.value,
+            reason,
+        )
 
     async def availability(
         self,
@@ -390,7 +458,10 @@ class AppointmentService:
         duration = slot_minutes
         if service_id:
             service_duration = await self.session.scalar(
-                text("select duration_minutes from services where id=:id::uuid and active='true'"),
+                text(
+                    "select duration_minutes from services "
+                    "where id=cast(:id as uuid) and active='true'"
+                ),
                 {"id": service_id},
             )
             duration = int(service_duration or slot_minutes)
@@ -402,21 +473,39 @@ class AppointmentService:
                     """
                     select opens_at, closes_at from business_hours
                     where day_of_week=:dow and is_open=true
-                      and (professional_id is null or professional_id=:professional_id::uuid)
+                      and (
+                        professional_id is null
+                        or professional_id=cast(:professional_id as uuid)
+                      )
                     order by professional_id nulls last
                     """
                 ),
-                {"dow": int(local_day_start.strftime("%w")), "professional_id": professional_id},
+                {
+                    "dow": int(local_day_start.strftime("%w")),
+                    "professional_id": professional_id,
+                },
             )
         ).mappings().all()
         windows: list[tuple[datetime, datetime]] = []
         if business_rows:
             for row in business_rows:
-                local_start = datetime.combine(day, row["opens_at"], tzinfo=self.timezone)
-                local_end = datetime.combine(day, row["closes_at"], tzinfo=self.timezone)
-                windows.append((local_start.astimezone(UTC), local_end.astimezone(UTC)))
+                local_start = datetime.combine(
+                    day,
+                    row["opens_at"],
+                    tzinfo=self.timezone,
+                )
+                local_end = datetime.combine(
+                    day,
+                    row["closes_at"],
+                    tzinfo=self.timezone,
+                )
+                windows.append(
+                    (local_start.astimezone(UTC), local_end.astimezone(UTC))
+                )
         else:
-            windows.append((local_day_start.astimezone(UTC), local_day_end.astimezone(UTC)))
+            windows.append(
+                (local_day_start.astimezone(UTC), local_day_end.astimezone(UTC))
+            )
         slots: list[dict[str, Any]] = []
         step = timedelta(minutes=slot_minutes)
         service_delta = timedelta(minutes=duration)
