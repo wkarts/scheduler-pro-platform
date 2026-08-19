@@ -1,11 +1,14 @@
 import { spawnSync } from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { boundedWindowsBuildNumber, prepareWindowsConfig } from './prepare-windows-tauri-version.mjs'
 
 const cliArgs = process.argv.slice(2)
 const cwd = process.cwd()
 const isWindows = process.platform === 'win32'
+const scriptDir = path.dirname(fileURLToPath(import.meta.url))
+const repoRoot = path.resolve(scriptDir, '..', '..')
 
 function configArgument(args) {
   const index = args.findIndex((item) => item === '--config')
@@ -22,16 +25,13 @@ function bundlesContainWindowsInstaller(args) {
 }
 
 function resolveRequestedVersion() {
-  const releaseTag = String(process.env.SCHEDULER_PRO_RELEASE_TAG || '').trim()
-  return releaseTag || ''
+  return String(process.env.SCHEDULER_PRO_RELEASE_TAG || '').trim()
 }
 
 function resolveBuildNumber() {
   const explicit = boundedWindowsBuildNumber(process.env.WINDOWS_MSI_BUILD_NUMBER || '')
   if (explicit) return explicit
-  const runNumber = boundedWindowsBuildNumber(process.env.GITHUB_RUN_NUMBER || '')
-  if (runNumber) return runNumber
-  return ''
+  return boundedWindowsBuildNumber(process.env.GITHUB_RUN_NUMBER || '')
 }
 
 let args = [...cliArgs]
@@ -59,8 +59,12 @@ if (isWindows && bundlesContainWindowsInstaller(args)) {
   console.log(`[windows-bundle] Tauri/WiX version ${prepared.sourceVersion} -> ${prepared.windowsVersion}`)
 }
 
-const executable = process.platform === 'win32' ? 'npx.cmd' : 'npx'
-const result = spawnSync(executable, ['tauri', 'build', ...args], {
+const tauriCli = path.join(repoRoot, 'node_modules', '@tauri-apps', 'cli', 'tauri.js')
+if (!fs.existsSync(tauriCli)) {
+  throw new Error(`Tauri CLI local não encontrado: ${tauriCli}. Execute npm install antes do build.`)
+}
+
+const result = spawnSync(process.execPath, [tauriCli, 'build', ...args], {
   cwd,
   env: process.env,
   stdio: 'inherit',
