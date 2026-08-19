@@ -2,6 +2,7 @@ from typing import Any
 
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import (
@@ -55,6 +56,78 @@ async def get_manifest(
 ) -> dict[str, Any]:
     service = BrandingService(session)
     return success(await service.manifest_for_context(context))
+
+
+@router.get("/distribution")
+async def tenant_distribution(
+    _: AuthPrincipal = Depends(require_permission("tenant.manage")),
+    __: None = Depends(require_tenant_capability("builds")),
+    context: TenantContext = Depends(get_tenant_context),
+    session: AsyncSession = Depends(get_platform_session),
+) -> dict[str, Any]:
+    """Read-only distribution center for the authenticated tenant.
+
+    Build orchestration stays in the Control Plane, but the tenant manager can see
+    which profiles exist and download artifacts that were explicitly produced for
+    its own tenant. No platform RBAC token is required and cross-tenant rows are
+    impossible because every query is scoped by TenantContext.
+    """
+
+    profiles = (
+        await session.execute(
+            text(
+                """
+                select id::text, name, target, bundle_identifier, package_name,
+                       api_url, features, config, created_at
+                from build_profiles
+                where tenant_id=cast(:tenant_id as uuid)
+                order by target, name
+                """
+            ),
+            {"tenant_id": context.tenant_id},
+        )
+    ).mappings().all()
+    jobs = (
+        await session.execute(
+            text(
+                """
+                select id::text, target, status, workflow_run_id, source_ref,
+                       source_sha, error, created_at, started_at, finished_at
+                from build_jobs
+                where tenant_id=cast(:tenant_id as uuid)
+                order by created_at desc
+                limit 100
+                """
+            ),
+            {"tenant_id": context.tenant_id},
+        )
+    ).mappings().all()
+    artifacts = (
+        await session.execute(
+            text(
+                """
+                select ba.id::text, ba.build_job_id::text, ba.target,
+                       ba.artifact_type, ba.name, ba.download_url,
+                       ba.checksum_sha256, ba.size_bytes, ba.metadata,
+                       ba.created_at
+                from build_artifacts ba
+                where ba.tenant_id=cast(:tenant_id as uuid)
+                order by ba.created_at desc
+                limit 200
+                """
+            ),
+            {"tenant_id": context.tenant_id},
+        )
+    ).mappings().all()
+    return success(
+        {
+            "tenant_id": context.tenant_id,
+            "hostname": context.hostname,
+            "profiles": [dict(row) for row in profiles],
+            "jobs": [dict(row) for row in jobs],
+            "artifacts": [dict(row) for row in artifacts],
+        }
+    )
 
 
 @router.put("/profile")
