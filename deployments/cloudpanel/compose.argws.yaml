@@ -98,10 +98,6 @@ services:
       - ${SCHEDULER_PRO_DATA_ROOT:-./scheduler-pro-data}/acme:/acme.sh
       - ${SCHEDULER_PRO_DATA_ROOT:-./scheduler-pro-data}/certs:/certs
 
-  # Único serviço root-equivalent ao VPS. Não publica porta nem expõe endpoint.
-  # Os namespaces PID/rede do host permitem que clpctl e nginx operem no contexto
-  # real do CloudPanel. O agente apenas aguarda o Reverse Proxy, adiciona o
-  # server_name wildcard com rollback + nginx -t e instala/renova o certificado.
   scheduler-cloudpanel-agent:
     image: *cloudpanel-agent-image
     pull_policy: always
@@ -178,12 +174,21 @@ services:
     depends_on: {scheduler-postgres: {condition: service_healthy}}
     command: ["python", "-m", "app.cli", "migrate-platform"]
 
-  scheduler-platform-bootstrap:
+  scheduler-tenant-migrate:
     image: *api-image
     pull_policy: always
     restart: "no"
     environment: *api-env
     depends_on: {scheduler-migrate: {condition: service_completed_successfully}}
+    command: ["python", "-m", "app.cli", "migrate-all-tenants"]
+
+  scheduler-platform-bootstrap:
+    image: *api-image
+    pull_policy: always
+    restart: "no"
+    environment: *api-env
+    depends_on:
+      scheduler-tenant-migrate: {condition: service_completed_successfully}
     command: ["python", "-m", "app.platform_bootstrap"]
 
   scheduler-log-agent:
