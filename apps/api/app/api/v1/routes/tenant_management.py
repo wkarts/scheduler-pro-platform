@@ -1,6 +1,6 @@
 from typing import Any
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel, EmailStr, Field, model_validator
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -11,7 +11,10 @@ from app.api.deps import (
 )
 from app.core.responses import success
 from app.core.security import AuthPrincipal
+from app.db.session import tenant_session
+from app.services.observability_service import ObservabilityService
 from app.services.tenant_management_service import TenantManagementService
+from app.services.tenant_resolver import TenantResolver
 
 router = APIRouter()
 
@@ -47,6 +50,69 @@ async def tenant_management_snapshot(
 ) -> dict[str, Any]:
     assert_platform_tenant_access(principal, tenant_id)
     return success(await TenantManagementService(session).snapshot(tenant_id))
+
+
+@router.get("/{tenant_id}/logs")
+async def tenant_management_logs(
+    tenant_id: str,
+    source: str | None = Query(default=None),
+    service: str | None = Query(default=None),
+    level: str | None = Query(default=None),
+    integration: str | None = Query(default=None),
+    search: str | None = Query(default=None),
+    limit: int = Query(default=500, ge=1, le=5000),
+    principal: AuthPrincipal = Depends(require_platform_permission("observability.read")),
+    session: AsyncSession = Depends(get_platform_session),
+) -> dict[str, Any]:
+    """Return the consolidated operational history for one administered tenant.
+
+    Platform-bound events are always attempted first. Tenant-database events are
+    appended when the isolated database is reachable, so a tenant DB outage does
+    not hide the Control Plane history that is most useful during an incident.
+    """
+
+    assert_platform_tenant_access(principal, tenant_id)
+    platform_rows = await ObservabilityService(session).list_platform_logs(
+        tenant_filter=tenant_id,
+        source=source,
+        service=service,
+        level=level,
+        integration=integration,
+        search=search,
+        limit=limit,
+    )
+    rows: list[dict[str, Any]] = [{**row, "scope": "platform"} for row in platform_rows]
+
+    try:
+        context = await TenantResolver(session).resolve_by_id(tenant_id, require_active=False)
+        async for tenant_db in tenant_session(context):
+            tenant_rows = await ObservabilityService(tenant_db).list_tenant_logs(
+                source=source,
+                service=service,
+                level=level,
+                integration=integration,
+                search=search,
+                limit=limit,
+            )
+            rows.extend({**row, "scope": "tenant"} for row in tenant_rows)
+            break
+    except Exception as exc:  # noqa: BLE001 - diagnostics must degrade gracefully
+        rows.append(
+            {
+                "id": f"diagnostic-{tenant_id}",
+                "source": "control-plane",
+                "service": "tenant-management",
+                "level": "WARNING",
+                "event": "tenant_log_source_unavailable",
+                "message": "O banco isolado do tenant não pôde ser consultado; exibindo o histórico disponível no Control Plane.",
+                "details": {"error_type": type(exc).__name__},
+                "scope": "platform",
+                "created_at": None,
+            }
+        )
+
+    rows.sort(key=lambda row: str(row.get("created_at") or ""), reverse=True)
+    return success(rows[:limit])
 
 
 @router.put("/{tenant_id}")

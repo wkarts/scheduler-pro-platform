@@ -3,6 +3,7 @@ import { createPinia } from 'pinia'
 import App from './App.vue'
 import { installTenantAuthFetch } from './tenant-auth-fetch'
 import { installTenantExtensionNavigationBridge } from './tenant-extension-bridge'
+import { installTenantFrontendTelemetry } from './tenant-frontend-telemetry'
 import { installTenantMobileEnhancements } from './tenant-mobile-enhancements'
 import './styles.css'
 import './operational.css'
@@ -18,4 +19,5 @@ import './pwa'
 installTenantAuthFetch()
 installTenantExtensionNavigationBridge()
 installTenantMobileEnhancements()
+installTenantFrontendTelemetry()
 createApp(App).use(createPinia()).mount('#app')

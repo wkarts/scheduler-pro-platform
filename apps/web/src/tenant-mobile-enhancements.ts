@@ -48,51 +48,6 @@ function normalizeErrorPresentation(root: ParentNode = document): void {
   for (const element of elements) humanizeErrorElement(element)
 }
 
-function syncTouchPicker(select: HTMLSelectElement, container: HTMLElement): void {
-  const fragment = document.createDocumentFragment()
-  const options = Array.from(select.options).filter((option) => option.value)
-  for (const option of options) {
-    const button = document.createElement('button')
-    button.type = 'button'
-    button.className = 'sp-mobile-option'
-    button.dataset.value = option.value
-    button.classList.toggle('selected', select.value === option.value)
-    const label = option.textContent?.trim() || option.value
-    const [name, ...details] = label.split('·').map((item) => item.trim())
-    const strong = document.createElement('strong')
-    strong.textContent = name || label
-    const small = document.createElement('small')
-    small.textContent = details.join(' · ') || 'Toque para selecionar'
-    button.append(strong, small)
-    button.addEventListener('click', () => {
-      select.value = option.value
-      select.dispatchEvent(new Event('change', { bubbles: true }))
-      const siblings = Array.from(container.querySelectorAll('.sp-mobile-option')) as HTMLElement[]
-      for (const sibling of siblings) {
-        sibling.classList.toggle('selected', sibling.dataset.value === option.value)
-      }
-    })
-    fragment.appendChild(button)
-  }
-  container.replaceChildren(fragment)
-}
-
-function enhanceTouchSelects(root: ParentNode = document): void {
-  const selects = Array.from(root.querySelectorAll('.sp-agenda-ops select[size]')) as HTMLSelectElement[]
-  for (const select of selects) {
-    select.size = Math.min(6, Math.max(2, select.options.length))
-    const parent = select.parentElement
-    if (!parent) continue
-    let container = parent.querySelector(':scope > .sp-mobile-option-list') as HTMLElement | null
-    if (!container) {
-      container = document.createElement('div')
-      container.className = 'sp-mobile-option-list'
-      parent.appendChild(container)
-    }
-    syncTouchPicker(select, container)
-  }
-}
-
 function closeMobileDrawerAfterNavigation(event: Event): void {
   const target = event.target as Element | null
   if (!target?.closest('.tenant-console .nav-list .nav-item')) return
@@ -117,29 +72,25 @@ function expireSession(): void {
 }
 
 export function installTenantMobileEnhancements(): () => void {
-  const observer = new MutationObserver((mutations) => {
-    for (const mutation of mutations) {
-      for (const node of Array.from(mutation.addedNodes)) {
-        if (!(node instanceof Element)) continue
-        annotateResponsiveTables(node)
-        normalizeErrorPresentation(node)
-        enhanceTouchSelects(node)
-      }
-    }
-    annotateResponsiveTables()
-    normalizeErrorPresentation()
-    enhanceTouchSelects()
-  })
+  let frame = 0
+  const reconcile = (): void => {
+    if (frame) return
+    frame = window.requestAnimationFrame(() => {
+      frame = 0
+      annotateResponsiveTables()
+      normalizeErrorPresentation()
+    })
+  }
 
+  const observer = new MutationObserver(() => reconcile())
   observer.observe(document.documentElement, { childList: true, subtree: true })
   document.addEventListener('click', closeMobileDrawerAfterNavigation, true)
   window.addEventListener('scheduler-pro-realtime-unauthorized', expireSession)
-  annotateResponsiveTables()
-  normalizeErrorPresentation()
-  enhanceTouchSelects()
+  reconcile()
 
   return () => {
     observer.disconnect()
+    if (frame) window.cancelAnimationFrame(frame)
     document.removeEventListener('click', closeMobileDrawerAfterNavigation, true)
     window.removeEventListener('scheduler-pro-realtime-unauthorized', expireSession)
   }
