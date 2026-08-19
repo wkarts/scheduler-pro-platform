@@ -8,6 +8,7 @@ from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import ORJSONResponse
 
+from app.api.public_appointment_actions import router as appointment_action_router
 from app.api.v1.router import api_router
 from app.core.config import settings
 from app.core.errors import APIError, api_error_handler, unhandled_error_handler
@@ -112,6 +113,9 @@ def create_app() -> FastAPI:
         )
         return response
 
+    # URL curta pública usada nas mensagens de confirmação/cancelamento.
+    # É resolvida pelo hostname do tenant e não exige autenticação.
+    app.include_router(appointment_action_router)
     app.include_router(api_router, prefix="/api/v1")
     return app
 
