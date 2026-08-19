@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 from typing import Any
 
@@ -14,6 +15,8 @@ _SKIP_SUCCESS_PATHS = {
     "/api/v1/health/live",
     "/api/v1/health/ready",
 }
+_platform_schema_ready = False
+_platform_schema_lock = asyncio.Lock()
 
 
 def _hostname(value: str) -> str:
@@ -29,6 +32,17 @@ def _level(status_code: int) -> str:
     if status_code >= 400:
         return "WARNING"
     return "INFO"
+
+
+async def _ensure_platform_schema_once(session: Any) -> None:
+    global _platform_schema_ready
+    if _platform_schema_ready:
+        return
+    async with _platform_schema_lock:
+        if _platform_schema_ready:
+            return
+        await ObservabilityService(session).ensure_platform_schema()
+        _platform_schema_ready = True
 
 
 async def _write_tenant_copy(
@@ -48,7 +62,6 @@ async def _write_tenant_copy(
         require_active=False,
     )
     async for tenant_db in tenant_session(context):
-        await ObservabilityService(tenant_db).ensure_tenant_schema()
         await tenant_db.execute(
             text(
                 """
@@ -127,7 +140,7 @@ async def persist_http_operation(
 
     try:
         async with PlatformSession() as session:
-            await ObservabilityService(session).ensure_platform_schema()
+            await _ensure_platform_schema_once(session)
             if tenant_id is None and clean_host:
                 tenant_id = await session.scalar(
                     text(
