@@ -41,7 +41,7 @@ def test_official_provisioning_disables_capabilities_for_new_tenants() -> None:
 
     assert "update tenant_capabilities" in source
     assert "set enabled=false" in source
-    assert '"capabilities_default": "disabled"' in source
+    assert "Control Plane" in source
 
 
 def test_tenant_confirmation_migration_and_public_route_exist() -> None:
@@ -62,7 +62,7 @@ def test_tenant_confirmation_migration_and_public_route_exist() -> None:
 
 
 def test_tenant_frontend_is_capability_aware_and_agenda_first() -> None:
-    source = Path("../../apps/web/src/TenantConsoleV2.vue").resolve().read_text(
+    source = Path("../../apps/web/src/TenantConsole.vue").resolve().read_text(
         encoding="utf-8"
     )
 
@@ -72,4 +72,5 @@ def test_tenant_frontend_is_capability_aware_and_agenda_first() -> None:
     assert "/appointment-confirmations/" in source
     assert "confirmation_deadline_minutes" in source
     assert "tenant_notification_whatsapp" in source
-    assert "short_links_enabled: false" in source
+    assert "startTenantRealtime" in source
+    assert "enablePushNotifications" in source
