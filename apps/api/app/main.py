@@ -15,14 +15,22 @@ from app.core.config import settings
 from app.core.errors import APIError, api_error_handler, unhandled_error_handler
 from app.core.logging import configure_logging
 from app.core.security import decode_access_token
-from app.db.session import close_database_engines
+from app.db.session import PlatformSession, close_database_engines
 from app.services.http_log_persistence import persist_http_operation
+from app.services.observability_service import ObservabilityService
 
 _log_tasks: set[asyncio.Task[None]] = set()
 
 
 @asynccontextmanager
 async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+    try:
+        async with PlatformSession() as session:
+            await ObservabilityService(session).ensure_platform_schema()
+    except Exception:
+        # Observability must not prevent the API from starting; readiness still
+        # reports the actual dependency state and later log writes are fail-open.
+        pass
     yield
     if _log_tasks:
         await asyncio.gather(*list(_log_tasks), return_exceptions=True)
