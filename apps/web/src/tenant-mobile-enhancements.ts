@@ -13,11 +13,13 @@ const friendlyByCode: Record<string, string> = {
 }
 
 function annotateResponsiveTables(root: ParentNode = document): void {
-  const tables = root.querySelectorAll<HTMLTableElement>('.tenant-console .operational-table table')
+  const tables = Array.from(root.querySelectorAll('.tenant-console .operational-table table')) as HTMLTableElement[]
   for (const table of tables) {
-    const labels = [...table.querySelectorAll<HTMLTableCellElement>('thead th')].map((cell) => cell.textContent?.trim() || '')
-    for (const row of table.querySelectorAll<HTMLTableRowElement>('tbody tr')) {
-      ;[...row.cells].forEach((cell, index) => {
+    const headerCells = Array.from(table.querySelectorAll('thead th')) as HTMLTableCellElement[]
+    const labels = headerCells.map((cell) => cell.textContent?.trim() || '')
+    const rows = Array.from(table.querySelectorAll('tbody tr')) as HTMLTableRowElement[]
+    for (const row of rows) {
+      Array.from(row.cells).forEach((cell, index) => {
         if (!cell.dataset.label) cell.dataset.label = labels[index] || 'Detalhe'
       })
     }
@@ -42,14 +44,13 @@ function humanizeErrorElement(element: Element): void {
 }
 
 function normalizeErrorPresentation(root: ParentNode = document): void {
-  for (const element of root.querySelectorAll('.tenant-console .error-banner, .tenant-console .form-error, .tenant-console .sp-error')) {
-    humanizeErrorElement(element)
-  }
+  const elements = Array.from(root.querySelectorAll('.tenant-console .error-banner, .tenant-console .form-error, .tenant-console .sp-error'))
+  for (const element of elements) humanizeErrorElement(element)
 }
 
 function syncTouchPicker(select: HTMLSelectElement, container: HTMLElement): void {
   const fragment = document.createDocumentFragment()
-  const options = [...select.options].filter((option) => option.value)
+  const options = Array.from(select.options).filter((option) => option.value)
   for (const option of options) {
     const button = document.createElement('button')
     button.type = 'button'
@@ -66,8 +67,9 @@ function syncTouchPicker(select: HTMLSelectElement, container: HTMLElement): voi
     button.addEventListener('click', () => {
       select.value = option.value
       select.dispatchEvent(new Event('change', { bubbles: true }))
-      for (const sibling of container.querySelectorAll('.sp-mobile-option')) {
-        sibling.classList.toggle('selected', (sibling as HTMLElement).dataset.value === option.value)
+      const siblings = Array.from(container.querySelectorAll('.sp-mobile-option')) as HTMLElement[]
+      for (const sibling of siblings) {
+        sibling.classList.toggle('selected', sibling.dataset.value === option.value)
       }
     })
     fragment.appendChild(button)
@@ -76,12 +78,12 @@ function syncTouchPicker(select: HTMLSelectElement, container: HTMLElement): voi
 }
 
 function enhanceTouchSelects(root: ParentNode = document): void {
-  const selects = root.querySelectorAll<HTMLSelectElement>('.sp-agenda-ops select[size]')
+  const selects = Array.from(root.querySelectorAll('.sp-agenda-ops select[size]')) as HTMLSelectElement[]
   for (const select of selects) {
     select.size = Math.min(6, Math.max(2, select.options.length))
     const parent = select.parentElement
     if (!parent) continue
-    let container = parent.querySelector<HTMLElement>(':scope > .sp-mobile-option-list')
+    let container = parent.querySelector(':scope > .sp-mobile-option-list') as HTMLElement | null
     if (!container) {
       container = document.createElement('div')
       container.className = 'sp-mobile-option-list'
@@ -98,9 +100,10 @@ function closeMobileDrawerAfterNavigation(event: Event): void {
   queueMicrotask(() => {
     const shell = document.querySelector('.tenant-console.mobileOpen')
     if (!shell) return
-    const toggle = shell.querySelector<HTMLButtonElement>('.topbar > .icon-button:first-child')
+    const toggle = shell.querySelector('.topbar > .icon-button:first-child') as HTMLButtonElement | null
     toggle?.click()
-    document.querySelector<HTMLElement>('.tenant-console .main-content')?.focus({ preventScroll: true })
+    const mainContent = document.querySelector('.tenant-console .main-content') as HTMLElement | null
+    mainContent?.focus({ preventScroll: true })
     window.scrollTo({ top: 0, behavior: 'smooth' })
   })
 }
@@ -116,7 +119,7 @@ function expireSession(): void {
 export function installTenantMobileEnhancements(): () => void {
   const observer = new MutationObserver((mutations) => {
     for (const mutation of mutations) {
-      for (const node of mutation.addedNodes) {
+      for (const node of Array.from(mutation.addedNodes)) {
         if (!(node instanceof Element)) continue
         annotateResponsiveTables(node)
         normalizeErrorPresentation(node)
