@@ -111,7 +111,7 @@ class NotificationService:
                     join customers c on c.id = a.customer_id
                     join services s on s.id = a.service_id
                     join professionals p on p.id = a.professional_id
-                    where a.id = :appointment_id::uuid
+                    where a.id = cast(:appointment_id as uuid)
                     """
                 ),
                 {"appointment_id": appointment_id},
@@ -182,7 +182,7 @@ class NotificationService:
                     appointment_id, channel, recipient, template_key,
                     payload, scheduled_at, status, error
                 ) values(
-                    :appointment_id::uuid, :channel, :recipient, :template_key,
+                    cast(:appointment_id as uuid), :channel, :recipient, :template_key,
                     cast(:payload as jsonb), :scheduled_at, 'PENDING', null
                 )
                 on conflict (appointment_id, channel, template_key)
@@ -403,7 +403,7 @@ class NotificationService:
                 await self.session.execute(
                     text(
                         "update notification_jobs set status='SENT', "
-                        "sent_at=now(), error=null where id=:id::uuid"
+                        "sent_at=now(), error=null where id=cast(:id as uuid)"
                     ),
                     {"id": row["id"]},
                 )
@@ -412,7 +412,7 @@ class NotificationService:
                 await self.session.execute(
                     text(
                         "update notification_jobs set status='FAILED', "
-                        "error=:error where id=:id::uuid"
+                        "error=:error where id=cast(:id as uuid)"
                     ),
                     {"id": row["id"], "error": str(exc)[:1000]},
                 )
