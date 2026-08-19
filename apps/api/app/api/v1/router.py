@@ -19,6 +19,7 @@ from app.api.v1.routes import (
     platform_access,
     professionals,
     public,
+    realtime,
     schedule,
     services,
     settings,
@@ -94,6 +95,11 @@ api_router.include_router(
         Depends(require_tenant_capability("appointments")),
         Depends(require_permission("appointments.create")),
     ],
+)
+api_router.include_router(
+    realtime.router,
+    prefix="/realtime",
+    tags=["Realtime / Push"],
 )
 api_router.include_router(
     notifications.router,
