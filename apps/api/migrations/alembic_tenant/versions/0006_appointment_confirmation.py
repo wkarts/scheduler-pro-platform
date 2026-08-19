@@ -7,6 +7,17 @@ depends_on = None
 
 
 def upgrade() -> None:
+    # Alembic cria alembic_version.version_num como VARCHAR(32) por padrão.
+    # Esta revisão é deliberadamente descritiva e ultrapassa 32 caracteres.
+    # Amplie a coluna ANTES de o Alembic tentar gravar o novo revision id ao
+    # finalizar esta migration. PostgreSQL executa o ALTER na mesma transação,
+    # portanto uma execução que tenha falhado no version update pode ser
+    # repetida com segurança: o DDL anterior foi revertido junto da transação.
+    op.execute(
+        "alter table alembic_version "
+        "alter column version_num type varchar(128)"
+    )
+
     op.execute(
         """
         create table if not exists appointment_confirmation_requests (
@@ -116,3 +127,7 @@ def downgrade() -> None:
     op.execute("drop table if exists tenant_realtime_events cascade")
     op.execute("delete from notification_templates where key in ('appointment_confirmation_request','tenant_confirmation_confirmed','tenant_confirmation_cancelled','tenant_confirmation_expired')")
     op.execute("drop table if exists appointment_confirmation_requests cascade")
+    # Não reduzimos alembic_version para VARCHAR(32): durante downgrade o valor
+    # atual ainda é a revisão longa e o próprio Alembic só grava a revisão
+    # anterior depois que downgrade() termina. Manter 128 também permite revisões
+    # descritivas futuras sem repetir este incidente.
