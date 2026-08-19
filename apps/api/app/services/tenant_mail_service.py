@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import smtplib
 import ssl
 from dataclasses import dataclass
@@ -13,6 +14,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
 from app.core.errors import APIError
 from app.core.secrets import seal_secret, secret_resolver
+
+SMTP_DELIVERY_MODE_KEY = "smtp_delivery_mode"
 
 
 @dataclass(frozen=True)
@@ -64,12 +67,37 @@ class TenantMailService:
             timeout_seconds=int(settings.smtp_timeout_seconds),
         )
 
+    async def _delivery_mode(self) -> str:
+        value = await self.session.scalar(
+            text("select value from tenant_settings where key=:key limit 1"),
+            {"key": SMTP_DELIVERY_MODE_KEY},
+        )
+        mode = str(value or "tenant").strip().lower()
+        return mode if mode in {"tenant", "platform"} else "tenant"
+
+    async def _set_delivery_mode(self, mode: str) -> None:
+        await self.session.execute(
+            text(
+                """
+                insert into tenant_settings(key, value, updated_at)
+                values(:key, cast(:value as jsonb), now())
+                on conflict(key) do update set
+                    value=excluded.value,
+                    updated_at=now()
+                """
+            ),
+            {
+                "key": SMTP_DELIVERY_MODE_KEY,
+                "value": json.dumps(mode, ensure_ascii=False),
+            },
+        )
+
     async def _row(self) -> dict[str, Any] | None:
         row = (
             await self.session.execute(
                 text(
                     """
-                    select enabled, delivery_mode, host, port, username, password_ref,
+                    select enabled, host, port, username, password_ref,
                            from_email, from_name, reply_to, use_tls, use_ssl,
                            timeout_seconds, updated_at
                     from tenant_smtp_settings
@@ -82,14 +110,18 @@ class TenantMailService:
 
     async def status(self) -> dict[str, Any]:
         row = await self._row()
+        mode = await self._delivery_mode()
         platform_available = self.platform_available()
         if row is None:
             return {
                 "enabled": False,
-                "delivery_mode": "tenant",
-                "configured": False,
+                "delivery_mode": mode,
+                "configured": platform_available if mode == "platform" else False,
+                "tenant_configured": False,
                 "platform_available": platform_available,
-                "platform_sender": settings.smtp_from_email if platform_available else None,
+                "platform_sender": settings.smtp_from_email
+                if platform_available
+                else None,
                 "host": "",
                 "port": 587,
                 "username": "",
@@ -102,9 +134,9 @@ class TenantMailService:
                 "password_configured": False,
                 "updated_at": None,
             }
+
         username = str(row["username"] or "")
         password_configured = bool(row["password_ref"])
-        mode = str(row.get("delivery_mode") or "tenant")
         tenant_configured = bool(
             row["host"]
             and row["from_email"]
@@ -117,7 +149,9 @@ class TenantMailService:
             "configured": configured,
             "tenant_configured": tenant_configured,
             "platform_available": platform_available,
-            "platform_sender": settings.smtp_from_email if platform_available else None,
+            "platform_sender": settings.smtp_from_email
+            if platform_available
+            else None,
             "host": str(row["host"] or ""),
             "port": int(row["port"] or 587),
             "username": username,
@@ -133,21 +167,26 @@ class TenantMailService:
 
     async def configure(self, payload: dict[str, Any]) -> dict[str, Any]:
         current = await self._row() or {}
-        delivery_mode = str(
-            payload.get("delivery_mode", current.get("delivery_mode") or "tenant")
-        ).strip().lower()
+        current_mode = await self._delivery_mode()
+        delivery_mode = str(payload.get("delivery_mode", current_mode)).strip().lower()
         if delivery_mode not in {"tenant", "platform"}:
             raise APIError(
                 "TENANT_SMTP_DELIVERY_MODE_INVALID",
-                "Escolha usar a conta de e-mail da plataforma ou uma conta própria.",
+                "Escolha usar o e-mail da plataforma ou uma conta SMTP própria.",
                 422,
             )
 
         host = str(payload.get("host", current.get("host") or "")).strip()
         username = str(payload.get("username", current.get("username") or "")).strip()
-        from_email = str(payload.get("from_email", current.get("from_email") or "")).strip()
-        from_name = str(payload.get("from_name", current.get("from_name") or "")).strip()
-        reply_to = str(payload.get("reply_to", current.get("reply_to") or "")).strip()
+        from_email = str(
+            payload.get("from_email", current.get("from_email") or "")
+        ).strip()
+        from_name = str(
+            payload.get("from_name", current.get("from_name") or "")
+        ).strip()
+        reply_to = str(
+            payload.get("reply_to", current.get("reply_to") or "")
+        ).strip()
         port = int(payload.get("port", current.get("port") or 587))
         timeout_seconds = int(
             payload.get("timeout_seconds", current.get("timeout_seconds") or 15)
@@ -172,13 +211,13 @@ class TenantMailService:
                 "Escolha STARTTLS ou SSL/TLS, não ambos.",
                 422,
             )
-
         if enabled and delivery_mode == "platform" and not self.platform_available():
             raise APIError(
                 "PLATFORM_SMTP_UNAVAILABLE",
                 "O e-mail compartilhado da plataforma ainda não está configurado. Use uma conta própria ou peça ao administrador para configurar o SMTP da plataforma.",
                 409,
             )
+
         auth_ready = not username or bool(password_ref)
         if enabled and delivery_mode == "tenant" and (
             not host or not from_email or not auth_ready
@@ -193,17 +232,16 @@ class TenantMailService:
             text(
                 """
                 insert into tenant_smtp_settings(
-                  singleton, enabled, delivery_mode, host, port, username, password_ref,
+                  singleton, enabled, host, port, username, password_ref,
                   from_email, from_name, reply_to, use_tls, use_ssl,
                   timeout_seconds, updated_at
                 ) values(
-                  1, :enabled, :delivery_mode, :host, :port, :username, :password_ref,
+                  1, :enabled, :host, :port, :username, :password_ref,
                   :from_email, :from_name, :reply_to, :use_tls, :use_ssl,
                   :timeout_seconds, now()
                 )
                 on conflict(singleton) do update set
                   enabled=excluded.enabled,
-                  delivery_mode=excluded.delivery_mode,
                   host=excluded.host,
                   port=excluded.port,
                   username=excluded.username,
@@ -219,7 +257,6 @@ class TenantMailService:
             ),
             {
                 "enabled": enabled,
-                "delivery_mode": delivery_mode,
                 "host": host or None,
                 "port": port,
                 "username": username or None,
@@ -232,12 +269,15 @@ class TenantMailService:
                 "timeout_seconds": timeout_seconds,
             },
         )
+        await self._set_delivery_mode(delivery_mode)
         await self.session.commit()
         return await self.status()
 
     async def config(self, *, require_enabled: bool = True) -> TenantSmtpConfig | None:
+        if await self._delivery_mode() != "tenant":
+            return None
         row = await self._row()
-        if not row or str(row.get("delivery_mode") or "tenant") != "tenant":
+        if not row:
             return None
         config = TenantSmtpConfig(
             enabled=bool(row["enabled"]),
@@ -311,7 +351,7 @@ class TenantMailService:
                 "O envio de e-mail deste tenant está desativado.",
                 409,
             )
-        mode = str(row.get("delivery_mode") or "tenant")
+        mode = await self._delivery_mode()
         config = self._platform_config() if mode == "platform" else await self.config()
         if config is None:
             message = (
