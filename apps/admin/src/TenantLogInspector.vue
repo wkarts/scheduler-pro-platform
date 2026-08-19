@@ -2,139 +2,38 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import { Download, RefreshCw, Search } from 'lucide-vue-next'
 
-type Tenant = { id:string; name:string; slug:string; status:string; primary_hostname?:string|null }
 type LogEntry = { id:string; source:string; service:string; level:string; event:string; message:string; integration?:string|null; error_code?:string|null; correlation_id?:string|null; request_id?:string|null; actor?:string|null; details?:Record<string,unknown>; created_at?:string|null; scope?:string }
 type ApiEnvelope<T> = { data:T; error?:{message?:string;code?:string} }
 
-const props = withDefaults(defineProps<{
-  embedded?: boolean
-  tenantId?: string
-  tenantName?: string
-  tenantSlug?: string
-  tenantHostname?: string | null
-}>(), {
-  embedded: false,
-  tenantId: '',
-  tenantName: '',
-  tenantSlug: '',
-  tenantHostname: null,
-})
+const props = withDefaults(defineProps<{embedded?:boolean;tenantId?:string;tenantName?:string;tenantSlug?:string;tenantHostname?:string|null}>(),{embedded:false,tenantId:'',tenantName:'',tenantSlug:'',tenantHostname:null})
+const loading=ref(false)
+const logs=ref<LogEntry[]>([])
+const search=ref('')
+const level=ref('')
+const error=ref('')
+const downloading=ref(false)
+const selected=ref(props.tenantId||'')
+const stats=computed(()=>({total:logs.value.length,errors:logs.value.filter((item)=>['ERROR','CRITICAL'].includes(String(item.level).toUpperCase())).length,warnings:logs.value.filter((item)=>String(item.level).toUpperCase()==='WARNING').length}))
+const tenantLabel=computed(()=>props.tenantName||props.tenantSlug||selected.value||'Tenant')
+const tenantSubLabel=computed(()=>props.tenantHostname||props.tenantSlug||selected.value)
 
-const loading = ref(false)
-const logs = ref<LogEntry[]>([])
-const search = ref('')
-const level = ref('')
-const error = ref('')
-const downloading = ref(false)
-const selected = ref(props.tenantId || '')
-
-const stats = computed(() => ({
-  total: logs.value.length,
-  errors: logs.value.filter((item) => ['ERROR','CRITICAL'].includes(String(item.level).toUpperCase())).length,
-  warnings: logs.value.filter((item) => String(item.level).toUpperCase() === 'WARNING').length,
-}))
-
-const tenantLabel = computed(() => props.tenantName || props.tenantSlug || selected.value || 'Tenant')
-const tenantSubLabel = computed(() => props.tenantHostname || props.tenantSlug || selected.value)
-
-function sessionToken(): string {
-  try {
-    const raw = localStorage.getItem('scheduler-pro-admin-session')
-    if (!raw) return ''
-    return String((JSON.parse(raw) as {accessToken?:string}).accessToken || '')
-  } catch { return '' }
-}
-
-async function api<T>(path:string):Promise<T> {
-  const token = sessionToken()
-  if (!token) throw new Error('Entre novamente no Control Plane para consultar os logs.')
-  const response = await fetch(`/api/v1${path}`, { headers:{ accept:'application/json', authorization:`Bearer ${token}` }, cache:'no-store' })
-  const payload = await response.json().catch(()=>({})) as Partial<ApiEnvelope<T>>
-  if (!response.ok) throw new Error(payload.error?.message || `Falha ao consultar o servidor (${response.status}).`)
-  return payload.data as T
-}
-
-async function loadLogs():Promise<void> {
-  if (!selected.value) { logs.value=[]; return }
-  loading.value=true; error.value=''
-  try {
-    const params = new URLSearchParams({ limit:'2000' })
-    if (search.value.trim()) params.set('search',search.value.trim())
-    if (level.value) params.set('level',level.value)
-    logs.value = await api<LogEntry[]>(`/platform/observability/tenant/${selected.value}/logs?${params}`)
-  } catch (exc) { error.value=exc instanceof Error?exc.message:'Não foi possível carregar o diagnóstico do tenant.' }
-  finally { loading.value=false }
-}
-
-async function downloadBundle():Promise<void> {
-  if (!selected.value) return
-  downloading.value=true; error.value=''
-  try {
-    const token=sessionToken()
-    const response=await fetch(`/api/v1/platform/observability/logs/export?tenant=${encodeURIComponent(selected.value)}`,{headers:{authorization:`Bearer ${token}`}})
-    if(!response.ok){ const payload=await response.json().catch(()=>({})) as Partial<ApiEnvelope<unknown>>; throw new Error(payload.error?.message || 'Não foi possível gerar o pacote de diagnóstico.') }
-    const blob=await response.blob()
-    const disposition=response.headers.get('content-disposition') || ''
-    const match=disposition.match(/filename="?([^";]+)"?/i)
-    const filename=match?.[1] || `scheduler-pro-${props.tenantSlug || 'tenant'}-diagnostico.zip`
-    const url=URL.createObjectURL(blob)
-    const anchor=document.createElement('a')
-    anchor.href=url
-    anchor.download=filename
-    anchor.click()
-    URL.revokeObjectURL(url)
-  } catch(exc){ error.value=exc instanceof Error?exc.message:'Falha ao baixar o diagnóstico.' }
-  finally{ downloading.value=false }
-}
-
-function formatDate(value?:string|null):string { return value?new Date(value).toLocaleString('pt-BR'):'—' }
-function levelClass(value:string):string { return String(value||'INFO').toLowerCase() }
-
-watch(() => props.tenantId, (value) => {
-  selected.value = value || ''
-  void loadLogs()
-})
-
-onMounted(() => {
-  selected.value = props.tenantId || selected.value
-  if (selected.value) void loadLogs()
-})
+function sessionToken():string{try{const raw=localStorage.getItem('scheduler-pro-admin-session');if(!raw)return '';return String((JSON.parse(raw) as {accessToken?:string}).accessToken||'')}catch{return ''}}
+async function api<T>(path:string):Promise<T>{const token=sessionToken();if(!token)throw new Error('Entre novamente no Control Plane para consultar os logs.');const response=await fetch(`/api/v1${path}`,{headers:{accept:'application/json',authorization:`Bearer ${token}`},cache:'no-store'});const payload=await response.json().catch(()=>({})) as Partial<ApiEnvelope<T>>;if(!response.ok)throw new Error(payload.error?.message||`Falha ao consultar o servidor (${response.status}).`);return payload.data as T}
+async function loadLogs():Promise<void>{if(!selected.value){logs.value=[];return}loading.value=true;error.value='';try{const params=new URLSearchParams({limit:'2000'});if(search.value.trim())params.set('search',search.value.trim());if(level.value)params.set('level',level.value);logs.value=await api<LogEntry[]>(`/platform/tenant-management/${selected.value}/logs?${params}`)}catch(exc){error.value=exc instanceof Error?exc.message:'Não foi possível carregar o diagnóstico do tenant.'}finally{loading.value=false}}
+async function downloadBundle():Promise<void>{if(!selected.value)return;downloading.value=true;error.value='';try{const token=sessionToken();const response=await fetch(`/api/v1/platform/observability/logs/export?tenant=${encodeURIComponent(selected.value)}`,{headers:{authorization:`Bearer ${token}`}});if(!response.ok){const payload=await response.json().catch(()=>({})) as Partial<ApiEnvelope<unknown>>;throw new Error(payload.error?.message||'Não foi possível gerar o pacote de diagnóstico.')}const blob=await response.blob();const disposition=response.headers.get('content-disposition')||'';const match=disposition.match(/filename="?([^";]+)"?/i);const filename=match?.[1]||`scheduler-pro-${props.tenantSlug||'tenant'}-diagnostico.zip`;const url=URL.createObjectURL(blob);const anchor=document.createElement('a');anchor.href=url;anchor.download=filename;anchor.click();URL.revokeObjectURL(url)}catch(exc){error.value=exc instanceof Error?exc.message:'Falha ao baixar o diagnóstico.'}finally{downloading.value=false}}
+function formatDate(value?:string|null):string{return value?new Date(value).toLocaleString('pt-BR'):'—'}
+function levelClass(value:string):string{return String(value||'INFO').toLowerCase()}
+watch(()=>props.tenantId,(value)=>{selected.value=value||'';void loadLogs()})
+onMounted(()=>{selected.value=props.tenantId||selected.value;if(selected.value)void loadLogs()})
 </script>
 
 <template>
   <section class="tenant-log-panel">
-    <header class="tenant-log-panel-header">
-      <div>
-        <span>Observabilidade persistente</span>
-        <h3>Logs e diagnóstico</h3>
-        <p>Histórico técnico deste tenant, mantido para suporte e investigação pelo administrador da plataforma.</p>
-      </div>
-      <button type="button" :disabled="loading || !selected" @click="loadLogs"><RefreshCw :size="16"/>Atualizar</button>
-    </header>
-
-    <div class="tenant-log-toolbar">
-      <label>Buscar<div class="search"><Search :size="15"/><input v-model="search" placeholder="mensagem, rota, evento, código..." @keyup.enter="loadLogs"/></div></label>
-      <label>Nível<select v-model="level" @change="loadLogs"><option value="">Todos</option><option>INFO</option><option>WARNING</option><option>ERROR</option><option>CRITICAL</option></select></label>
-      <button class="primary" type="button" :disabled="!selected || downloading" @click="downloadBundle"><Download :size="16"/>{{ downloading?'Gerando...':'Baixar diagnóstico completo' }}</button>
-    </div>
-
-    <p v-if="error" class="tenant-log-error">{{ error }}</p>
-
-    <div class="tenant-log-summary">
-      <article><span>Tenant</span><strong>{{ tenantLabel }}</strong><small>{{ tenantSubLabel }}</small></article>
-      <article><span>Eventos</span><strong>{{ stats.total }}</strong><small>registros consultados</small></article>
-      <article><span>Erros</span><strong>{{ stats.errors }}</strong><small>ERROR / CRITICAL</small></article>
-      <article><span>Avisos</span><strong>{{ stats.warnings }}</strong><small>WARNING</small></article>
-    </div>
-
-    <div class="tenant-log-list">
-      <div v-if="loading" class="tenant-log-empty"><RefreshCw class="spin" :size="22"/> Carregando histórico persistente...</div>
-      <article v-for="entry in logs" v-else :key="`${entry.scope || 'tenant'}-${entry.id}`" class="tenant-log-entry" :class="levelClass(entry.level)">
-        <div class="meta"><time>{{ formatDate(entry.created_at) }}</time><span>{{ entry.level }}</span><strong>{{ entry.service }}</strong><em v-if="entry.integration">{{ entry.integration }}</em><em v-if="entry.scope">{{ entry.scope === 'platform' ? 'Control Plane' : 'Banco do tenant' }}</em></div>
-        <div class="body"><h4>{{ entry.event }}</h4><p>{{ entry.message }}</p><div class="ids"><code v-if="entry.error_code">{{ entry.error_code }}</code><code v-if="entry.correlation_id">corr {{ entry.correlation_id }}</code><code v-if="entry.request_id">req {{ entry.request_id }}</code></div><details v-if="entry.details && Object.keys(entry.details).length"><summary>Detalhes técnicos</summary><pre>{{ JSON.stringify(entry.details,null,2) }}</pre></details></div>
-      </article>
-      <div v-if="!loading && selected && !logs.length" class="tenant-log-empty">Ainda não há eventos persistidos para este tenant. As novas operações e erros aparecerão aqui automaticamente.</div>
-    </div>
+    <header class="tenant-log-panel-header"><div><span>Observabilidade persistente</span><h3>Logs e diagnóstico</h3><p>Histórico técnico deste tenant, disponível somente no Control Plane administrativo.</p></div><button type="button" :disabled="loading||!selected" @click="loadLogs"><RefreshCw :size="16"/>Atualizar</button></header>
+    <div class="tenant-log-toolbar"><label>Buscar<div class="search"><Search :size="15"/><input v-model="search" placeholder="mensagem, rota, evento, código..." @keyup.enter="loadLogs"/></div></label><label>Nível<select v-model="level" @change="loadLogs"><option value="">Todos</option><option>INFO</option><option>WARNING</option><option>ERROR</option><option>CRITICAL</option></select></label><button class="primary" type="button" :disabled="!selected||downloading" @click="downloadBundle"><Download :size="16"/>{{downloading?'Gerando...':'Baixar diagnóstico completo'}}</button></div>
+    <p v-if="error" class="tenant-log-error">{{error}}</p>
+    <div class="tenant-log-summary"><article><span>Tenant</span><strong>{{tenantLabel}}</strong><small>{{tenantSubLabel}}</small></article><article><span>Eventos</span><strong>{{stats.total}}</strong><small>registros consultados</small></article><article><span>Erros</span><strong>{{stats.errors}}</strong><small>ERROR / CRITICAL</small></article><article><span>Avisos</span><strong>{{stats.warnings}}</strong><small>WARNING</small></article></div>
+    <div class="tenant-log-list"><div v-if="loading" class="tenant-log-empty"><RefreshCw class="spin" :size="22"/> Carregando histórico persistente...</div><article v-for="entry in logs" v-else :key="`${entry.scope||'tenant'}-${entry.id}`" class="tenant-log-entry" :class="levelClass(entry.level)"><div class="meta"><time>{{formatDate(entry.created_at)}}</time><span>{{entry.level}}</span><strong>{{entry.service}}</strong><em v-if="entry.integration">{{entry.integration}}</em><em v-if="entry.scope">{{entry.scope==='platform'?'Control Plane':'Banco do tenant'}}</em></div><div class="body"><h4>{{entry.event}}</h4><p>{{entry.message}}</p><div class="ids"><code v-if="entry.error_code">{{entry.error_code}}</code><code v-if="entry.correlation_id">corr {{entry.correlation_id}}</code><code v-if="entry.request_id">req {{entry.request_id}}</code></div><details v-if="entry.details&&Object.keys(entry.details).length"><summary>Detalhes técnicos</summary><pre>{{JSON.stringify(entry.details,null,2)}}</pre></details></div></article><div v-if="!loading&&selected&&!logs.length" class="tenant-log-empty">Ainda não há eventos persistidos para este tenant. As novas operações e erros aparecerão aqui automaticamente.</div></div>
   </section>
 </template>
 
