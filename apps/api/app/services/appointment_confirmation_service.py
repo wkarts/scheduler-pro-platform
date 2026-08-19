@@ -1,13 +1,11 @@
 from __future__ import annotations
 
 import hashlib
-import json
 import secrets
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from sqlalchemy import text
-from sqlalchemy.engine import RowMapping
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.errors import APIError
@@ -35,7 +33,14 @@ class AppointmentConfirmationService:
         if isinstance(value, bool):
             return value
         if isinstance(value, str):
-            return value.strip().lower() not in {"0", "false", "no", "off", "não", "nao"}
+            return value.strip().lower() not in {
+                "0",
+                "false",
+                "no",
+                "off",
+                "não",
+                "nao",
+            }
         return bool(value)
 
     async def _deadline_minutes(self) -> int:
@@ -96,7 +101,11 @@ class AppointmentConfirmationService:
 
         starts_at = appointment["starts_at"]
         if not isinstance(starts_at, datetime):
-            raise APIError("APPOINTMENT_START_INVALID", "Horário do agendamento inválido.", 500)
+            raise APIError(
+                "APPOINTMENT_START_INVALID",
+                "Horário do agendamento inválido.",
+                500,
+            )
         now = datetime.now(UTC)
         if starts_at <= now:
             raise APIError(
@@ -107,11 +116,17 @@ class AppointmentConfirmationService:
 
         deadline_minutes = await self._deadline_minutes()
         requested_deadline = starts_at - timedelta(minutes=deadline_minutes)
-        # Agendamentos feitos já dentro da janela configurada continuam possíveis:
-        # damos alguns minutos para resposta, nunca ultrapassando o início.
-        confirmation_deadline = min(starts_at, max(requested_deadline, now + timedelta(minutes=5)))
+        # Um horário marcado já dentro da janela continua possível: o cliente
+        # recebe uma pequena janela para responder, sem ultrapassar o início.
+        confirmation_deadline = min(
+            starts_at,
+            max(requested_deadline, now + timedelta(minutes=5)),
+        )
         ttl_hours = await self._link_ttl_hours()
-        expires_at = min(starts_at + timedelta(hours=2), now + timedelta(hours=ttl_hours))
+        expires_at = min(
+            starts_at + timedelta(hours=2),
+            now + timedelta(hours=ttl_hours),
+        )
 
         current = (
             await self.session.execute(
@@ -231,15 +246,63 @@ class AppointmentConfirmationService:
         now = datetime.now(UTC)
         expires_at = data.get("expires_at")
         deadline = data.get("confirmation_deadline")
-        data["link_expired"] = isinstance(expires_at, datetime) and expires_at <= now
-        data["deadline_expired"] = isinstance(deadline, datetime) and deadline <= now
+        data["link_expired"] = (
+            isinstance(expires_at, datetime) and expires_at <= now
+        )
+        data["deadline_expired"] = (
+            isinstance(deadline, datetime) and deadline <= now
+        )
         data["can_respond"] = (
             data["state"] == "PENDING"
             and not data["link_expired"]
             and not data["deadline_expired"]
-            and data["status"] not in {"COMPLETED", "CANCELLED", "NO_SHOW"}
+            and data["status"]
+            not in {"COMPLETED", "CANCELLED", "NO_SHOW", "CONFIRMED"}
         )
         return data
+
+    async def _apply_appointment_response(
+        self,
+        appointment_id: str,
+        *,
+        status: str,
+        reason: str,
+    ) -> None:
+        from app.services.notification_service import NotificationService
+
+        current = await self.session.scalar(
+            text("select status from appointments where id=cast(:id as uuid)"),
+            {"id": appointment_id},
+        )
+        if current is None:
+            raise APIError("APPOINTMENT_NOT_FOUND", "Agendamento não encontrado.", 404)
+        if str(current) in {"COMPLETED", "CANCELLED", "NO_SHOW"}:
+            raise APIError(
+                "APPOINTMENT_FINAL_STATUS",
+                "Este agendamento já foi finalizado.",
+                409,
+            )
+        await self.session.execute(
+            text(
+                "update appointments set status=:status "
+                "where id=cast(:id as uuid)"
+            ),
+            {"id": appointment_id, "status": status},
+        )
+        await self.session.execute(
+            text(
+                """
+                insert into appointment_status_history(appointment_id, status, reason)
+                values(cast(:id as uuid), :status, :reason)
+                """
+            ),
+            {"id": appointment_id, "status": status, "reason": reason},
+        )
+        await NotificationService(self.session).schedule_for_appointment(
+            appointment_id,
+            f"appointment_{status.lower()}",
+            reason=reason,
+        )
 
     async def respond(self, token: str, action: str) -> dict[str, Any]:
         normalized = action.strip().upper()
@@ -257,7 +320,6 @@ class AppointmentConfirmationService:
                 {"state": data["state"], "appointment_status": data["status"]},
             )
 
-        # Serializa respostas simultâneas vindas de dois cliques/dispositivos.
         await self.session.execute(
             text("select pg_advisory_xact_lock(hashtext(:key))"),
             {"key": f"appointment-confirmation:{data['appointment_id']}"},
@@ -266,45 +328,46 @@ class AppointmentConfirmationService:
         if not refreshed["can_respond"]:
             return refreshed
 
-        from app.services.appointment_service import AppointmentService
-        from app.services.notification_service import NotificationService
-
-        appointment_service = AppointmentService(self.session)
         if normalized == "CONFIRM":
-            appointment = await appointment_service.update_status(
-                str(data["appointment_id"]),
-                "CONFIRMED",
-                "Confirmado pelo cliente através do link público",
-            )
             request_state = "CONFIRMED"
             template_key = "tenant_confirmation_confirmed"
+            appointment_status = "CONFIRMED"
+            reason = "Confirmado pelo cliente através do link público"
         else:
-            appointment = await appointment_service.cancel(
-                str(data["appointment_id"]),
-                "Cancelado pelo cliente através do link público",
-            )
             request_state = "CANCELLED"
             template_key = "tenant_confirmation_cancelled"
+            appointment_status = "CANCELLED"
+            reason = "Cancelado pelo cliente através do link público"
 
-        await self.session.execute(
+        claimed = await self.session.scalar(
             text(
                 """
                 update appointment_confirmation_requests
                 set state=:state, response=:state, responded_at=now(), updated_at=now()
                 where id=cast(:id as uuid) and state='PENDING'
+                  and confirmation_deadline > now() and expires_at > now()
+                returning id::text
                 """
             ),
-            {"id": data["request_id"], "state": request_state},
+            {"id": refreshed["request_id"], "state": request_state},
         )
+        if not claimed:
+            await self.session.rollback()
+            return await self.snapshot(token)
+
+        await self._apply_appointment_response(
+            str(refreshed["appointment_id"]),
+            status=appointment_status,
+            reason=reason,
+        )
+        from app.services.notification_service import NotificationService
+
         await NotificationService(self.session).notify_tenant_confirmation_result(
-            str(data["appointment_id"]),
+            str(refreshed["appointment_id"]),
             template_key,
         )
         await self.session.commit()
-        return {
-            **(await self.snapshot(token)),
-            "appointment": appointment,
-        }
+        return await self.snapshot(token)
 
     async def expire_due(self, *, limit: int = 200) -> dict[str, int]:
         rows = (
@@ -328,29 +391,36 @@ class AppointmentConfirmationService:
         if not rows:
             return {"expired": 0, "failed": 0}
 
-        from app.services.appointment_service import AppointmentService
         from app.services.notification_service import NotificationService
 
         expired = 0
         failed = 0
         for row in rows:
             try:
-                await AppointmentService(self.session).cancel(
-                    str(row["appointment_id"]),
-                    "Prazo de confirmação expirado; horário liberado automaticamente",
-                )
+                appointment_id = str(row["appointment_id"])
                 await self.session.execute(
                     text(
                         """
                         update appointment_confirmation_requests
-                        set state='EXPIRED', response='EXPIRED', responded_at=now(), updated_at=now()
+                        set state='EXPIRED', response='EXPIRED',
+                            responded_at=now(), updated_at=now()
                         where id=cast(:id as uuid) and state='PENDING'
                         """
                     ),
                     {"id": row["request_id"]},
                 )
-                await NotificationService(self.session).notify_tenant_confirmation_result(
-                    str(row["appointment_id"]),
+                await self._apply_appointment_response(
+                    appointment_id,
+                    status="CANCELLED",
+                    reason=(
+                        "Prazo de confirmação expirado; "
+                        "horário liberado automaticamente"
+                    ),
+                )
+                await NotificationService(
+                    self.session
+                ).notify_tenant_confirmation_result(
+                    appointment_id,
                     "tenant_confirmation_expired",
                 )
                 await self.session.commit()
@@ -363,7 +433,9 @@ class AppointmentConfirmationService:
     async def page_settings(self) -> dict[str, str]:
         defaults = {
             "confirmation_page_title": "Confirme seu atendimento",
-            "confirmation_page_message": "Revise os dados abaixo e confirme ou cancele seu horário.",
+            "confirmation_page_message": (
+                "Revise os dados abaixo e confirme ou cancele seu horário."
+            ),
             "confirmation_confirm_label": "Confirmar agendamento",
             "confirmation_cancel_label": "Cancelar agendamento",
         }
@@ -379,6 +451,10 @@ class AppointmentConfirmationService:
             ).strip(),
             "confirmation_required": await self.confirmation_required(),
             "confirmation_deadline_minutes": await self._deadline_minutes(),
-            "short_links_enabled": bool(await self._setting("short_links_enabled", False)),
-            "short_links_provider": str(await self._setting("short_links_provider", "none") or "none"),
+            "short_links_enabled": bool(
+                await self._setting("short_links_enabled", False)
+            ),
+            "short_links_provider": str(
+                await self._setting("short_links_provider", "none") or "none"
+            ),
         }
