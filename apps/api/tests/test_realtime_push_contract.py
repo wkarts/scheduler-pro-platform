@@ -1,3 +1,4 @@
+import re
 from pathlib import Path
 
 from app.services.link_shortener import LinkShortener
@@ -6,6 +7,13 @@ from app.services.realtime_service import _EVENT_MESSAGES
 
 API_ROOT = Path(__file__).resolve().parents[1]
 APPS_ROOT = API_ROOT.parent
+
+
+def _revision_id(path: Path) -> str:
+    source = path.read_text(encoding="utf-8")
+    match = re.search(r'^revision\s*=\s*["\']([^"\']+)["\']', source, re.MULTILINE)
+    assert match is not None, f"revision ausente em {path.name}"
+    return match.group(1)
 
 
 def test_confirmation_migration_contains_realtime_and_push_tables() -> None:
@@ -18,6 +26,7 @@ def test_confirmation_migration_contains_realtime_and_push_tables() -> None:
     ).read_text(encoding="utf-8")
 
     assert 'revision = "tenant_0006_appointment_confirmation"' in migration
+    assert "alter column version_num type varchar(128)" in migration.lower()
     assert "appointment_confirmation_requests" in migration
     assert "tenant_realtime_events" in migration
     assert "web_push_vapid_keys" in migration
@@ -25,6 +34,22 @@ def test_confirmation_migration_contains_realtime_and_push_tables() -> None:
     assert "tenant_confirmation_confirmed" in migration
     assert "tenant_confirmation_cancelled" in migration
     assert "tenant_confirmation_expired" in migration
+
+
+def test_alembic_revision_capacity_covers_all_tenant_revisions() -> None:
+    """Evita repetir o bootstrap quebrado por VARCHAR(32) em alembic_version."""
+
+    versions = API_ROOT / "migrations" / "alembic_tenant" / "versions"
+    revision_ids = [_revision_id(path) for path in sorted(versions.glob("*.py"))]
+    assert revision_ids
+    assert max(map(len, revision_ids)) <= 128
+
+    long_revisions = [revision for revision in revision_ids if len(revision) > 32]
+    if long_revisions:
+        migration_0006 = (versions / "0006_appointment_confirmation.py").read_text(
+            encoding="utf-8"
+        )
+        assert "alter column version_num type varchar(128)" in migration_0006.lower()
 
 
 def test_vapid_private_reference_is_not_stored_in_public_tenant_settings() -> None:
