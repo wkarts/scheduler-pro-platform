@@ -3,12 +3,13 @@ from pathlib import Path
 from app.services.realtime_service import _EVENT_MESSAGES
 
 
-ROOT = Path(__file__).resolve().parents[2]
+API_ROOT = Path(__file__).resolve().parents[1]
+APPS_ROOT = API_ROOT.parent
 
 
 def test_confirmation_migration_contains_realtime_and_push_tables() -> None:
     migration = (
-        ROOT
+        API_ROOT
         / "migrations"
         / "alembic_tenant"
         / "versions"
@@ -42,7 +43,9 @@ def test_realtime_event_catalog_covers_customer_and_operator_flow() -> None:
 
 
 def test_celery_beat_contains_confirmation_expiry_and_push_route() -> None:
-    celery = (ROOT / "app" / "workers" / "celery_app.py").read_text(encoding="utf-8")
+    celery = (API_ROOT / "app" / "workers" / "celery_app.py").read_text(
+        encoding="utf-8"
+    )
 
     assert "dispatch_realtime_push" in celery
     assert "expire_all_confirmation_requests" in celery
@@ -50,7 +53,7 @@ def test_celery_beat_contains_confirmation_expiry_and_push_route() -> None:
 
 
 def test_tenant_frontend_respects_capabilities_and_uses_quick_agenda() -> None:
-    component = (ROOT.parent / "web" / "src" / "TenantConsole.vue").read_text(
+    component = (APPS_ROOT / "web" / "src" / "TenantConsole.vue").read_text(
         encoding="utf-8"
     )
 
@@ -64,7 +67,7 @@ def test_tenant_frontend_respects_capabilities_and_uses_quick_agenda() -> None:
 
 
 def test_service_worker_handles_push_and_does_not_cache_live_api() -> None:
-    service_worker = (ROOT.parent / "web" / "public" / "sw.js").read_text(
+    service_worker = (APPS_ROOT / "web" / "public" / "sw.js").read_text(
         encoding="utf-8"
     )
 
@@ -76,7 +79,7 @@ def test_service_worker_handles_push_and_does_not_cache_live_api() -> None:
 
 
 def test_link_shortener_remains_optional_and_external_provider_is_not_enabled() -> None:
-    shortener = (ROOT / "app" / "services" / "link_shortener.py").read_text(
+    shortener = (API_ROOT / "app" / "services" / "link_shortener.py").read_text(
         encoding="utf-8"
     )
 
