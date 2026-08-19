@@ -39,15 +39,26 @@ def _date(value: object, timezone: ZoneInfo) -> str:
     return value.astimezone(timezone).strftime("%d/%m/%Y às %H:%M")
 
 
+def _dict_value(source: dict[str, Any], key: str) -> dict[str, Any]:
+    value = source.get(key)
+    return value if isinstance(value, dict) else {}
+
+
 def _result_message(snapshot: dict[str, Any]) -> tuple[str, str]:
     state = str(snapshot.get("state") or "PENDING").upper()
     status = str(snapshot.get("status") or "").upper()
     if state == "CONFIRMED" or status == "CONFIRMED":
         return "Agendamento confirmado", "Obrigado! Sua confirmação já foi registrada."
     if state == "CANCELLED" or status == "CANCELLED":
-        return "Agendamento cancelado", "O horário foi liberado e sua resposta já foi registrada."
+        return (
+            "Agendamento cancelado",
+            "O horário foi liberado e sua resposta já foi registrada.",
+        )
     if state == "EXPIRED" or snapshot.get("deadline_expired"):
-        return "Prazo de confirmação encerrado", "Este horário já não pode ser confirmado por este link."
+        return (
+            "Prazo de confirmação encerrado",
+            "Este horário já não pode ser confirmado por este link.",
+        )
     return "", ""
 
 
@@ -62,12 +73,14 @@ def _render_page(
     flash_message: str = "",
     flash_kind: str = "",
 ) -> HTMLResponse:
-    app = branding.get("app") if isinstance(branding.get("app"), dict) else {}
-    assets = branding.get("assets") if isinstance(branding.get("assets"), dict) else {}
-    theme = branding.get("theme") if isinstance(branding.get("theme"), dict) else {}
-    colors = theme.get("colors") if isinstance(theme.get("colors"), dict) else {}
+    app: dict[str, Any] = _dict_value(branding, "app")
+    assets: dict[str, Any] = _dict_value(branding, "assets")
+    theme: dict[str, Any] = _dict_value(branding, "theme")
+    colors: dict[str, Any] = _dict_value(theme, "colors")
 
-    app_name = html.escape(str(app.get("public_name") or app.get("name") or context.slug))
+    app_name = html.escape(
+        str(app.get("public_name") or app.get("name") or context.slug)
+    )
     primary = _color(colors.get("primary"), "#2563eb")
     accent = _color(colors.get("accent"), "#06b6d4")
     background = _color(colors.get("background"), "#f8fafc")
@@ -88,7 +101,9 @@ def _render_page(
         service = html.escape(str(snapshot.get("service_name") or "Atendimento"))
         professional = html.escape(str(snapshot.get("professional_name") or "—"))
         starts_at = html.escape(_date(snapshot.get("starts_at"), timezone))
-        deadline = html.escape(_date(snapshot.get("confirmation_deadline"), timezone))
+        deadline = html.escape(
+            _date(snapshot.get("confirmation_deadline"), timezone)
+        )
         details = f"""
           <div class="appointment-card">
             <div><span>Cliente</span><strong>{customer}</strong></div>
@@ -112,11 +127,21 @@ def _render_page(
         elif not flash_title:
             state_title, state_message = _result_message(snapshot)
             if state_title:
-                status_block = f'<div class="flash neutral"><strong>{html.escape(state_title)}</strong><p>{html.escape(state_message)}</p></div>'
+                status_block = (
+                    f'<div class="flash neutral"><strong>{html.escape(state_title)}</strong>'
+                    f'<p>{html.escape(state_message)}</p></div>'
+                )
 
     if flash_title:
-        kind = flash_kind if flash_kind in {"success", "danger", "neutral"} else "neutral"
-        status_block = f'<div class="flash {kind}"><strong>{html.escape(flash_title)}</strong><p>{html.escape(flash_message)}</p></div>'
+        kind = (
+            flash_kind
+            if flash_kind in {"success", "danger", "neutral"}
+            else "neutral"
+        )
+        status_block = (
+            f'<div class="flash {kind}"><strong>{html.escape(flash_title)}</strong>'
+            f'<p>{html.escape(flash_message)}</p></div>'
+        )
 
     title = html.escape(page["confirmation_page_title"])
     message = html.escape(page["confirmation_page_message"])
@@ -136,7 +161,7 @@ def _render_page(
     .brand{{display:flex;align-items:center;gap:12px;margin-bottom:30px}}.logo{{max-width:160px;max-height:54px;object-fit:contain;background:#fff;border-radius:12px;padding:6px}}.logo-fallback{{width:48px;height:48px;border-radius:14px;background:#fff;color:var(--primary);display:grid;place-items:center;font-weight:900}}
     .brand strong{{font-size:17px}}h1{{margin:0;font-size:clamp(30px,6vw,45px);line-height:1.05;letter-spacing:-.04em}}.hero p{{margin:12px 0 0;max-width:560px;line-height:1.6;color:rgba(255,255,255,.88)}}
     main{{padding:30px 34px 34px}}.appointment-card{{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:22px}}.appointment-card>div{{border:1px solid #e2e8f0;border-radius:16px;padding:14px;background:#f8fafc}}.appointment-card span,.appointment-card strong{{display:block}}.appointment-card span{{font-size:11px;color:#64748b;text-transform:uppercase;letter-spacing:.06em;font-weight:800;margin-bottom:5px}}.appointment-card strong{{font-size:14px;line-height:1.35}}.appointment-card .deadline{{grid-column:1/-1;background:#fff7ed;border-color:#fed7aa}}
-    .actions{{display:grid;grid-template-columns:1fr 1fr;gap:12px}}form{{margin:0}}button{{width:100%;min-height:50px;border-radius:14px;border:0;font:inherit;font-weight:900;cursor:pointer;padding:12px}}button.confirm{{background:linear-gradient(135deg,var(--primary),var(--accent));color:#fff;box-shadow:0 10px 24px color-mix(in srgb,var(--primary) 24%,transparent)}}button.cancel{{background:#fff;border:1px solid #fecaca;color:#b91c1c}}
+    .actions{{display:grid;grid-template-columns:1fr 1fr;gap:12px}}form{{margin:0}}button{{width:100%;min-height:50px;border-radius:14px;border:0;font:inherit;font-weight:900;cursor:pointer;padding:12px}}button.confirm{{background:linear-gradient(135deg,var(--primary),var(--accent));color:#fff;box-shadow:0 10px 24px rgba(37,99,235,.2)}}button.cancel{{background:#fff;border:1px solid #fecaca;color:#b91c1c}}
     .flash{{border-radius:16px;padding:17px 18px;margin-bottom:20px}}.flash strong,.flash p{{display:block;margin:0}}.flash p{{margin-top:5px;line-height:1.5;font-size:13px}}.flash.success{{background:#dcfce7;color:#166534}}.flash.danger{{background:#fee2e2;color:#991b1b}}.flash.neutral{{background:#eff6ff;color:#1e40af}}
     .foot{{text-align:center;color:#94a3b8;font-size:11px;margin-top:22px}}
     @media(max-width:560px){{body{{padding:10px}}.shell{{border-radius:20px}}.hero,main{{padding:24px 20px}}.appointment-card,.actions{{grid-template-columns:1fr}}.appointment-card .deadline{{grid-column:auto}}}}
@@ -157,12 +182,17 @@ async def _content(
     context: TenantContext,
     tenant_session: AsyncSession,
     platform_session: AsyncSession,
-) -> tuple[AppointmentConfirmationService, dict[str, Any], dict[str, str], dict[str, Any]]:
+) -> tuple[
+    AppointmentConfirmationService,
+    dict[str, Any],
+    dict[str, str],
+    dict[str, Any],
+]:
     service = AppointmentConfirmationService(tenant_session)
-    snapshot = await service.snapshot(token)
+    current_snapshot = await service.snapshot(token)
     page = await service.page_settings()
     branding = await BrandingService(platform_session).manifest_for_context(context)
-    return service, snapshot, page, branding
+    return service, current_snapshot, page, branding
 
 
 @router.get("/{token}", response_class=HTMLResponse)
@@ -173,14 +203,14 @@ async def appointment_action_page(
     platform_session: AsyncSession = Depends(get_platform_session),
 ) -> HTMLResponse:
     try:
-        _, snapshot, page, branding = await _content(
+        _, current_snapshot, page, branding = await _content(
             token,
             context,
             tenant_session,
             platform_session,
         )
         return _render_page(
-            snapshot=snapshot,
+            snapshot=current_snapshot,
             page=page,
             branding=branding,
             context=context,
@@ -213,15 +243,19 @@ async def appointment_action_submit(
     page = await service.page_settings()
     branding = await BrandingService(platform_session).manifest_for_context(context)
     try:
-        snapshot = await service.respond(token, action)
-        confirmed = str(snapshot.get("state") or "").upper() == "CONFIRMED"
+        response_snapshot = await service.respond(token, action)
+        confirmed = (
+            str(response_snapshot.get("state") or "").upper() == "CONFIRMED"
+        )
         return _render_page(
-            snapshot=snapshot,
+            snapshot=response_snapshot,
             page=page,
             branding=branding,
             context=context,
             token=token,
-            flash_title="Agendamento confirmado" if confirmed else "Agendamento cancelado",
+            flash_title=(
+                "Agendamento confirmado" if confirmed else "Agendamento cancelado"
+            ),
             flash_message=(
                 "Sua confirmação foi registrada com sucesso."
                 if confirmed
@@ -230,13 +264,13 @@ async def appointment_action_submit(
             flash_kind="success" if confirmed else "neutral",
         )
     except APIError as exc:
-        snapshot: dict[str, Any] | None = None
+        fallback_snapshot: dict[str, Any] | None = None
         try:
-            snapshot = await service.snapshot(token)
+            fallback_snapshot = await service.snapshot(token)
         except APIError:
             pass
         return _render_page(
-            snapshot=snapshot,
+            snapshot=fallback_snapshot,
             page=page,
             branding=branding,
             context=context,
