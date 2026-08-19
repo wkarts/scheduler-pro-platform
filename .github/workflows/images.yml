@@ -91,7 +91,11 @@ jobs:
           context: .
           file: ${{ matrix.file }}
           push: true
-          build-args: ${{ matrix.build_args }}
+          build-args: |
+            ${{ matrix.build_args }}
+            APP_VERSION=0.1.0-alpha.1
+            APP_RELEASE_TAG=${{ github.ref_name }}
+            APP_BUILD_SHA=${{ github.sha }}
           tags: ${{ env.REGISTRY_PREFIX }}/${{ matrix.tag }}:${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
