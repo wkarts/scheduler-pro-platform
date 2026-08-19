@@ -10,8 +10,8 @@
     "lint": "node ../../scripts/build/validate-desktop-local.mjs .",
     "tauri": "tauri",
     "tauri:dev": "tauri dev",
-    "tauri:build": "tauri build",
-    "tauri:build:debug": "tauri build --debug"
+    "tauri:build": "node ../../scripts/build/run-tauri-build.mjs",
+    "tauri:build:debug": "node ../../scripts/build/run-tauri-build.mjs --debug"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.0.0",
