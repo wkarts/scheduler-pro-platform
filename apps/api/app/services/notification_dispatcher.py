@@ -5,8 +5,20 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.services.appointment_confirmation_service import AppointmentConfirmationService
 from app.services.notification_service import NotificationService
+from app.services.tenant_event_log import record_tenant_event
 from app.services.tenant_mail_service import TenantMailService
 from app.services.whatsapp_provider import WhatsAppProviderFactory
+
+
+def _recipient_hint(value: str, channel: str) -> str:
+    clean = value.strip()
+    if not clean:
+        return "não informado"
+    if channel == "email" and "@" in clean:
+        local, domain = clean.split("@", 1)
+        return f"{local[:1]}***@{domain}"
+    digits = "".join(character for character in clean if character.isdigit())
+    return f"***{digits[-4:]}" if digits else "***"
 
 
 class TenantNotificationDispatcher:
@@ -50,6 +62,9 @@ class TenantNotificationDispatcher:
         for row in rows:
             payload = NotificationService._normalize_payload(row["payload"])
             message = str(payload.get("message") or "").strip()
+            channel = str(row["channel"] or "whatsapp").lower()
+            recipient_hint = _recipient_hint(str(row["recipient"] or ""), channel)
+            template_key = str(row["template_key"] or "")
             if not message:
                 await self.session.execute(
                     text(
@@ -58,14 +73,28 @@ class TenantNotificationDispatcher:
                     ),
                     {"id": row["id"]},
                 )
+                await record_tenant_event(
+                    self.session,
+                    source="notification",
+                    service="notification-dispatcher",
+                    level="ERROR",
+                    event="notification_failed",
+                    message="Notificação não enviada porque a mensagem estava vazia.",
+                    integration=channel,
+                    error_code="NOTIFICATION_EMPTY_MESSAGE",
+                    details={
+                        "job_id": row["id"],
+                        "template_key": template_key,
+                        "recipient": recipient_hint,
+                    },
+                )
                 failed += 1
                 continue
             try:
-                channel = str(row["channel"] or "whatsapp").lower()
                 if channel == "email":
                     subject = str(
                         payload.get("subject")
-                        or NotificationService.email_subject(str(row["template_key"] or ""), payload)
+                        or NotificationService.email_subject(template_key, payload)
                     )
                     await mailer.send(str(row["recipient"]), subject, message)
                 elif channel == "whatsapp":
@@ -79,14 +108,44 @@ class TenantNotificationDispatcher:
                     ),
                     {"id": row["id"]},
                 )
+                await record_tenant_event(
+                    self.session,
+                    source="notification",
+                    service="notification-dispatcher",
+                    event="notification_sent",
+                    message=f"Notificação {channel} enviada com sucesso.",
+                    integration=channel,
+                    details={
+                        "job_id": row["id"],
+                        "template_key": template_key,
+                        "recipient": recipient_hint,
+                    },
+                )
                 sent += 1
             except Exception as exc:  # noqa: BLE001 - job failure must be persisted
+                error_text = str(exc)[:1000]
                 await self.session.execute(
                     text(
                         "update notification_jobs set status='FAILED', "
                         "error=:error where id=cast(:id as uuid)"
                     ),
-                    {"id": row["id"], "error": str(exc)[:1000]},
+                    {"id": row["id"], "error": error_text},
+                )
+                await record_tenant_event(
+                    self.session,
+                    source="notification",
+                    service="notification-dispatcher",
+                    level="ERROR",
+                    event="notification_failed",
+                    message=f"Falha ao enviar notificação pelo canal {channel}.",
+                    integration=channel,
+                    error_code=type(exc).__name__,
+                    details={
+                        "job_id": row["id"],
+                        "template_key": template_key,
+                        "recipient": recipient_hint,
+                        "error": error_text,
+                    },
                 )
                 failed += 1
         await self.session.commit()
