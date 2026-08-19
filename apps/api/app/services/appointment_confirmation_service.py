@@ -370,7 +370,7 @@ class AppointmentConfirmationService:
         await self.session.commit()
         return await self.snapshot(token)
 
-    async def expire_due(self, *, limit: int = 200) -> dict[str, int]:
+    async def expire_due(self, *, limit: int = 200) -> dict[str, Any]:
         rows = (
             await self.session.execute(
                 text(
@@ -390,12 +390,13 @@ class AppointmentConfirmationService:
             )
         ).mappings().all()
         if not rows:
-            return {"expired": 0, "failed": 0}
+            return {"expired": 0, "failed": 0, "appointment_ids": []}
 
         from app.services.notification_service import NotificationService
 
         expired = 0
         failed = 0
+        appointment_ids: list[str] = []
         for row in rows:
             try:
                 appointment_id = str(row["appointment_id"])
@@ -430,10 +431,15 @@ class AppointmentConfirmationService:
                 )
                 await self.session.commit()
                 expired += 1
+                appointment_ids.append(appointment_id)
             except Exception:  # noqa: BLE001 - um agendamento não para a varredura
                 await self.session.rollback()
                 failed += 1
-        return {"expired": expired, "failed": failed}
+        return {
+            "expired": expired,
+            "failed": failed,
+            "appointment_ids": appointment_ids,
+        }
 
     async def page_settings(self) -> dict[str, str]:
         defaults = {
