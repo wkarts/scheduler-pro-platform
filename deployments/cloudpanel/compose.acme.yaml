@@ -3,14 +3,11 @@
 #
 # Uso opcional com o compose genérico:
 #   docker compose -f compose.yaml -f compose.acme.yaml --profile ssl up -d scheduler-acme
-#
-# O container não abre 80/443. Ele usa a API Cloudflare para o desafio DNS-01,
-# emite/renova scheduler.argws.com.br + *.scheduler.argws.com.br e grava o bundle
-# em ${SCHEDULER_PRO_DATA_ROOT}/certs.
 
 services:
   scheduler-acme:
-    image: ${ACME_IMAGE:-neilpang/acme.sh:3.1.0}
+    image: ${IMAGE_REGISTRY:-ghcr.io}/${IMAGE_NAMESPACE:-wkarts/scheduler-pro-platform}/acme:${APP_IMAGE_TAG:-latest}
+    pull_policy: always
     restart: unless-stopped
     profiles:
       - ssl
@@ -20,10 +17,7 @@ services:
       ACME_DOMAIN: ${ACME_DOMAIN:-scheduler.argws.com.br}
       ACME_STAGING: ${ACME_STAGING:-false}
       ACME_DNS_SLEEP: ${ACME_DNS_SLEEP:-20}
+      ACME_CHECK_INTERVAL_SECONDS: ${ACME_CHECK_INTERVAL_SECONDS:-43200}
     volumes:
       - ${SCHEDULER_PRO_DATA_ROOT:-./scheduler-pro-data}/acme:/acme.sh
       - ${SCHEDULER_PRO_DATA_ROOT:-./scheduler-pro-data}/certs:/certs
-      - ./scripts/acme-dns01-cloudflare.sh:/opt/scheduler-pro/acme-dns01-cloudflare.sh:ro
-    command:
-      - /bin/sh
-      - /opt/scheduler-pro/acme-dns01-cloudflare.sh
