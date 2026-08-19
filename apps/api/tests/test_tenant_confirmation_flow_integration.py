@@ -1,5 +1,6 @@
 from datetime import UTC, datetime, time, timedelta
 from uuid import uuid4
+from zoneinfo import ZoneInfo
 
 import asyncpg
 import httpx
@@ -11,10 +12,13 @@ pytestmark = pytest.mark.integration
 
 
 def _future_business_slot() -> datetime:
-    candidate = datetime.now(UTC).date() + timedelta(days=2)
+    timezone = ZoneInfo("America/Bahia")
+    candidate = datetime.now(timezone).date() + timedelta(days=2)
     while int(candidate.strftime("%w")) == 0:  # domingo não faz parte do seed padrão
         candidate += timedelta(days=1)
-    return datetime.combine(candidate, time(hour=10), tzinfo=UTC)
+    # O expediente seed é 08:00–18:00 no horário local do tenant. A API recebe
+    # ISO aware; armazenamos/transportamos em UTC sem deslocar a regra local.
+    return datetime.combine(candidate, time(hour=10), tzinfo=timezone).astimezone(UTC)
 
 
 async def _login(client: httpx.AsyncClient) -> str:
@@ -133,7 +137,10 @@ async def test_public_confirmation_updates_agenda_and_realtime_event(
     confirmation_token = confirmation_url.rstrip("/").rsplit("/", 1)[-1]
     assert confirmation_token
 
-    page = await client.get(f"/a/{confirmation_token}", headers={"host": "localhost"})
+    page = await client.get(
+        f"/a/{confirmation_token}",
+        headers={"host": "localhost"},
+    )
     assert page.status_code == 200
     assert "Confirmar agendamento" in page.text
 
