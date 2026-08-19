@@ -3,6 +3,7 @@ from fastapi import APIRouter, Depends
 from app.api.deps import require_permission, require_tenant_capability
 from app.api.v1.routes import (
     appointment_confirmations,
+    appointment_edit,
     appointment_operations,
     appointments,
     auth,
@@ -75,6 +76,12 @@ api_router.include_router(
     appointment_operations.router,
     prefix="/appointments",
     tags=["Appointment Operations"],
+    dependencies=[Depends(require_tenant_capability("appointments")), Depends(require_permission("appointments.create"))],
+)
+api_router.include_router(
+    appointment_edit.router,
+    prefix="/appointments",
+    tags=["Appointment Smart Edit"],
     dependencies=[Depends(require_tenant_capability("appointments")), Depends(require_permission("appointments.create"))],
 )
 api_router.include_router(
