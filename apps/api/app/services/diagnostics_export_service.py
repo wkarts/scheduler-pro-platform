@@ -22,7 +22,9 @@ _REDACT_KEYS = re.compile(
 _REDACT_TEXT_PATTERNS = [
     re.compile(r"(?i)(authorization\s*[:=]\s*bearer\s+)[^\s,;\"']+"),
     re.compile(r"(?i)(bearer\s+)[A-Za-z0-9._~+\-/=]+"),
-    re.compile(r"(?i)((?:password|passwd|secret|token|api[_-]?key)\s*[:=]\s*)[^\s,;\"']+"),
+    re.compile(
+        r"(?i)((?:password|passwd|secret|token|api[_-]?key)\s*[:=]\s*)[^\s,;\"']+"
+    ),
 ]
 
 
@@ -37,6 +39,7 @@ class DiagnosticsExportService:
         self.session = session
         self.docker = DockerConsoleService()
         self.errors: list[dict[str, str]] = []
+        self.notes: list[str] = []
 
     @staticmethod
     def _json_default(value: Any) -> str:
@@ -120,11 +123,15 @@ class DiagnosticsExportService:
         params: dict[str, Any] | None = None,
     ) -> list[dict[str, Any]]:
         try:
-            rows = (await self.session.execute(text(statement), params or {})).mappings().all()
+            rows = (
+                await self.session.execute(text(statement), params or {})
+            ).mappings().all()
             return [dict(row) for row in rows]
-        except Exception as exc:  # noqa: BLE001 - diagnostic export must remain usable
+        except Exception as exc:  # noqa: BLE001 - bundle must remain downloadable
             await self.session.rollback()
-            self.errors.append({"section": name, "error": f"{type(exc).__name__}: {exc}"})
+            self.errors.append(
+                {"section": name, "error": f"{type(exc).__name__}: {exc}"}
+            )
             return []
 
     async def _platform_state(
@@ -148,11 +155,6 @@ class DiagnosticsExportService:
             allowed_tenant_ids=allowed_tenant_ids,
             column="pj.tenant_id",
         )
-        audit_scope, audit_params = self._scope_sql(
-            tenant_id=tenant_id,
-            allowed_tenant_ids=allowed_tenant_ids,
-            column="a.tenant_id",
-        )
 
         tenants = await self._query_rows(
             "tenants",
@@ -174,11 +176,12 @@ class DiagnosticsExportService:
             "domains",
             f"""
             select d.id::text, d.tenant_id::text, t.name as tenant_name,
-                   d.hostname, d.is_primary, d.is_temporary, d.status, d.validation
+                   d.hostname, d.is_primary, d.is_temporary, d.status, d.validation,
+                   d.created_at
             from domains d
             join tenants t on t.id=d.tenant_id
             where true {domain_scope}
-            order by lower(d.hostname), d.id::text
+            order by d.created_at desc, d.id::text
             """,
             domain_params,
         )
@@ -206,20 +209,27 @@ class DiagnosticsExportService:
             """,
             job_params,
         )
-        audit = await self._query_rows(
-            "platform_audit",
-            f"""
-            select a.id::text, a.user_id::text, u.email, a.tenant_id::text,
-                   a.action, a.result, a.ip_address, a.correlation_id,
-                   a.metadata, a.created_at
-            from platform_audit_logs a
-            left join platform_users u on u.id=a.user_id
-            where true {audit_scope}
-            order by a.created_at desc
-            limit 100000
-            """,
-            audit_params,
-        )
+
+        if tenant_id is None and allowed_tenant_ids is None:
+            audit = await self._query_rows(
+                "platform_audit",
+                """
+                select a.id::text, a.user_id::text, u.email,
+                       a.action, a.result, a.ip_address, a.correlation_id,
+                       a.metadata, a.created_at
+                from platform_audit_logs a
+                left join platform_users u on u.id=a.user_id
+                order by a.created_at desc
+                limit 100000
+                """,
+            )
+        else:
+            audit = []
+            self.notes.append(
+                "platform_audit omitido porque a tabela não possui tenant_id; "
+                "auditoria do tenant continua incluída no banco isolado."
+            )
+
         boundaries = await self._query_rows(
             "tenant_boundaries",
             f"""
@@ -257,7 +267,10 @@ class DiagnosticsExportService:
         except Exception as exc:  # noqa: BLE001
             await self.session.rollback()
             self.errors.append(
-                {"section": "platform_logs", "error": f"{type(exc).__name__}: {exc}"}
+                {
+                    "section": "platform_logs",
+                    "error": f"{type(exc).__name__}: {exc}",
+                }
             )
             return []
         if tenant_id or allowed_tenant_ids is None:
@@ -303,7 +316,7 @@ class DiagnosticsExportService:
                     ).mappings().all()
                     section["audit"] = [dict(row) for row in audit_rows]
                     break
-            except Exception as exc:  # noqa: BLE001 - failed tenants are expected here
+            except Exception as exc:  # noqa: BLE001 - failed tenants are expected
                 section["error"] = f"{type(exc).__name__}: {exc}"
             result[slug] = section
         return result
@@ -315,7 +328,9 @@ class DiagnosticsExportService:
             result["containers"] = containers
         except Exception as exc:  # noqa: BLE001
             result["error"] = f"{type(exc).__name__}: {exc}"
-            self.errors.append({"section": "docker_containers", "error": result["error"]})
+            self.errors.append(
+                {"section": "docker_containers", "error": result["error"]}
+            )
             return result
 
         for container in containers:
@@ -328,7 +343,9 @@ class DiagnosticsExportService:
             except Exception as exc:  # noqa: BLE001
                 message = f"{type(exc).__name__}: {exc}"
                 result["logs"][identifier] = {"error": message}
-                self.errors.append({"section": f"docker:{identifier}", "error": message})
+                self.errors.append(
+                    {"section": f"docker:{identifier}", "error": message}
+                )
         return result
 
     async def build_bundle(
@@ -348,7 +365,9 @@ class DiagnosticsExportService:
         )
         tenant_diagnostics = await self._tenant_database_diagnostics(state["tenants"])
         docker = await self._docker_diagnostics()
-        frontend_logs = [row for row in platform_logs if row.get("source") == "frontend"]
+        frontend_logs = [
+            row for row in platform_logs if row.get("source") == "frontend"
+        ]
 
         manifest = {
             "product": "Scheduler Pro",
@@ -358,6 +377,7 @@ class DiagnosticsExportService:
             "frontend_log_count": len(frontend_logs),
             "tenant_count": len(state["tenants"]),
             "docker_container_count": len(docker.get("containers", [])),
+            "notes": self.notes,
             "errors": self.errors,
             "security": {
                 "secrets_redacted": True,
@@ -368,32 +388,58 @@ class DiagnosticsExportService:
         }
 
         output = io.BytesIO()
-        with zipfile.ZipFile(output, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+        with zipfile.ZipFile(
+            output,
+            "w",
+            compression=zipfile.ZIP_DEFLATED,
+        ) as archive:
             archive.writestr("manifest.json", self._json_bytes(manifest))
             archive.writestr(
                 "README.txt",
                 (
                     "Scheduler Pro - pacote de diagnóstico\n\n"
-                    "Inclui logs estruturados, auditoria, provisionamento, domínios, "
-                    "limites de isolamento, logs de bancos dos tenants acessíveis e "
-                    "stdout/stderr disponível dos containers do projeto.\n"
+                    "Inclui logs estruturados, auditoria disponível, provisionamento, "
+                    "domínios, isolamento, bancos dos tenants acessíveis e todo o "
+                    "stdout/stderr ainda retido pelo Docker para os containers do projeto.\n"
                     "Eventos de navegador capturados pelo Admin aparecem em "
                     "frontend/browser.jsonl.\n\n"
                     "Segredos conhecidos são redigidos. O pacote não lê .env, "
                     "chaves privadas TLS nem credenciais seladas.\n"
                 ).encode("utf-8"),
             )
-            archive.writestr("platform/logs.jsonl", self._jsonl_bytes(platform_logs))
-            archive.writestr("frontend/browser.jsonl", self._jsonl_bytes(frontend_logs))
+            archive.writestr(
+                "platform/logs.jsonl",
+                self._jsonl_bytes(platform_logs),
+            )
+            archive.writestr(
+                "frontend/browser.jsonl",
+                self._jsonl_bytes(frontend_logs),
+            )
             for name, rows in state.items():
-                archive.writestr(f"platform/{name}.json", self._json_bytes(rows))
+                archive.writestr(
+                    f"platform/{name}.json",
+                    self._json_bytes(rows),
+                )
             for slug, data in tenant_diagnostics.items():
-                archive.writestr(f"tenants/{slug}/diagnostics.json", self._json_bytes(data))
-            archive.writestr("docker/containers.json", self._json_bytes(docker.get("containers", [])))
+                archive.writestr(
+                    f"tenants/{slug}/diagnostics.json",
+                    self._json_bytes(data),
+                )
+            archive.writestr(
+                "docker/containers.json",
+                self._json_bytes(docker.get("containers", [])),
+            )
             for identifier, payload in dict(docker.get("logs", {})).items():
                 safe = re.sub(r"[^A-Za-z0-9_.-]+", "_", identifier)[:120] or "container"
-                entries = payload.get("entries", []) if isinstance(payload, dict) else []
-                archive.writestr(f"docker/{safe}.jsonl", self._jsonl_bytes(entries))
+                entries = (
+                    payload.get("entries", [])
+                    if isinstance(payload, dict)
+                    else []
+                )
+                archive.writestr(
+                    f"docker/{safe}.jsonl",
+                    self._jsonl_bytes(entries),
+                )
                 if isinstance(payload, dict) and payload.get("error"):
                     archive.writestr(
                         f"docker/{safe}.error.txt",
@@ -402,5 +448,8 @@ class DiagnosticsExportService:
             if self.errors:
                 archive.writestr("errors.json", self._json_bytes(self.errors))
 
-        filename = f"scheduler-pro-diagnostics-{generated_at.strftime('%Y%m%d-%H%M%SZ')}.zip"
+        filename = (
+            f"scheduler-pro-diagnostics-"
+            f"{generated_at.strftime('%Y%m%d-%H%M%SZ')}.zip"
+        )
         return output.getvalue(), filename
