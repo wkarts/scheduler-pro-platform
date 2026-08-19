@@ -1,4 +1,5 @@
 import asyncio
+import os
 from typing import Any
 
 import aio_pika
@@ -18,17 +19,34 @@ from app.services.tenant_resolver import TenantResolver
 
 router = APIRouter()
 PLATFORM_MIGRATION_HEAD = "platform_0008"
-TENANT_MIGRATION_HEAD = "tenant_0006_appointment_confirmation"
+TENANT_MIGRATION_HEAD = "tenant_0007_smtp"
+APP_VERSION = os.getenv("APP_VERSION", "0.1.0-alpha.1")
+APP_RELEASE_TAG = os.getenv("APP_RELEASE_TAG", "").strip()
+APP_BUILD_SHA = os.getenv("APP_BUILD_SHA", "").strip()
 
 
 @router.get("/health")
 async def health() -> dict[str, Any]:
-    return success({"status": "ok", "service": "scheduler-pro-api"})
+    return success({"status": "ok", "service": "scheduler-pro-api", "version": APP_VERSION})
 
 
 @router.get("/health/live")
 async def live() -> dict[str, Any]:
-    return success({"live": True})
+    return success({"live": True, "version": APP_VERSION})
+
+
+@router.get("/version")
+async def version() -> dict[str, Any]:
+    return success(
+        {
+            "name": "Scheduler Pro",
+            "version": APP_VERSION,
+            "release_tag": APP_RELEASE_TAG or None,
+            "build_sha": APP_BUILD_SHA or None,
+            "tenant_schema": TENANT_MIGRATION_HEAD,
+            "platform_schema": PLATFORM_MIGRATION_HEAD,
+        }
+    )
 
 
 async def _check_platform() -> tuple[str, str | None]:
@@ -69,11 +87,7 @@ def _s3_list_buckets() -> None:
         aws_access_key_id=settings.s3_access_key,
         aws_secret_access_key=settings.s3_secret_key,
         region_name=settings.s3_region,
-        config=BotoConfig(
-            connect_timeout=2,
-            read_timeout=2,
-            retries={"max_attempts": 1},
-        ),
+        config=BotoConfig(connect_timeout=2, read_timeout=2, retries={"max_attempts": 1}),
     )
     client.list_buckets()
 
@@ -90,44 +104,20 @@ def resolve_request_hostname_from_value(value: str) -> str:
 
 
 def _tenant_probe_required(hostname: str) -> bool:
-    """Return whether readiness must also probe a tenant database.
-
-    In the development/integration stack, ``localhost`` and ``127.0.0.1`` are
-    intentionally registered as active domains for the seeded development
-    tenant. Readiness must therefore probe the tenant database there as well.
-
-    In production, platform/internal probe hostnames must not be resolved as
-    tenants; only real tenant hostnames require the tenant database probe.
-    """
-
     if settings.app_env == "development":
         return True
-
-    platform_hostname = resolve_request_hostname_from_value(
-        settings.public_platform_domain
-    )
-    return hostname not in {
-        platform_hostname,
-        "localhost",
-        "127.0.0.1",
-        "::1",
-    }
+    platform_hostname = resolve_request_hostname_from_value(settings.public_platform_domain)
+    return hostname not in {platform_hostname, "localhost", "127.0.0.1", "::1"}
 
 
 async def _check_tenant(request: Request) -> tuple[str, str | None]:
     hostname = resolve_request_hostname(request)
     if not _tenant_probe_required(hostname):
         return "not_applicable", None
-
     async with PlatformSession() as platform:
         context = await TenantResolver(platform).resolve(hostname)
-
     engine = await get_tenant_engine(context)
-    factory = async_sessionmaker(
-        engine,
-        expire_on_commit=False,
-        class_=AsyncSession,
-    )
+    factory = async_sessionmaker(engine, expire_on_commit=False, class_=AsyncSession)
     async with factory() as session:
         revision = (
             await session.execute(text("select version_num from alembic_version"))
@@ -148,7 +138,6 @@ async def ready(request: Request) -> ORJSONResponse:
         "storage": _check_s3,
     }
     ready_state = True
-
     for name, probe in probes.items():
         try:
             state, detail = await probe()
@@ -158,7 +147,6 @@ async def ready(request: Request) -> ORJSONResponse:
         if detail:
             checks[name]["detail"] = detail
         ready_state = ready_state and state in {"ok", "not_applicable"}
-
     try:
         state, detail = await _check_tenant(request)
     except Exception:  # noqa: BLE001 - readiness must aggregate failures
@@ -167,7 +155,6 @@ async def ready(request: Request) -> ORJSONResponse:
     if detail:
         checks["tenant"]["detail"] = detail
     ready_state = ready_state and state in {"ok", "not_applicable"}
-
     return ORJSONResponse(
         status_code=200 if ready_state else 503,
         content=success({"ready": ready_state, "checks": checks}),
