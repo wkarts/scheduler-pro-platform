@@ -11,6 +11,7 @@ import './branding.css'
 import './tenant-dashboard.css'
 import './tenant-menu-fix.css'
 import './tenant-mobile-native.css'
+import './tenant-mobile-picker.css'
 import './pwa'
 
 installTenantExtensionNavigationBridge()
