@@ -10,10 +10,12 @@ from sqlalchemy import text
 
 from app.core.config import settings
 from app.db.session import close_database_engines, platform_session, tenant_session
+from app.services.appointment_confirmation_service import AppointmentConfirmationService
 from app.services.appointment_service import AppointmentService
 from app.services.domain_provisioning_service import DomainProvisioningService
 from app.services.notification_dispatcher import TenantNotificationDispatcher
 from app.services.provisioning_runtime import ProvisioningRuntime
+from app.services.realtime_service import RealtimeEventService, WebPushService
 from app.services.tenant_resolver import TenantResolver
 from app.workers.celery_app import typed_task
 
@@ -23,20 +25,12 @@ _worker_loop_guard = Lock()
 
 
 def _worker_event_loop() -> asyncio.AbstractEventLoop:
-    """Return one persistent asyncio loop for the current Celery worker process.
-
-    Celery's prefork pool executes many synchronous tasks in the same child
-    process. Creating a fresh loop with ``asyncio.run`` for every task leaves
-    pooled asyncpg connections attached to a loop that is immediately closed.
-    SQLAlchemy can then hand that connection to the next task, which runs on a
-    different loop and fails with ``Future attached to a different loop``.
-    """
+    """Return one persistent asyncio loop for the current Celery worker process."""
 
     global _worker_loop, _worker_loop_pid
 
     pid = os.getpid()
     if _worker_loop_pid != pid:
-        # A prefork child must never reuse the parent's loop reference.
         _worker_loop = None
         _worker_loop_pid = pid
 
@@ -48,8 +42,6 @@ def _worker_event_loop() -> asyncio.AbstractEventLoop:
 
 
 def _run(coro: Awaitable[Any]) -> Any:
-    """Run an async worker operation on the process-persistent event loop."""
-
     with _worker_loop_guard:
         loop = _worker_event_loop()
         asyncio.set_event_loop(loop)
@@ -57,8 +49,6 @@ def _run(coro: Awaitable[Any]) -> Any:
 
 
 def _shutdown_worker_async_runtime(*_args: Any, **_kwargs: Any) -> None:
-    """Dispose async DB pools on their owning loop before a worker exits."""
-
     global _worker_loop, _worker_loop_pid
 
     with _worker_loop_guard:
@@ -100,12 +90,6 @@ def run_provisioning(
 
 
 async def _reconcile_managed_domains() -> dict[str, object]:
-    """Converge managed tenant DNS to the TLS mode configured for the platform.
-
-    In local_acme mode this automatically flips legacy orange/proxied tenant
-    records to DNS-only. One failed hostname must not block all other tenants.
-    """
-
     if settings.tls_provisioning_mode != "local_acme":
         return {"enabled": False, "checked": 0, "active": 0, "failed": 0}
 
@@ -142,7 +126,7 @@ async def _reconcile_managed_domains() -> dict[str, object]:
                     active += 1
                 else:
                     failed += 1
-            except Exception:  # noqa: BLE001 - one hostname must not stop convergence
+            except Exception:  # noqa: BLE001
                 await session.rollback()
                 failed += 1
         return {
@@ -191,6 +175,22 @@ def _phone_from_webhook(payload: dict[str, Any]) -> str:
     return re.sub(r"\D", "", jid.split("@", 1)[0])
 
 
+async def _capability_enabled(tenant_id: str, key: str) -> bool:
+    async for platform in platform_session():
+        enabled = await platform.scalar(
+            text(
+                """
+                select enabled from tenant_capabilities
+                where tenant_id=cast(:tenant_id as uuid) and capability_key=:key
+                limit 1
+                """
+            ),
+            {"tenant_id": tenant_id, "key": key},
+        )
+        return enabled is True
+    return False
+
+
 async def _process_whatsapp_event(
     tenant_id: str,
     event_id: str,
@@ -216,6 +216,7 @@ async def _process_whatsapp_event(
         phone = _phone_from_webhook(payload)
         action = "ignored"
         appointment_id: str | None = None
+        realtime_type: str | None = None
 
         if command in {
             "CONFIRMAR",
@@ -245,6 +246,7 @@ async def _process_whatsapp_event(
                     "Confirmado via WhatsApp",
                 )
                 action = "confirmed"
+                realtime_type = "appointment.customer_confirmed"
         elif command in {"CANCELAR", "CANCELAR AGENDAMENTO"} and phone:
             appointment_id = await session.scalar(
                 text(
@@ -267,6 +269,7 @@ async def _process_whatsapp_event(
                     "Cancelado via WhatsApp",
                 )
                 action = "cancelled"
+                realtime_type = "appointment.customer_cancelled"
 
         await session.execute(
             text(
@@ -280,6 +283,16 @@ async def _process_whatsapp_event(
             {"event_id": event_id},
         )
         await session.commit()
+
+        if appointment_id and realtime_type:
+            realtime = await RealtimeEventService(session).emit_appointment(
+                appointment_id,
+                realtime_type,
+                actor="customer-whatsapp",
+            )
+            if realtime and await _capability_enabled(tenant_id, "notifications"):
+                await WebPushService(session).dispatch_event(realtime)
+
         return {
             "tenant_id": tenant_id,
             "event_id": event_id,
@@ -299,6 +312,43 @@ def process_whatsapp_webhook(
     result = dict(_run(_process_whatsapp_event(tenant_id, event_id)))
     result["correlation_id"] = correlation_id
     return result
+
+
+async def _dispatch_realtime_push(tenant_id: str, event_id: str) -> dict[str, object]:
+    if not await _capability_enabled(tenant_id, "notifications"):
+        return {
+            "tenant_id": tenant_id,
+            "event_id": event_id,
+            "processed": False,
+            "reason": "notifications capability disabled",
+        }
+
+    async for platform in platform_session():
+        context = await TenantResolver(platform).resolve_by_id(
+            tenant_id,
+            require_active=True,
+        )
+        break
+    else:
+        return {"tenant_id": tenant_id, "event_id": event_id, "processed": False}
+
+    async for session in tenant_session(context):
+        event = await RealtimeEventService(session).get_event(event_id)
+        if event is None:
+            return {"tenant_id": tenant_id, "event_id": event_id, "processed": False}
+        result = await WebPushService(session).dispatch_event(event)
+        return {
+            "tenant_id": tenant_id,
+            "event_id": event_id,
+            "processed": True,
+            **result,
+        }
+    return {"tenant_id": tenant_id, "event_id": event_id, "processed": False}
+
+
+@typed_task(name="app.workers.tasks.dispatch_realtime_push")
+def dispatch_realtime_push(tenant_id: str, event_id: str) -> dict[str, object]:
+    return dict(_run(_dispatch_realtime_push(tenant_id, event_id)))
 
 
 async def _process_due_notifications(tenant_id: str) -> dict[str, object]:
@@ -333,7 +383,16 @@ async def _process_all_due_notifications() -> dict[str, object]:
         tenant_ids = list(
             (
                 await platform.execute(
-                    text("select id::text from tenants where status='ACTIVE'")
+                    text(
+                        """
+                        select t.id::text
+                        from tenants t
+                        join tenant_capabilities tc on tc.tenant_id=t.id
+                        where t.status='ACTIVE'
+                          and tc.capability_key='notifications'
+                          and tc.enabled=true
+                        """
+                    )
                 )
             ).scalars()
         )
@@ -345,7 +404,7 @@ async def _process_all_due_notifications() -> dict[str, object]:
     for tenant_id in tenant_ids:
         try:
             result = await _process_due_notifications(tenant_id)
-        except Exception:  # noqa: BLE001 - one tenant must not stop the sweep
+        except Exception:  # noqa: BLE001
             failed_count += 1
             continue
 
@@ -357,17 +416,102 @@ async def _process_all_due_notifications() -> dict[str, object]:
         if isinstance(failed_value, int):
             failed_count += failed_value
 
-    totals: dict[str, object] = {
+    return {
         "tenants": tenant_count,
         "sent": sent_count,
         "failed": failed_count,
     }
-    return totals
 
 
 @typed_task(name="app.workers.tasks.process_all_due_notifications")
 def process_all_due_notifications() -> dict[str, object]:
     return dict(_run(_process_all_due_notifications()))
+
+
+async def _expire_confirmation_requests(tenant_id: str) -> dict[str, object]:
+    async for platform in platform_session():
+        context = await TenantResolver(platform).resolve_by_id(
+            tenant_id,
+            require_active=True,
+        )
+        break
+    else:
+        return {"tenant_id": tenant_id, "processed": False}
+
+    async for session in tenant_session(context):
+        result = await AppointmentConfirmationService(session).expire_due(limit=300)
+        appointment_ids_value = result.get("appointment_ids", [])
+        appointment_ids = (
+            [str(value) for value in appointment_ids_value]
+            if isinstance(appointment_ids_value, list)
+            else []
+        )
+        push_enabled = await _capability_enabled(tenant_id, "notifications")
+        for appointment_id in appointment_ids:
+            realtime = await RealtimeEventService(session).emit_appointment(
+                appointment_id,
+                "appointment.confirmation_expired",
+                actor="scheduler",
+            )
+            if realtime and push_enabled:
+                await WebPushService(session).dispatch_event(realtime)
+        if appointment_ids and push_enabled:
+            await TenantNotificationDispatcher(session).process_due(limit=100)
+        return {
+            "tenant_id": tenant_id,
+            "processed": True,
+            "expired": result.get("expired", 0),
+            "failed": result.get("failed", 0),
+        }
+    return {"tenant_id": tenant_id, "processed": False}
+
+
+async def _expire_all_confirmation_requests() -> dict[str, object]:
+    tenant_ids: list[str] = []
+    async for platform in platform_session():
+        tenant_ids = list(
+            (
+                await platform.execute(
+                    text(
+                        """
+                        select t.id::text
+                        from tenants t
+                        join tenant_capabilities tc on tc.tenant_id=t.id
+                        where t.status='ACTIVE'
+                          and tc.capability_key='appointments'
+                          and tc.enabled=true
+                        """
+                    )
+                )
+            ).scalars()
+        )
+        break
+
+    expired = 0
+    failed = 0
+    processed = 0
+    for tenant_id in tenant_ids:
+        try:
+            result = await _expire_confirmation_requests(tenant_id)
+            processed += 1
+            expired_value = result.get("expired", 0)
+            failed_value = result.get("failed", 0)
+            if isinstance(expired_value, int):
+                expired += expired_value
+            if isinstance(failed_value, int):
+                failed += failed_value
+        except Exception:  # noqa: BLE001
+            failed += 1
+    return {
+        "tenants": processed,
+        "expired": expired,
+        "failed": failed,
+    }
+
+
+@typed_task(name="app.workers.tasks.expire_all_confirmation_requests")
+def expire_all_confirmation_requests() -> dict[str, object]:
+    return dict(_run(_expire_all_confirmation_requests()))
 
 
 @typed_task(name="app.workers.tasks.run_build_job")
