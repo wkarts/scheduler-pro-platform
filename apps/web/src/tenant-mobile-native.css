@@ -1,0 +1,205 @@
+/* Mobile-native presentation for Scheduler Pro tenant console.
+   Desktop tables/grids remain untouched; on small screens the same data is
+   presented as touch-friendly cards and stacked operational controls. */
+
+@media (max-width: 900px) {
+  html, body, #app { min-width: 0; width: 100%; overflow-x: hidden; }
+  body { background: #f5f7fb; }
+
+  .tenant-console.app-shell { display: block !important; min-height: 100dvh; width: 100%; }
+  .tenant-console .content-shell { width: 100% !important; min-width: 0 !important; margin-left: 0 !important; }
+  .tenant-console .main-content { width: 100%; max-width: none; padding: 18px 14px 96px !important; overflow: visible; }
+
+  /* Drawer mobile: hidden by default, independent from desktop collapsed state. */
+  .tenant-console .sidebar {
+    position: fixed !important;
+    z-index: 1200 !important;
+    inset: 0 auto 0 0 !important;
+    width: min(88vw, 344px) !important;
+    max-width: 344px !important;
+    height: 100dvh !important;
+    transform: translateX(-105%) !important;
+    transition: transform .22s ease !important;
+    box-shadow: 20px 0 48px rgba(8, 21, 42, .24);
+    overflow-y: auto !important;
+    overscroll-behavior: contain;
+  }
+  .tenant-console.mobileOpen .sidebar { transform: translateX(0) !important; }
+  .tenant-console.collapsed .sidebar { width: min(88vw, 344px) !important; }
+  .tenant-console.mobileOpen .sidebar .nav-item span,
+  .tenant-console.mobileOpen .sidebar .brand > div:not(.brand-mark),
+  .tenant-console.mobileOpen .sidebar .version-info,
+  .tenant-console.mobileOpen .sidebar .sp-version { display: block !important; opacity: 1 !important; visibility: visible !important; }
+  .tenant-console.mobileOpen .sidebar .nav-item { min-height: 48px; justify-content: flex-start !important; padding: 11px 14px !important; gap: 12px !important; }
+  .tenant-console.mobileOpen .sidebar .nav-item svg { flex: 0 0 auto; }
+
+  .tenant-console .topbar {
+    position: sticky !important;
+    top: 0;
+    z-index: 700;
+    min-height: 72px;
+    padding: 10px 14px !important;
+    gap: 10px;
+    background: rgba(255,255,255,.97);
+    backdrop-filter: blur(14px);
+    border-bottom: 1px solid #e5eaf2;
+  }
+  .tenant-console .topbar > .icon-button:first-child { width: 48px; height: 48px; border-radius: 14px; flex: 0 0 48px; }
+  .tenant-console .company-switcher { min-width: 0; flex: 1; }
+  .tenant-console .company-switcher span { display: none; }
+  .tenant-console .company-switcher strong { display: block; max-width: 42vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 16px; }
+  .tenant-console .topbar-search, .tenant-console .install-top, .tenant-console .profile > div:last-child { display: none !important; }
+  .tenant-console .topbar-spacer { display: none; }
+  .tenant-console .profile { margin-left: 0; }
+  .tenant-console .avatar { width: 46px; height: 46px; }
+
+  .tenant-console .page-header { display: block !important; margin: 8px 0 16px !important; }
+  .tenant-console .page-header .eyebrow { margin-bottom: 8px; font-size: 11px; letter-spacing: .14em; }
+  .tenant-console .page-header h1 { margin: 0; font-size: clamp(30px, 9vw, 40px) !important; line-height: 1.05; }
+  .tenant-console .page-header > div > p:last-child { margin-top: 10px; font-size: 14px; line-height: 1.55; }
+  .tenant-console .page-actions {
+    display: grid !important;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    width: 100%;
+    margin-top: 16px;
+    padding: 6px !important;
+    border-radius: 18px !important;
+  }
+  .tenant-console .page-actions .btn { min-height: 46px; justify-content: center; }
+  .tenant-console .page-actions .btn:only-child { grid-column: 1 / -1; }
+
+  .tenant-console .success-banner,
+  .tenant-console .error-banner { align-items: flex-start; padding: 14px 15px; border-radius: 16px; font-size: 14px; line-height: 1.45; }
+
+  /* Dashboard mobile is a compact 2x2 status board instead of oversized desktop cards. */
+  .tenant-console .metric-grid.tenant-metrics {
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 10px !important;
+  }
+  .tenant-console .metric-grid.tenant-metrics .metric-card {
+    min-height: 130px !important;
+    padding: 17px !important;
+    border-radius: 18px !important;
+  }
+  .tenant-console .metric-grid.tenant-metrics .metric-card strong { font-size: 30px !important; }
+  .tenant-console .metric-grid.tenant-metrics .metric-card > svg { width: 37px; height: 37px; padding: 9px; }
+  .tenant-console .dashboard-grid { display: block !important; }
+  .tenant-console .dashboard-grid > .panel { margin-top: 12px; border-radius: 20px !important; }
+  .tenant-console .dashboard-grid .list .row { display: grid !important; grid-template-columns: 70px minmax(0,1fr) !important; gap: 10px; }
+  .tenant-console .dashboard-grid .list .row .status-pill { grid-column: 2; justify-self: start; }
+  .tenant-console .quick-panel { position: static !important; }
+
+  .tenant-console .panel { border-radius: 20px !important; }
+  .tenant-console .panel-title { align-items: flex-start; gap: 10px; }
+  .tenant-console .panel-title h3 { font-size: 18px !important; }
+  .tenant-console .panel-title p { font-size: 13px !important; line-height: 1.45; }
+
+  .tenant-console .realtime-strip { display: grid; grid-template-columns: auto 1fr; gap: 5px 8px; padding: 13px 14px; }
+  .tenant-console .realtime-strip small { grid-column: 2; line-height: 1.4; }
+  .tenant-console .filter-grid { display: grid !important; grid-template-columns: 1fr 1fr !important; gap: 9px !important; }
+  .tenant-console .filter-grid label { grid-column: 1 / -1; }
+  .tenant-console .filter-grid .btn { min-height: 44px; }
+
+  /* Desktop tables become native mobile cards. JS annotates data-label from the table header. */
+  .tenant-console .operational-table .responsive-table { overflow: visible !important; border: 0 !important; }
+  .tenant-console .operational-table table,
+  .tenant-console .operational-table tbody { display: block !important; width: 100% !important; min-width: 0 !important; }
+  .tenant-console .operational-table thead { display: none !important; }
+  .tenant-console .operational-table tbody { padding: 8px 10px 14px; }
+  .tenant-console .operational-table tbody tr {
+    display: block !important;
+    width: 100% !important;
+    margin: 0 0 12px;
+    padding: 12px 14px;
+    border: 1px solid #e2e8f0 !important;
+    border-radius: 18px;
+    background: #fff;
+    box-shadow: 0 10px 28px rgba(15, 23, 42, .055);
+  }
+  .tenant-console .operational-table tbody tr:hover { background: #fff; }
+  .tenant-console .operational-table td {
+    display: grid !important;
+    grid-template-columns: minmax(86px, 34%) minmax(0, 1fr);
+    gap: 10px;
+    width: 100% !important;
+    min-width: 0 !important;
+    padding: 9px 0 !important;
+    border: 0 !important;
+    border-bottom: 1px solid #eef2f7 !important;
+    text-align: left !important;
+    overflow-wrap: anywhere;
+  }
+  .tenant-console .operational-table td:last-child { border-bottom: 0 !important; padding-bottom: 2px !important; }
+  .tenant-console .operational-table td::before {
+    content: attr(data-label);
+    color: #718096;
+    font-size: 10px;
+    font-weight: 900;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+    align-self: center;
+  }
+  .tenant-console .operational-table td > strong,
+  .tenant-console .operational-table td > small { max-width: 100%; overflow-wrap: anywhere; }
+  .tenant-console .operational-table td .table-actions {
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0,1fr));
+    gap: 8px;
+    width: 100%;
+    justify-content: stretch !important;
+  }
+  .tenant-console .operational-table td .table-actions .btn {
+    width: 100%;
+    min-height: 42px !important;
+    justify-content: center;
+    border-radius: 12px !important;
+    font-size: 11px !important;
+  }
+  .tenant-console .operational-table td .status-pill { justify-self: start; }
+
+  /* Forms are touch forms; no multi-column desktop form compression on mobile. */
+  .tenant-console .form-grid,
+  .tenant-console .inline-form,
+  .tenant-console .stack-form { display: grid !important; grid-template-columns: 1fr !important; gap: 12px !important; }
+  .tenant-console .operational-form { padding: 18px 15px !important; }
+  .tenant-console .operational-form input,
+  .tenant-console .operational-form select,
+  .tenant-console .operational-form textarea,
+  .tenant-console .filter-panel input,
+  .tenant-console .filter-panel select { min-height: 48px; font-size: 16px; width: 100%; }
+  .tenant-console .operational-form textarea { min-height: 110px; }
+  .tenant-console .editor-title { align-items: flex-start; }
+  .tenant-console .actions { display: grid !important; grid-template-columns: 1fr 1fr; gap: 9px; }
+  .tenant-console .actions .btn { min-height: 46px; justify-content: center; }
+
+  /* Calendar/branding/SMTP extension gets a dedicated mobile workspace. */
+  .tenant-console .sp-extension-root { padding: 14px 0 90px !important; }
+  .tenant-console .sp-extension-header { align-items: flex-start !important; padding: 0 2px 12px !important; }
+  .tenant-console .sp-extension-header h1 { font-size: 30px !important; }
+  .tenant-console .sp-calendar-layout,
+  .tenant-console .sp-form-layout { display: block !important; }
+  .tenant-console .sp-calendar-layout > *, .tenant-console .sp-form-layout > * { margin-bottom: 12px; }
+  .tenant-console .sp-calendar-card, .tenant-console .sp-day-card, .tenant-console .sp-card { border-radius: 20px !important; }
+  .tenant-console .sp-calendar-grid { gap: 4px !important; }
+  .tenant-console .sp-calendar-grid button { min-height: 44px !important; border-radius: 10px !important; padding: 4px !important; }
+  .tenant-console .sp-day-list .sp-appointment { grid-template-columns: 58px minmax(0,1fr) !important; gap: 8px; }
+  .tenant-console .sp-day-list .sp-appointment em { grid-column: 2; justify-self: start; }
+  .tenant-console .sp-form-grid, .tenant-console .sp-color-grid { grid-template-columns: 1fr !important; }
+
+  /* When an extension view is opened from the mobile drawer, hide the drawer immediately. */
+  body.sp-extension-open .tenant-console .sidebar { transform: translateX(-105%) !important; }
+}
+
+@media (max-width: 480px) {
+  .tenant-console .metric-grid.tenant-metrics { grid-template-columns: 1fr 1fr !important; }
+  .tenant-console .metric-grid.tenant-metrics .metric-card { min-height: 118px !important; padding: 14px !important; }
+  .tenant-console .metric-grid.tenant-metrics .metric-card span { font-size: 9px !important; }
+  .tenant-console .metric-grid.tenant-metrics .metric-card small { font-size: 10px !important; }
+  .tenant-console .operational-table td { grid-template-columns: 1fr !important; gap: 4px; }
+  .tenant-console .operational-table td::before { margin-bottom: 2px; }
+  .tenant-console .operational-table td .table-actions { grid-template-columns: 1fr 1fr; }
+  .tenant-console .filter-grid { grid-template-columns: 1fr !important; }
+  .tenant-console .filter-grid > * { grid-column: 1 !important; }
+}
