@@ -21,6 +21,8 @@ coverage/
 target/
 src-tauri/target/
 Cargo.lock.orig
+src-tauri/tauri.generated.conf.json
+src-tauri/tauri.windows.generated.conf.json
 
 # OS/IDE
 .DS_Store
