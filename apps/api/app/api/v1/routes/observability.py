@@ -108,7 +108,7 @@ async def platform_log_summary(
 @router.get("/logs/export")
 async def export_complete_diagnostics(
     tenant: str | None = Query(default=None),
-    principal: AuthPrincipal = Depends(require_platform_permission("observability.read")),
+    principal: AuthPrincipal = Depends(require_platform_permission("observability.export")),
     session: AsyncSession = Depends(get_platform_session),
 ) -> Response:
     """Download one redacted ZIP with DB, Docker and browser diagnostics."""
