@@ -3,6 +3,7 @@ from fastapi import APIRouter, Depends
 from app.api.deps import require_permission, require_tenant_capability
 from app.api.v1.routes import (
     appointment_confirmations,
+    appointment_edit,
     appointment_operations,
     appointments,
     auth,
@@ -10,6 +11,7 @@ from app.api.v1.routes import (
     branding,
     builds,
     customers,
+    downloads,
     files,
     health,
     landing_pages,
@@ -77,6 +79,12 @@ api_router.include_router(
     dependencies=[Depends(require_tenant_capability("appointments")), Depends(require_permission("appointments.create"))],
 )
 api_router.include_router(
+    appointment_edit.router,
+    prefix="/appointments",
+    tags=["Appointment Smart Edit"],
+    dependencies=[Depends(require_tenant_capability("appointments")), Depends(require_permission("appointments.create"))],
+)
+api_router.include_router(
     appointment_confirmations.router,
     prefix="/appointment-confirmations",
     tags=["Appointment Confirmations"],
@@ -120,6 +128,7 @@ api_router.include_router(
     dependencies=[Depends(require_tenant_capability("observability")), Depends(require_permission("tenant.manage"))],
 )
 api_router.include_router(tenant_telemetry.router, prefix="/telemetry", tags=["Tenant Telemetry"])
+api_router.include_router(downloads.router, prefix="/downloads", tags=["Universal App Downloads"])
 api_router.include_router(branding.router, prefix="/branding", tags=["Branding"])
 api_router.include_router(platform.router, prefix="/platform", tags=["Platform"])
 api_router.include_router(tenant_management.router, prefix="/platform/tenant-management", tags=["Tenant Management"])

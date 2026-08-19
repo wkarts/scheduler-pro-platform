@@ -1,0 +1,113 @@
+/* Contrato final da sidebar do tenant.
+   Desktop respeita expandir/colapsar; mobile ignora o estado desktop e sempre
+   exibe rótulos enquanto o drawer estiver aberto. Importar por último. */
+
+@media (min-width: 901px) {
+  .tenant-console:not(.collapsed) .sidebar {
+    width: 260px !important;
+    overflow-x: hidden !important;
+  }
+  .tenant-console:not(.collapsed) .content-shell { margin-left: 260px !important; }
+  .tenant-console:not(.collapsed) .sidebar .nav-item > span,
+  .tenant-console:not(.collapsed) .sidebar .brand > div:not(.brand-mark),
+  .tenant-console:not(.collapsed) .sidebar .sp-version,
+  .tenant-console:not(.collapsed) .sidebar .version-info {
+    display: block !important;
+    opacity: 1 !important;
+    visibility: visible !important;
+    max-width: 190px !important;
+  }
+
+  .tenant-console.collapsed .sidebar {
+    width: 78px !important;
+    overflow-x: hidden !important;
+  }
+  .tenant-console.collapsed .content-shell { margin-left: 78px !important; }
+  .tenant-console.collapsed .sidebar .nav-item {
+    justify-content: center !important;
+    gap: 0 !important;
+    padding-left: 0 !important;
+    padding-right: 0 !important;
+  }
+  .tenant-console.collapsed .sidebar .nav-item > span,
+  .tenant-console.collapsed .sidebar .brand > div:not(.brand-mark),
+  .tenant-console.collapsed .sidebar .sp-version,
+  .tenant-console.collapsed .sidebar .version-info {
+    display: none !important;
+    opacity: 0 !important;
+    visibility: hidden !important;
+    width: 0 !important;
+    max-width: 0 !important;
+    overflow: hidden !important;
+  }
+  .tenant-console.collapsed .sidebar .brand {
+    justify-content: center !important;
+    padding-left: 0 !important;
+    padding-right: 0 !important;
+  }
+  .tenant-console.collapsed .sidebar .sp-sidebar-logo {
+    width: 42px !important;
+    max-width: 42px !important;
+    margin: 0 auto !important;
+  }
+}
+
+@media (max-width: 900px) {
+  .tenant-console,
+  .tenant-console.collapsed { width: 100% !important; }
+
+  .tenant-console .sidebar,
+  .tenant-console.collapsed .sidebar {
+    width: min(86vw, 340px) !important;
+    max-width: 340px !important;
+    overflow-x: hidden !important;
+    transform: translateX(-105%) !important;
+  }
+
+  .tenant-console.mobileOpen .sidebar,
+  .tenant-console.collapsed.mobileOpen .sidebar {
+    transform: translateX(0) !important;
+  }
+
+  .tenant-console.mobileOpen .sidebar .nav-item,
+  .tenant-console.collapsed.mobileOpen .sidebar .nav-item {
+    justify-content: flex-start !important;
+    gap: 12px !important;
+    padding: 11px 16px !important;
+    min-height: 48px !important;
+    overflow: hidden !important;
+  }
+
+  .tenant-console.mobileOpen .sidebar .nav-item > span,
+  .tenant-console.collapsed.mobileOpen .sidebar .nav-item > span,
+  .tenant-console.mobileOpen .sidebar .brand > div:not(.brand-mark),
+  .tenant-console.collapsed.mobileOpen .sidebar .brand > div:not(.brand-mark),
+  .tenant-console.mobileOpen .sidebar .sp-version,
+  .tenant-console.collapsed.mobileOpen .sidebar .sp-version,
+  .tenant-console.mobileOpen .sidebar .version-info,
+  .tenant-console.collapsed.mobileOpen .sidebar .version-info {
+    display: block !important;
+    opacity: 1 !important;
+    visibility: visible !important;
+    width: auto !important;
+    max-width: 220px !important;
+    overflow: visible !important;
+  }
+
+  .tenant-console.mobileOpen .sidebar .brand,
+  .tenant-console.collapsed.mobileOpen .sidebar .brand {
+    justify-content: flex-start !important;
+    gap: 12px !important;
+    padding: 0 18px !important;
+  }
+
+  .tenant-console.mobileOpen .sidebar .sp-extension-nav > span,
+  .tenant-console.collapsed.mobileOpen .sidebar .sp-extension-nav > span {
+    display: inline !important;
+    opacity: 1 !important;
+    visibility: visible !important;
+  }
+
+  .tenant-console .content-shell,
+  .tenant-console.collapsed .content-shell { margin-left: 0 !important; }
+}
