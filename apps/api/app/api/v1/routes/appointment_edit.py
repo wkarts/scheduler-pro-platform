@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 from typing import Any
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel, Field
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -25,6 +25,72 @@ class AppointmentSmartEdit(BaseModel):
     professional_id: str | None = None
     starts_at: datetime | None = None
     reason: str | None = Field(default="Dados atualizados pelo gestor", max_length=500)
+
+
+@router.get("/smart/lookups")
+async def smart_appointment_lookups(
+    q: str = Query(default="", max_length=160),
+    limit: int = Query(default=100, ge=1, le=250),
+    session: AsyncSession = Depends(get_tenant_session),
+) -> dict[str, Any]:
+    """Lookup da Agenda, independente dos CRUDs opcionais de clientes/serviços/equipe."""
+    needle = f"%{q.strip()}%"
+    customers = (
+        await session.execute(
+            text(
+                """
+                select id::text, name, phone, email
+                from customers
+                where :q = '%%'
+                   or name ilike :q
+                   or coalesce(phone, '') ilike :q
+                   or coalesce(email, '') ilike :q
+                order by name
+                limit :limit
+                """
+            ),
+            {"q": needle, "limit": limit},
+        )
+    ).mappings().all()
+    services = (
+        await session.execute(
+            text(
+                """
+                select id::text, name, duration_minutes, price, active
+                from services
+                where active=true
+                  and (:q = '%%' or name ilike :q)
+                order by name
+                limit :limit
+                """
+            ),
+            {"q": needle, "limit": limit},
+        )
+    ).mappings().all()
+    professionals = (
+        await session.execute(
+            text(
+                """
+                select id::text, name, email, phone
+                from professionals
+                where :q = '%%'
+                   or name ilike :q
+                   or coalesce(email, '') ilike :q
+                   or coalesce(phone, '') ilike :q
+                order by name
+                limit :limit
+                """
+            ),
+            {"q": needle, "limit": limit},
+        )
+    ).mappings().all()
+    return success(
+        {
+            "customers": [dict(row) for row in customers],
+            "services": [dict(row) for row in services],
+            "professionals": [dict(row) for row in professionals],
+        }
+    )
 
 
 @router.patch("/{appointment_id}/edit")
