@@ -84,15 +84,16 @@ jobs:
           RABBITMQ_PASSWORD: ci-rabbitmq-password
           S3_ACCESS_KEY: scheduler
           S3_SECRET_KEY: ci-minio-secret-key
+          CLOUDFLARE_API_TOKEN: ci-cloudflare-token
+          ACME_EMAIL: ci-acme@example.com
         run: |
           docker compose -f deployments/cloudpanel/compose.yaml config --quiet
           docker compose -f deployments/cloudpanel/compose.argws.yaml config --quiet
-      - name: Validate CloudPanel ACME scripts
+      - name: Validate embedded ACME and CloudPanel agent entrypoints
         shell: bash
         run: |
-          bash -n deployments/cloudpanel/scripts/install-local-acme-cloudpanel.sh
-          bash -n deployments/cloudpanel/scripts/cloudpanel-cert-deploy.sh
-          sh -n deployments/cloudpanel/scripts/acme-dns01-cloudflare.sh
+          sh -n infrastructure/docker/acme/entrypoint.sh
+          bash -n infrastructure/docker/cloudpanel-agent/entrypoint.sh
       - name: Docker build API fallback image
         run: docker build -t scheduler-pro-api:ci .
       - name: Docker build web image
@@ -101,3 +102,7 @@ jobs:
         run: docker build -f infrastructure/docker/web/Dockerfile --build-arg APP_DIR=apps/admin -t scheduler-pro-admin:ci .
       - name: Docker build proxy image
         run: docker build -f infrastructure/docker/proxy/Dockerfile -t scheduler-pro-proxy:ci .
+      - name: Docker build ACME image
+        run: docker build -f infrastructure/docker/acme/Dockerfile -t scheduler-pro-acme:ci .
+      - name: Docker build CloudPanel agent image
+        run: docker build -f infrastructure/docker/cloudpanel-agent/Dockerfile -t scheduler-pro-cloudpanel-agent:ci .

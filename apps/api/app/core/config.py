@@ -72,10 +72,12 @@ class Settings(BaseSettings):
     cloudflare_temporary_record_type: str = "CNAME"
     cloudflare_temporary_record_target: str | None = None
     cloudflare_temporary_record_proxied: bool = False
+    cloudflare_managed_wildcard_dns: bool = True
+    cloudflare_managed_wildcard_target: str | None = None
 
-    # TLS dos hostnames internos do Scheduler Pro. No modo local_acme, o navegador
-    # precisa alcançar o CloudPanel diretamente (DNS-only) e o certificado wildcard
-    # é emitido localmente via ACME DNS-01.
+    # TLS dos hostnames internos do Scheduler Pro. No modo local_acme o certificado
+    # wildcard e emitido por ACME DNS-01 usando a API Cloudflare. O CloudPanel fica
+    # apenas como terminador TLS/reverse proxy unico do dominio base + wildcard.
     tls_provisioning_mode: str = "local_acme"
     local_acme_cert_dir: str = "/run/scheduler-pro-certs"
     local_acme_domain: str | None = None
@@ -145,6 +147,14 @@ class Settings(BaseSettings):
     @property
     def tenant_domain_target(self) -> str:
         return (self.cloudflare_temporary_record_target or self.public_platform_domain).strip()
+
+    @property
+    def managed_wildcard_hostname(self) -> str:
+        return f"*.{self.tenant_domain_root.strip().lower().rstrip('.')}"
+
+    @property
+    def managed_wildcard_target(self) -> str:
+        return (self.cloudflare_managed_wildcard_target or self.tenant_domain_target).strip()
 
     @property
     def effective_local_acme_domain(self) -> str:

@@ -97,13 +97,33 @@ def test_local_acme_metadata_uses_wildcard_and_dns_only(monkeypatch) -> None:
     assert metadata["wildcard"] == "*.scheduler.argws.com.br"
     assert metadata["dns_proxied"] is False
     assert metadata["issuer"] == "letsencrypt"
+    assert metadata["challenge"] == "dns-01"
+
+
+def test_settings_build_managed_wildcard_from_tenant_root(monkeypatch) -> None:
+    monkeypatch.setattr(settings, "tenant_default_domain_root", "scheduler.argws.com.br")
+    monkeypatch.setattr(settings, "cloudflare_managed_wildcard_target", None)
+    monkeypatch.setattr(
+        settings,
+        "cloudflare_temporary_record_target",
+        "proxy.scheduler.argws.com.br",
+    )
+
+    assert settings.managed_wildcard_hostname == "*.scheduler.argws.com.br"
+    assert settings.managed_wildcard_target == "proxy.scheduler.argws.com.br"
 
 
 @pytest.mark.asyncio
-async def test_connect_managed_hostname_reconciles_dns_without_custom_hostname_api(monkeypatch) -> None:
+async def test_connect_managed_hostname_uses_wildcard_without_custom_hostname_api(monkeypatch) -> None:
     monkeypatch.setattr(settings, "tenant_default_domain_root", "scheduler.argws.com.br")
     monkeypatch.setattr(settings, "tls_provisioning_mode", "local_acme")
     monkeypatch.setattr(settings, "cloudflare_temporary_record_proxied", False)
+    monkeypatch.setattr(settings, "cloudflare_managed_wildcard_dns", True)
+    monkeypatch.setattr(
+        settings,
+        "cloudflare_managed_wildcard_target",
+        "proxy.scheduler.argws.com.br",
+    )
 
     class FakeSession:
         async def commit(self) -> None:
@@ -145,12 +165,19 @@ async def test_connect_managed_hostname_reconciles_dns_without_custom_hostname_a
         )
         return {"success": True, "record": {"proxied": proxied}}
 
+    async def fake_list_dns_records(
+        _hostname: str,
+        _record_type: str | None = None,
+    ) -> dict[str, object]:
+        return {"success": True, "result": []}
+
     async def forbidden_custom_hostname(_hostname: str) -> dict[str, object]:
         raise AssertionError("Cloudflare Custom Hostnames não deve ser chamado")
 
     monkeypatch.setattr(service, "_tenant", fake_tenant)
     monkeypatch.setattr(service, "_domain_by_hostname", fake_domain)
     monkeypatch.setattr(service.cloudflare, "ensure_dns_record", fake_dns_record)
+    monkeypatch.setattr(service.cloudflare, "list_dns_records", fake_list_dns_records)
     monkeypatch.setattr(service.cloudflare, "ensure_custom_hostname", forbidden_custom_hostname)
 
     result = await service.connect_custom_domain(
@@ -161,11 +188,75 @@ async def test_connect_managed_hostname_reconciles_dns_without_custom_hostname_a
 
     assert result["status"] == "ACTIVE"
     assert result["validation"]["tls"]["mode"] == "local_acme"
+    assert result["validation"]["dns_mode"] == "wildcard"
     assert dns_calls == [
         {
-            "hostname": "wwsoftwares-48ec0e67.scheduler.argws.com.br",
-            "target": settings.tenant_domain_target,
+            "hostname": "*.scheduler.argws.com.br",
+            "target": "proxy.scheduler.argws.com.br",
             "record_type": settings.cloudflare_temporary_record_type,
             "proxied": False,
         }
     ]
+
+
+@pytest.mark.asyncio
+async def test_wildcard_mode_reconciles_existing_specific_record_to_dns_only(monkeypatch) -> None:
+    monkeypatch.setattr(settings, "tenant_default_domain_root", "scheduler.argws.com.br")
+    monkeypatch.setattr(settings, "cloudflare_managed_wildcard_dns", True)
+    monkeypatch.setattr(
+        settings,
+        "cloudflare_managed_wildcard_target",
+        "proxy.scheduler.argws.com.br",
+    )
+
+    class FakeSession:
+        pass
+
+    service = DomainProvisioningService(FakeSession())  # type: ignore[arg-type]
+    domain = SimpleNamespace(
+        hostname="legacy.scheduler.argws.com.br",
+        is_temporary=True,
+        status="ACTIVE",
+        validation={},
+    )
+    dns_calls: list[tuple[str, bool]] = []
+
+    async def fake_dns_record(
+        hostname: str,
+        _target: str,
+        *,
+        record_type: str,
+        proxied: bool,
+    ) -> dict[str, object]:
+        assert record_type == settings.cloudflare_temporary_record_type
+        dns_calls.append((hostname, proxied))
+        return {"success": True, "result": {"name": hostname, "proxied": proxied}}
+
+    async def fake_list_dns_records(
+        hostname: str,
+        _record_type: str | None = None,
+    ) -> dict[str, object]:
+        assert hostname == "legacy.scheduler.argws.com.br"
+        return {
+            "success": True,
+            "result": [
+                {
+                    "id": "legacy-record",
+                    "name": hostname,
+                    "type": "CNAME",
+                    "proxied": True,
+                    "content": "proxy.scheduler.argws.com.br",
+                }
+            ],
+        }
+
+    monkeypatch.setattr(service.cloudflare, "ensure_dns_record", fake_dns_record)
+    monkeypatch.setattr(service.cloudflare, "list_dns_records", fake_list_dns_records)
+
+    await service._ensure_managed_domain_dns(domain)
+
+    assert dns_calls == [
+        ("*.scheduler.argws.com.br", False),
+        ("legacy.scheduler.argws.com.br", False),
+    ]
+    assert domain.validation["dns_mode"] == "wildcard"
