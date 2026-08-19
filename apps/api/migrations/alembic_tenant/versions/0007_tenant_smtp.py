@@ -34,8 +34,6 @@ def upgrade() -> None:
     op.execute(
         """
         insert into notification_templates(key, channel, body, active) values
-          ('appointment_rescheduled', 'whatsapp',
-           'Olá, {{customer_name}}! Seu atendimento de {{service_name}} foi reagendado para {{starts_at_br}}. Confirme ou cancele pelo link: {{confirmation_url}}', true),
           ('appointment_confirmation_request_email', 'email',
            'Olá, {{customer_name}}! Seu atendimento de {{service_name}} com {{professional_name}} está reservado para {{starts_at_br}}. Confirme ou cancele pelo link: {{confirmation_url}}', true),
           ('appointment_confirmed_email', 'email',
@@ -56,7 +54,6 @@ def upgrade() -> None:
 def downgrade() -> None:
     op.execute(
         "delete from notification_templates where key in ("
-        "'appointment_rescheduled',"
         "'appointment_confirmation_request_email',"
         "'appointment_confirmed_email',"
         "'appointment_cancelled_email',"
