@@ -84,14 +84,17 @@ jobs:
           RABBITMQ_PASSWORD: ci-rabbitmq-password
           S3_ACCESS_KEY: scheduler
           S3_SECRET_KEY: ci-minio-secret-key
+          CLOUDFLARE_API_TOKEN: ci-cloudflare-token
+          ACME_EMAIL: ci-acme@example.com
         run: |
           docker compose -f deployments/cloudpanel/compose.yaml config --quiet
           docker compose -f deployments/cloudpanel/compose.argws.yaml config --quiet
-      - name: Validate CloudPanel ACME scripts
+      - name: Validate wildcard ACME and CloudPanel sync scripts
         shell: bash
         run: |
-          bash -n deployments/cloudpanel/scripts/install-local-acme-cloudpanel.sh
           bash -n deployments/cloudpanel/scripts/cloudpanel-cert-deploy.sh
+          bash -n deployments/cloudpanel/scripts/cloudpanel-cert-sync.sh
+          bash -n deployments/cloudpanel/scripts/install-cloudpanel-cert-sync.sh
           sh -n deployments/cloudpanel/scripts/acme-dns01-cloudflare.sh
       - name: Docker build API fallback image
         run: docker build -t scheduler-pro-api:ci .
