@@ -63,11 +63,20 @@ class NotificationService:
         return default if value is None else value
 
     async def _timezone(self) -> ZoneInfo:
-        name = str(await self._setting("timezone", "America/Bahia") or "America/Bahia")
+        context_timezone = str(
+            self.session.info.get("tenant_timezone") or "America/Bahia"
+        )
+        name = str(
+            await self._setting("timezone", context_timezone)
+            or context_timezone
+        )
         try:
             return ZoneInfo(name)
         except ZoneInfoNotFoundError:
-            return ZoneInfo("America/Bahia")
+            try:
+                return ZoneInfo(context_timezone)
+            except ZoneInfoNotFoundError:
+                return ZoneInfo("America/Bahia")
 
     async def _template_body(self, template_key: str, channel: str) -> str:
         body = await self.session.scalar(
