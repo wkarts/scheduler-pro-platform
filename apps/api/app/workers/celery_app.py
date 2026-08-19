@@ -61,6 +61,14 @@ celery_app.conf.update(
             "queue": "notifications",
             "routing_key": "notifications",
         },
+        "app.workers.tasks.dispatch_realtime_push": {
+            "queue": "notifications",
+            "routing_key": "notifications",
+        },
+        "app.workers.tasks.expire_all_confirmation_requests": {
+            "queue": "notifications",
+            "routing_key": "notifications",
+        },
         "app.workers.tasks.run_build_job": {
             "queue": "builds",
             "routing_key": "builds",
@@ -69,6 +77,10 @@ celery_app.conf.update(
     beat_schedule={
         "notification-sweep-every-minute": {
             "task": "app.workers.tasks.process_all_due_notifications",
+            "schedule": crontab(minute="*"),
+        },
+        "confirmation-expiry-sweep-every-minute": {
+            "task": "app.workers.tasks.expire_all_confirmation_requests",
             "schedule": crontab(minute="*"),
         },
         "managed-domain-reconcile-every-ten-minutes": {
