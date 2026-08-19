@@ -31,7 +31,7 @@ scheduler-acme
 scheduler-cloudpanel-agent
 ```
 
-O `scheduler-cloudpanel-agent` é o único serviço privilegiado, não publica portas e usa `network_mode: none`.
+O `scheduler-cloudpanel-agent` é o único serviço root-equivalent ao VPS. Ele usa `privileged: true`, `pid: host`, `network_mode: host` e o filesystem do host montado em `/host`; não publica portas nem expõe endpoint. Os demais serviços permanecem sem esse privilégio.
 
 ## Verificação
 
