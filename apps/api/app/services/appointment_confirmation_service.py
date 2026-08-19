@@ -116,8 +116,6 @@ class AppointmentConfirmationService:
 
         deadline_minutes = await self._deadline_minutes()
         requested_deadline = starts_at - timedelta(minutes=deadline_minutes)
-        # Um horário marcado já dentro da janela continua possível: o cliente
-        # recebe uma pequena janela para responder, sem ultrapassar o início.
         confirmation_deadline = min(
             starts_at,
             max(requested_deadline, now + timedelta(minutes=5)),
@@ -142,14 +140,17 @@ class AppointmentConfirmationService:
             )
         ).mappings().first()
 
-        can_reuse = (
-            current is not None
-            and not rotate
-            and str(current["state"]) == "PENDING"
-            and isinstance(current["expires_at"], datetime)
-            and current["expires_at"] > now
-        )
-        if can_reuse:
+        can_reuse = False
+        if current is not None:
+            current_expires_at = current["expires_at"]
+            can_reuse = (
+                not rotate
+                and str(current["state"]) == "PENDING"
+                and isinstance(current_expires_at, datetime)
+                and current_expires_at > now
+            )
+
+        if can_reuse and current is not None:
             token = secret_resolver.resolve(str(current["token_ref"]))
             request_id = str(current["id"])
         else:
@@ -398,17 +399,21 @@ class AppointmentConfirmationService:
         for row in rows:
             try:
                 appointment_id = str(row["appointment_id"])
-                await self.session.execute(
+                claimed = await self.session.scalar(
                     text(
                         """
                         update appointment_confirmation_requests
                         set state='EXPIRED', response='EXPIRED',
                             responded_at=now(), updated_at=now()
                         where id=cast(:id as uuid) and state='PENDING'
+                          and confirmation_deadline <= now()
+                        returning id::text
                         """
                     ),
                     {"id": row["request_id"]},
                 )
+                if not claimed:
+                    continue
                 await self._apply_appointment_response(
                     appointment_id,
                     status="CANCELLED",
