@@ -43,8 +43,8 @@ issue_certificate() {
 }
 
 # Primeira emissão ou atualização do order. Se o certificado já existir e não
-# precisar ser reemitido, acme.sh pode retornar um estado de no-op; nesse caso
-# executamos renew sem --force para respeitar rate limits do Let's Encrypt.
+# precisar ser reemitido, executamos a renovação normal para respeitar os rate
+# limits do Let's Encrypt; nenhuma renovação forçada é usada no fluxo periódico.
 if ! issue_certificate; then
   acme.sh --renew -d "$DOMAIN" --ecc --server "$SERVER"
 fi
