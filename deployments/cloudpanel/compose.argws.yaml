@@ -51,6 +51,8 @@ x-api-env: &api-env
   CLOUDFLARE_TEMPORARY_RECORD_TYPE: ${CLOUDFLARE_TEMPORARY_RECORD_TYPE:-CNAME}
   CLOUDFLARE_TEMPORARY_RECORD_TARGET: ${CLOUDFLARE_TEMPORARY_RECORD_TARGET:-proxy.scheduler.argws.com.br}
   CLOUDFLARE_TEMPORARY_RECORD_PROXIED: ${CLOUDFLARE_TEMPORARY_RECORD_PROXIED:-false}
+  CLOUDFLARE_MANAGED_WILDCARD_DNS: ${CLOUDFLARE_MANAGED_WILDCARD_DNS:-true}
+  CLOUDFLARE_MANAGED_WILDCARD_TARGET: ${CLOUDFLARE_MANAGED_WILDCARD_TARGET:-proxy.scheduler.argws.com.br}
   TLS_PROVISIONING_MODE: ${TLS_PROVISIONING_MODE:-local_acme}
   LOCAL_ACME_DOMAIN: ${LOCAL_ACME_DOMAIN:-scheduler.argws.com.br}
   LOCAL_ACME_CERT_DIR: ${LOCAL_ACME_CERT_DIR:-/run/scheduler-pro-certs}
@@ -76,7 +78,27 @@ services:
     restart: "no"
     user: "0:0"
     volumes: ["${SCHEDULER_PRO_DATA_ROOT:-./scheduler-pro-data}:/data"]
-    command: ["/bin/sh", "-ec", "mkdir -p /data/postgres /data/redis /data/rabbitmq /data/minio /data/backups /data/celery /data/certs && chmod 0777 /data/postgres /data/redis /data/rabbitmq /data/minio /data/celery && chmod 0755 /data/certs"]
+    command: ["/bin/sh", "-ec", "mkdir -p /data/postgres /data/redis /data/rabbitmq /data/minio /data/backups /data/celery /data/certs /data/acme && chmod 0777 /data/postgres /data/redis /data/rabbitmq /data/minio /data/celery && chmod 0755 /data/certs /data/acme"]
+
+  # Emissor/renovador wildcard. O plugin dns_cf recebe o token Cloudflare,
+  # cria o TXT _acme-challenge durante o order DNS-01 e o remove após validar.
+  # Não abre 80/443 e não disputa portas com o CloudPanel.
+  scheduler-acme:
+    image: ${ACME_IMAGE:-neilpang/acme.sh:3.1.0}
+    restart: unless-stopped
+    depends_on:
+      scheduler-storage-init: {condition: service_completed_successfully}
+    environment:
+      CF_Token: ${CLOUDFLARE_API_TOKEN:?CLOUDFLARE_API_TOKEN obrigatória para ACME DNS-01}
+      ACME_EMAIL: ${ACME_EMAIL:?ACME_EMAIL obrigatória}
+      ACME_DOMAIN: ${ACME_DOMAIN:-scheduler.argws.com.br}
+      ACME_STAGING: ${ACME_STAGING:-false}
+      ACME_DNS_SLEEP: ${ACME_DNS_SLEEP:-20}
+    volumes:
+      - ${SCHEDULER_PRO_DATA_ROOT:-./scheduler-pro-data}/acme:/acme.sh
+      - ${SCHEDULER_PRO_DATA_ROOT:-./scheduler-pro-data}/certs:/certs
+      - ./scripts/acme-dns01-cloudflare.sh:/opt/scheduler-pro/acme-dns01-cloudflare.sh:ro
+    command: ["/bin/sh", "/opt/scheduler-pro/acme-dns01-cloudflare.sh"]
 
   scheduler-postgres:
     image: ${POSTGRES_IMAGE:-postgres:17-alpine}
@@ -140,7 +162,7 @@ services:
     image: *api-image
     pull_policy: always
     restart: unless-stopped
-    user: "0:0"
+    user: 0:0
     security_opt: ["no-new-privileges:true"]
     environment:
       APP_ENV: ${APP_ENV:-production}
