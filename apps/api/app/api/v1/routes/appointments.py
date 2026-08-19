@@ -12,6 +12,8 @@ from app.core.responses import success
 from app.core.tenant_context import TenantContext
 from app.services.appointment_service import AppointmentService
 from app.services.notification_service import NotificationService
+from app.services.realtime_service import RealtimeEventService
+from app.workers.celery_app import celery_app
 
 router = APIRouter()
 
@@ -65,6 +67,30 @@ def _public_base_url(context: TenantContext) -> str:
     return f"{scheme}://{context.hostname}"
 
 
+async def _publish_realtime(
+    context: TenantContext,
+    session: AsyncSession,
+    appointment_id: str,
+    event_type: str,
+    *,
+    actor: str = "tenant-operator",
+    extra: dict[str, Any] | None = None,
+) -> None:
+    event = await RealtimeEventService(session).emit_appointment(
+        appointment_id,
+        event_type,
+        actor=actor,
+        extra=extra,
+    )
+    event_id = str(event.get("id") or "") if event else ""
+    if event_id:
+        celery_app.send_task(
+            "app.workers.tasks.dispatch_realtime_push",
+            args=[context.tenant_id, event_id],
+            queue="notifications",
+        )
+
+
 @router.get("")
 async def list_appointments(
     day: date | None = Query(default=None),
@@ -92,6 +118,12 @@ async def create_appointment(
         session,
         public_base_url=_public_base_url(context),
     ).create(payload.model_dump())
+    await _publish_realtime(
+        context,
+        session,
+        str(appointment.id),
+        "appointment.created",
+    )
     return success({"id": appointment.id, "status": appointment.status})
 
 
@@ -220,13 +252,6 @@ async def create_quick_appointment(
     context: TenantContext = Depends(get_tenant_context),
     session: AsyncSession = Depends(get_tenant_session),
 ) -> dict[str, Any]:
-    """Agenda sem obrigar o tenant a manter cadastros auxiliares.
-
-    Quando cliente/serviço/profissional não são informados por ID, registros
-    mínimos são criados/reutilizados internamente. Assim a agenda continua sendo
-    o produto principal mesmo quando os módulos de cadastro estiverem bloqueados.
-    """
-
     customer_id = await _quick_customer(session, payload)
     service_id, duration = await _quick_service(session, payload)
     professional_id = await _quick_professional(session, payload)
@@ -246,6 +271,13 @@ async def create_quick_appointment(
             "ends_at": ends_at,
             "source": payload.source,
         }
+    )
+    await _publish_realtime(
+        context,
+        session,
+        str(appointment.id),
+        "appointment.created",
+        extra={"quick": True},
     )
     return success(
         {
@@ -348,6 +380,15 @@ async def update_status(
         payload.status,
         payload.reason,
     )
+    event_type = {
+        "CONFIRMED": "appointment.confirmed",
+        "CANCELLED": "appointment.cancelled",
+        "CHECKED_IN": "appointment.checked_in",
+        "IN_PROGRESS": "appointment.in_progress",
+        "COMPLETED": "appointment.completed",
+        "NO_SHOW": "appointment.no_show",
+    }.get(payload.status.upper(), "appointment.updated")
+    await _publish_realtime(context, session, appointment_id, event_type)
     return success(data)
 
 
@@ -413,32 +454,54 @@ async def reschedule_appointment(
         rotate_confirmation=True,
     )
     await session.commit()
-    return success(await service.get(appointment_id))
+    data = await service.get(appointment_id)
+    await _publish_realtime(
+        context,
+        session,
+        appointment_id,
+        "appointment.rescheduled",
+    )
+    return success(data)
 
 
 async def _action(
     appointment_id: str,
     status: AppointmentStatus,
     reason: str,
+    context: TenantContext,
     session: AsyncSession,
 ) -> dict[str, Any]:
-    data = await AppointmentService(session).update_status(
+    data = await AppointmentService(
+        session,
+        public_base_url=_public_base_url(context),
+    ).update_status(
         appointment_id,
         status.value,
         reason,
     )
+    event_type = {
+        AppointmentStatus.confirmed: "appointment.confirmed",
+        AppointmentStatus.checked_in: "appointment.checked_in",
+        AppointmentStatus.in_progress: "appointment.in_progress",
+        AppointmentStatus.completed: "appointment.completed",
+        AppointmentStatus.no_show: "appointment.no_show",
+        AppointmentStatus.cancelled: "appointment.cancelled",
+    }.get(status, "appointment.updated")
+    await _publish_realtime(context, session, appointment_id, event_type)
     return success(data)
 
 
 @router.post("/{appointment_id}/confirm")
 async def confirm_appointment(
     appointment_id: str,
+    context: TenantContext = Depends(get_tenant_context),
     session: AsyncSession = Depends(get_tenant_session),
 ) -> dict[str, Any]:
     return await _action(
         appointment_id,
         AppointmentStatus.confirmed,
         "Confirmado pelo operador",
+        context,
         session,
     )
 
@@ -446,12 +509,14 @@ async def confirm_appointment(
 @router.post("/{appointment_id}/check-in")
 async def check_in_appointment(
     appointment_id: str,
+    context: TenantContext = Depends(get_tenant_context),
     session: AsyncSession = Depends(get_tenant_session),
 ) -> dict[str, Any]:
     return await _action(
         appointment_id,
         AppointmentStatus.checked_in,
         "Check-in realizado",
+        context,
         session,
     )
 
@@ -459,12 +524,14 @@ async def check_in_appointment(
 @router.post("/{appointment_id}/start")
 async def start_appointment(
     appointment_id: str,
+    context: TenantContext = Depends(get_tenant_context),
     session: AsyncSession = Depends(get_tenant_session),
 ) -> dict[str, Any]:
     return await _action(
         appointment_id,
         AppointmentStatus.in_progress,
         "Atendimento iniciado",
+        context,
         session,
     )
 
@@ -472,12 +539,14 @@ async def start_appointment(
 @router.post("/{appointment_id}/complete")
 async def complete_appointment(
     appointment_id: str,
+    context: TenantContext = Depends(get_tenant_context),
     session: AsyncSession = Depends(get_tenant_session),
 ) -> dict[str, Any]:
     return await _action(
         appointment_id,
         AppointmentStatus.completed,
         "Atendimento concluído",
+        context,
         session,
     )
 
@@ -485,12 +554,14 @@ async def complete_appointment(
 @router.post("/{appointment_id}/no-show")
 async def no_show_appointment(
     appointment_id: str,
+    context: TenantContext = Depends(get_tenant_context),
     session: AsyncSession = Depends(get_tenant_session),
 ) -> dict[str, Any]:
     return await _action(
         appointment_id,
         AppointmentStatus.no_show,
         "Cliente não compareceu",
+        context,
         session,
     )
 
@@ -499,8 +570,17 @@ async def no_show_appointment(
 async def cancel_appointment(
     appointment_id: str,
     payload: AppointmentCancel,
+    context: TenantContext = Depends(get_tenant_context),
     session: AsyncSession = Depends(get_tenant_session),
 ) -> dict[str, Any]:
-    return success(
-        await AppointmentService(session).cancel(appointment_id, payload.reason)
+    data = await AppointmentService(
+        session,
+        public_base_url=_public_base_url(context),
+    ).cancel(appointment_id, payload.reason)
+    await _publish_realtime(
+        context,
+        session,
+        appointment_id,
+        "appointment.cancelled",
     )
+    return success(data)
