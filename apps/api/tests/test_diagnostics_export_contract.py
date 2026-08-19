@@ -35,12 +35,11 @@ def test_admin_has_diagnostics_download_and_frontend_telemetry() -> None:
     assert "console_error" in telemetry
 
 
-def test_platform_migration_adds_domain_created_at_for_reconciler() -> None:
-    migration = Path(
-        "migrations/alembic_platform/versions/0009_domain_created_at.py"
-    ).resolve().read_text(encoding="utf-8")
+def test_domain_reconciler_does_not_query_missing_created_at_column() -> None:
+    worker = Path("app/workers/tasks.py").resolve().read_text(encoding="utf-8")
+    query_start = worker.index("select id::text\n                        from domains")
+    query_end = worker.index('"""', query_start)
+    query = worker[query_start:query_end]
 
-    assert 'revision = "platform_0009"' in migration
-    assert 'down_revision = "platform_0008"' in migration
-    assert "alter table domains" in migration
-    assert "created_at timestamptz" in migration
+    assert "order by id asc" in query
+    assert "created_at" not in query
