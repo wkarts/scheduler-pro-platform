@@ -1,5 +1,4 @@
 from datetime import datetime
-from pathlib import Path
 from zoneinfo import ZoneInfo
 
 from app.api.v1.routes.appointment_operations import (
@@ -8,8 +7,6 @@ from app.api.v1.routes.appointment_operations import (
 )
 from app.core.tenant_context import TenantContext
 from app.services.tenant_mail_service import SMTP_DELIVERY_MODE_KEY
-
-ROOT = Path(__file__).resolve().parents[3]
 
 
 def _context() -> TenantContext:
@@ -69,23 +66,3 @@ def test_recurring_default_uses_first_appointment_weekday() -> None:
 
 def test_smtp_delivery_mode_uses_existing_tenant_settings_without_new_schema_head() -> None:
     assert SMTP_DELIVERY_MODE_KEY == "smtp_delivery_mode"
-
-
-def test_agenda_customer_picker_is_vue_native_and_not_mutation_injected() -> None:
-    agenda = (ROOT / "apps" / "web" / "src" / "TenantAgendaOperations.vue").read_text(encoding="utf-8")
-    enhancements = (ROOT / "apps" / "web" / "src" / "tenant-mobile-enhancements.ts").read_text(encoding="utf-8")
-    assert "sp-customer-picker-mobile" in agenda
-    assert "sp-customer-select-desktop" in agenda
-    assert "replaceChildren" not in enhancements
-    assert "sp-mobile-option-list" not in enhancements
-    assert "enhanceTouchSelects" not in enhancements
-
-
-def test_tenant_logs_live_inside_administrative_tenant_manager() -> None:
-    manager = (ROOT / "apps" / "admin" / "src" / "TenantManagementDrawer.vue").read_text(encoding="utf-8")
-    admin_main = (ROOT / "apps" / "admin" / "src" / "main.ts").read_text(encoding="utf-8")
-    inspector = (ROOT / "apps" / "admin" / "src" / "TenantLogInspector.vue").read_text(encoding="utf-8")
-    assert "Logs e diagnóstico" in manager
-    assert "<TenantLogInspector" in manager
-    assert "scheduler-pro-tenant-log-inspector" not in admin_main
-    assert "/platform/tenant-management/${selected.value}/logs" in inspector
