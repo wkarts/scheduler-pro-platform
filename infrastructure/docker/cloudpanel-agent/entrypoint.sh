@@ -44,60 +44,6 @@ find_vhost() {
   return 1
 }
 
-ensure_wildcard_vhost() {
-  local vhost="$1"
-  local result backup
-  result="$(python3 - "$vhost" "$SITE_DOMAIN" "$WILDCARD_DOMAIN" <<'PY'
-from pathlib import Path
-import sys
-
-path = Path(sys.argv[1])
-site = sys.argv[2]
-wildcard = sys.argv[3]
-lines = path.read_text(encoding="utf-8").splitlines(keepends=True)
-changed = False
-matched = False
-out: list[str] = []
-
-for line in lines:
-    stripped = line.strip()
-    if stripped.startswith("server_name "):
-        before_semicolon = stripped.split(";", 1)[0]
-        tokens = before_semicolon.split()[1:]
-        if site in tokens:
-            matched = True
-            if wildcard not in tokens:
-                semicolon = line.rfind(";")
-                if semicolon >= 0:
-                    line = line[:semicolon].rstrip() + f" {wildcard};" + line[semicolon + 1:]
-                    changed = True
-    out.append(line)
-
-if not matched:
-    print("missing")
-    raise SystemExit(0)
-if changed:
-    path.write_text("".join(out), encoding="utf-8")
-    print("changed")
-else:
-    print("ready")
-PY
-)"
-
-  if [[ "$result" == "missing" ]]; then
-    return 2
-  fi
-  if [[ "$result" == "ready" ]]; then
-    return 0
-  fi
-
-  backup="${vhost}.scheduler-pro-agent.$(date +%Y%m%d%H%M%S).bak"
-  # A alteração já ocorreu; a cópia abaixo preserva o estado pós-alteração apenas
-  # para auditoria. O original pré-alteração é recriado a partir do arquivo .pre.
-  # Para garantir rollback real, fazemos a transação com cópia temporária abaixo.
-  return 3
-}
-
 reconcile_vhost() {
   local vhost="$1"
   local pre result
@@ -119,8 +65,7 @@ out: list[str] = []
 for line in lines:
     stripped = line.strip()
     if stripped.startswith("server_name "):
-        before_semicolon = stripped.split(";", 1)[0]
-        tokens = before_semicolon.split()[1:]
+        tokens = stripped.split(";", 1)[0].split()[1:]
         if site in tokens:
             matched = True
             if wildcard not in tokens:
@@ -152,6 +97,7 @@ PY
       log "VHost revertido: nginx -t falhou após adicionar $WILDCARD_DOMAIN"
       return 1
     fi
+
     local backup="${vhost}.scheduler-pro-agent.$(date +%Y%m%d%H%M%S).bak"
     mv -f "$pre" "$backup"
     find "$(dirname "$vhost")" -maxdepth 1 -type f -name "$(basename "$vhost").scheduler-pro-agent.*.bak" -printf '%T@ %p\n' 2>/dev/null \
@@ -161,8 +107,6 @@ PY
   else
     rm -f "$pre"
   fi
-
-  return 0
 }
 
 certificate_ready() {
@@ -223,7 +167,6 @@ install_certificate() {
 
 mkdir -p "$STATE_DIR"
 chmod 0700 "$STATE_DIR"
-
 log "Agente iniciado; aguardando o Reverse Proxy $SITE_DOMAIN criado no CloudPanel"
 
 while :; do
