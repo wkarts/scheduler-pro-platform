@@ -1,5 +1,6 @@
 import asyncio
 import json
+from collections.abc import AsyncIterator
 from typing import Any
 
 from fastapi import APIRouter, Depends, Query, Request
@@ -28,7 +29,7 @@ class PushKeys(BaseModel):
 class PushSubscriptionPayload(BaseModel):
     endpoint: str = Field(min_length=20, max_length=4096)
     keys: PushKeys
-    expirationTime: int | None = None
+    expiration_time: int | None = Field(default=None, alias="expirationTime")
     device_label: str | None = Field(default=None, max_length=160)
 
 
@@ -50,12 +51,16 @@ async def event_stream(
 ) -> StreamingResponse:
     service = RealtimeEventService(session)
 
-    async def generate():
+    async def generate() -> AsyncIterator[str]:
         cursor = after
         while True:
             if await request.is_disconnected():
                 break
             rows = await service.list_after(cursor, limit=100)
+            # SELECT abre transação no AsyncSession. Fechar a transação após cada
+            # leitura evita prender uma conexão PostgreSQL durante toda a vida do
+            # SSE; a próxima iteração adquire conexão somente quando necessário.
+            await session.rollback()
             if rows:
                 for row in rows:
                     cursor = int(row["sequence"])
@@ -106,7 +111,7 @@ async def subscribe_push(
         endpoint=payload.endpoint,
         p256dh=payload.keys.p256dh,
         auth=payload.keys.auth,
-        expiration_time=payload.expirationTime,
+        expiration_time=payload.expiration_time,
         user_agent=request.headers.get("user-agent"),
         device_label=payload.device_label,
     )
