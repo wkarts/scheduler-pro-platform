@@ -33,12 +33,17 @@ class AppointmentService:
         session: AsyncSession,
         *,
         public_base_url: str | None = None,
-        timezone: str = "America/Bahia",
+        timezone: str | None = None,
     ) -> None:
         self.session = session
         self.public_base_url = public_base_url
+        timezone_name = str(
+            timezone
+            or session.info.get("tenant_timezone")
+            or "America/Bahia"
+        )
         try:
-            self.timezone = ZoneInfo(timezone)
+            self.timezone = ZoneInfo(timezone_name)
         except ZoneInfoNotFoundError:
             self.timezone = ZoneInfo("America/Bahia")
 
@@ -68,8 +73,6 @@ class AppointmentService:
             return True
         local_start = self._aware(starts_at).astimezone(self.timezone)
         local_end = self._aware(ends_at).astimezone(self.timezone)
-        # Uma faixa de atendimento não pode atravessar o dia local e ainda ser
-        # considerada dentro de uma única regra de expediente.
         if local_start.date() != local_end.date():
             return False
         dow = int(local_start.strftime("%w"))
@@ -329,7 +332,6 @@ class AppointmentService:
             f"appointment_{status.lower()}",
             reason=reason,
         )
-        # O link público não permanece pendente quando o operador fecha o fluxo.
         if status == AppointmentStatus.confirmed.value:
             await self.session.execute(
                 text(
