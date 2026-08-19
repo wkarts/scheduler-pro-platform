@@ -25,6 +25,7 @@ const visible = ref(window.location.hash === '#builds')
 const catalog = ref<Catalog | null>(null)
 const loading = ref(false)
 const error = ref('')
+const currentHostname = window.location.hostname
 const token = () => localStorage.getItem('scheduler_pro_access_token') || ''
 const desktopArtifacts = computed(() => catalog.value?.artifacts.filter((item) => item.target.startsWith('desktop-')) || [])
 const mobileArtifacts = computed(() => catalog.value?.artifacts.filter((item) => ['android', 'ios'].includes(item.target)) || [])
@@ -68,7 +69,7 @@ onUnmounted(() => { window.removeEventListener('hashchange', syncHash); document
   <Teleport v-if="visible" to=".tenant-console .main-content">
     <section class="sp-universal-downloads">
       <header>
-        <div><span>Distribuição universal</span><h2>Aplicativos Scheduler Pro</h2><p>Os mesmos binários atendem todos os tenants. No primeiro uso, informe a URL desta instância: <strong>{{ catalog?.tenant.hostname || window.location.hostname }}</strong>.</p></div>
+        <div><span>Distribuição universal</span><h2>Aplicativos Scheduler Pro</h2><p>Os mesmos binários atendem todos os tenants. No primeiro uso, informe a URL desta instância: <strong>{{ catalog?.tenant.hostname || currentHostname }}</strong>.</p></div>
         <button type="button" :disabled="loading" @click="load"><RefreshCw :size="16" :class="{spin:loading}"/> Atualizar</button>
       </header>
       <p v-if="error" class="sp-download-error">{{ error }}</p>
