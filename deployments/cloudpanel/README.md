@@ -1,8 +1,8 @@
 # Scheduler Pro no CloudPanel
 
-Este diretório documenta o deployment ARGWS com **um único Reverse Proxy**, **um único DNS wildcard** e **um único certificado wildcard** para todos os tenants gerenciados.
+Este deployment foi desenhado para que a única ação manual no CloudPanel seja criar um Reverse Proxy para a stack Docker.
 
-A arquitetura canônica é:
+## Arquitetura
 
 ```text
 Cloudflare DNS
@@ -11,7 +11,6 @@ Cloudflare DNS
           |
           v
 CloudPanel / NGINX :443
-  server_name scheduler.argws.com.br *.scheduler.argws.com.br
           |
           v
 http://127.0.0.1:18080
@@ -19,188 +18,141 @@ http://127.0.0.1:18080
           v
 Scheduler Pro Docker
   scheduler-proxy -> API / Web / Admin
-          |
-          v
-TenantResolver pelo header Host
 ```
 
-Não crie site, Reverse Proxy, DNS ou certificado novo por tenant.
+A stack inclui dois serviços auxiliares:
 
-## 1. Preparar o `.env`
+- `scheduler-acme`: cria/remover o TXT `_acme-challenge` pela API Cloudflare, emite `scheduler.argws.com.br` + `*.scheduler.argws.com.br` e renova o certificado automaticamente;
+- `scheduler-cloudpanel-agent`: único container privilegiado. Não publica portas, não possui rede e usa o host montado somente para localizar o VHost do CloudPanel, adicionar o wildcard, validar `nginx -t` e instalar/renovar o certificado via `clpctl`.
 
-```bash
-cd /caminho/do/stack/deployments/cloudpanel
-cp .env.example .env
-```
+## Única etapa manual
 
-Configure senhas, SMTP, Cloudflare e os valores do ambiente. Para DNS/TLS wildcard confirme:
-
-```env
-PUBLIC_PLATFORM_DOMAIN=scheduler.argws.com.br
-TENANT_DEFAULT_DOMAIN_ROOT=scheduler.argws.com.br
-
-CLOUDFLARE_API_TOKEN=TOKEN_COM_ZONE_READ_E_DNS_EDIT
-CLOUDFLARE_ZONE_ID=
-CLOUDFLARE_ZONE_NAME=argws.com.br
-CLOUDFLARE_TEMPORARY_RECORD_TYPE=CNAME
-CLOUDFLARE_TEMPORARY_RECORD_TARGET=proxy.scheduler.argws.com.br
-CLOUDFLARE_TEMPORARY_RECORD_PROXIED=false
-CLOUDFLARE_MANAGED_WILDCARD_DNS=true
-CLOUDFLARE_MANAGED_WILDCARD_TARGET=proxy.scheduler.argws.com.br
-
-TLS_PROVISIONING_MODE=local_acme
-LOCAL_ACME_DOMAIN=scheduler.argws.com.br
-LOCAL_ACME_CERT_DIR=/run/scheduler-pro-certs
-ACME_EMAIL=admin@scheduler.argws.com.br
-ACME_DOMAIN=scheduler.argws.com.br
-ACME_STAGING=false
-ACME_DNS_SLEEP=20
-```
-
-O token Cloudflare deste fluxo precisa de `Zone:Read` e `DNS:Edit` na zone `argws.com.br`. Cloudflare SSL for SaaS/Custom Hostnames não é necessário para `*.scheduler.argws.com.br`.
-
-## 2. Subir a stack ARGWS
-
-```bash
-docker compose --env-file .env -f compose.argws.yaml pull
-docker compose --env-file .env -f compose.argws.yaml up -d --remove-orphans
-```
-
-O serviço `scheduler-acme` sobe junto com a stack. Ele **não abre 80/443** e não concorre com o CloudPanel.
-
-### O que o `scheduler-acme` faz automaticamente
-
-1. abre um order ACME v2 no Let's Encrypt para:
-   - `scheduler.argws.com.br`;
-   - `*.scheduler.argws.com.br`;
-2. recebe do Let's Encrypt o token/challenge daquele order;
-3. usando `CLOUDFLARE_API_TOKEN`, cria temporariamente:
-
-   ```text
-   _acme-challenge.scheduler.argws.com.br TXT <challenge>
-   ```
-
-4. aguarda a propagação DNS;
-5. o Let's Encrypt valida o DNS-01;
-6. o TXT temporário é removido pelo plugin `dns_cf`;
-7. o bundle é instalado em `${SCHEDULER_PRO_DATA_ROOT}/certs`:
-   - `fullchain.pem`;
-   - `privkey.pem`;
-   - `cert.pem`;
-   - `ca.pem`;
-8. o cron interno do `acme.sh` verifica as renovações periodicamente.
-
-**Não existe TXT ACME fixo para cadastrar manualmente.** O challenge muda a cada order/renovação e é criado/removido automaticamente.
-
-## 3. DNS wildcard dos tenants
-
-O backend reconcilia automaticamente:
-
-```text
-*.scheduler.argws.com.br CNAME proxy.scheduler.argws.com.br
-Proxy Cloudflare: OFF / Somente DNS
-```
-
-Esse wildcard resolve qualquer tenant novo sem criar um DNS individual:
-
-```text
-empresa-a.scheduler.argws.com.br
-empresa-b.scheduler.argws.com.br
-qualquer-slug.scheduler.argws.com.br
-```
-
-Para migração segura, se um tenant antigo ainda tiver um registro específico, o Scheduler Pro detecta esse registro e o reconcilia para `DNS-only`, pois um registro específico tem precedência sobre o wildcard.
-
-## 4. CloudPanel: configuração única
-
-No CloudPanel mantenha **um único site Reverse Proxy**:
+No CloudPanel crie um único Reverse Proxy:
 
 ```text
 Domínio: scheduler.argws.com.br
 Reverse Proxy URL: http://127.0.0.1:18080
 ```
 
-No VHost Editor use como referência:
+Pode criar o Reverse Proxy antes ou depois de subir a stack. O agente fica aguardando até o VHost aparecer.
 
-```text
-VHOST_WILDCARD_EXAMPLE.conf
-```
+**Não é necessário:**
 
-O ponto essencial é existir somente:
+- editar o VHost manualmente;
+- executar script no VPS;
+- instalar `acme.sh` no host;
+- criar cron no host;
+- importar certificado manualmente;
+- criar DNS, VHost ou certificado por tenant;
+- criar TXT ACME manualmente.
 
-```nginx
-server_name scheduler.argws.com.br *.scheduler.argws.com.br;
-```
-
-Não repita blocos `server {}` para `admin`, `api`, `proxy` ou tenants. O wildcard já cobre todos os subdomínios de um nível e o `Host` original é preservado até o Scheduler Pro.
-
-## 5. Instalação e renovação do certificado no CloudPanel
-
-Há uma limitação do CloudPanel atual: o fluxo Let's Encrypt da própria interface/CLI usa o mecanismo nativo de emissão para domínios apontados ao servidor, mas **não oferece DNS-01 wildcard nativo**. Portanto o wildcard é renovado pelo `scheduler-acme`, não pelo emissor nativo do CloudPanel.
-
-O CloudPanel continua sendo o terminador TLS e recebe automaticamente cada bundle renovado pelo CLI oficial `clpctl site:install:certificate`.
-
-Faça **uma única instalação** do sincronizador no host:
+## Subir a stack
 
 ```bash
-cd /caminho/do/stack/deployments/cloudpanel
-sudo bash scripts/install-cloudpanel-cert-sync.sh .env
+docker compose --env-file .env -f compose.argws.yaml pull
+docker compose --env-file .env -f compose.argws.yaml up -d --remove-orphans
 ```
 
-O instalador cria uma tarefa root em `/etc/cron.d/scheduler-pro-cloudpanel-cert-sync` que, a cada 5 minutos:
+No Dockge, use o mesmo `compose.argws.yaml` e `.env`.
 
-- verifica se `fullchain.pem + privkey.pem` mudaram;
-- se não mudaram, não faz nada;
-- se mudaram, executa `clpctl site:install:certificate`;
-- valida o VHost/NGINX pelo helper de deploy;
-- grava o hash sincronizado;
-- deixa log em `/var/log/scheduler-pro-cloudpanel-cert-sync.log`.
+## Cloudflare e DNS wildcard
 
-Assim a rotina fica:
+Configure no `.env`:
+
+```env
+CLOUDFLARE_API_TOKEN=TOKEN_COM_ZONE_READ_E_DNS_EDIT
+CLOUDFLARE_ZONE_NAME=argws.com.br
+CLOUDFLARE_TEMPORARY_RECORD_PROXIED=false
+CLOUDFLARE_MANAGED_WILDCARD_DNS=true
+CLOUDFLARE_MANAGED_WILDCARD_TARGET=proxy.scheduler.argws.com.br
+```
+
+O backend garante:
 
 ```text
-scheduler-acme Docker
-  -> Cloudflare TXT DNS-01
-  -> Let's Encrypt wildcard renovado
-  -> scheduler-pro-data/certs
-  -> sync detecta novo hash
-  -> clpctl instala no site scheduler.argws.com.br
-  -> CloudPanel/NGINX passa a servir o novo wildcard
+*.scheduler.argws.com.br CNAME proxy.scheduler.argws.com.br
+proxied=false
 ```
 
-O trabalho manual fica restrito a:
+Novos tenants são resolvidos pelo wildcard. Registros específicos legados são reconciliados para DNS-only quando existirem.
 
-1. criar/manter o Reverse Proxy principal no CloudPanel;
-2. colar uma vez o VHost wildcard;
-3. executar uma vez `install-cloudpanel-cert-sync.sh`.
+## ACME DNS-01 automático
 
-Novos tenants e futuras renovações não exigem novas ações no CloudPanel.
-
-## 6. Diagnóstico
-
-No Control Plane, **Integrações** mostra o estado `local_acme`, incluindo:
-
-- presença do `fullchain.pem`;
-- presença da chave privada sem expor seu conteúdo;
-- SANs do certificado;
-- expiração e dias restantes;
-- marcador de instalação no CloudPanel;
-- estado `READY`, `INCOMPLETE` ou `MISSING_CERTIFICATE`.
-
-Os logs históricos de `Cloudflare Custom Hostnames` permanecem para auditoria, mas os hostnames gerenciados `*.scheduler.argws.com.br` não devem voltar a chamar `/custom_hostnames` quando `TLS_PROVISIONING_MODE=local_acme`.
-
-## 7. Domínios próprios externos
-
-Um domínio como:
+O `scheduler-acme` usa o mesmo `CLOUDFLARE_API_TOKEN` da integração e solicita:
 
 ```text
-agenda.cliente.com.br
+scheduler.argws.com.br
+*.scheduler.argws.com.br
 ```
 
-não é coberto por `*.scheduler.argws.com.br`. Esse caso continua separado e precisa de provisionamento TLS próprio. O wildcard da plataforma cobre apenas um nível abaixo de `scheduler.argws.com.br`.
+O fluxo é automático:
 
-## 8. Recuperar provisionamento estagnado
+```text
+Let's Encrypt order
+  -> challenge DNS-01
+  -> dns_cf cria _acme-challenge.scheduler.argws.com.br TXT temporário
+  -> Let's Encrypt valida
+  -> dns_cf remove o TXT
+  -> bundle atualizado em scheduler-pro-data/certs
+```
 
-O provisionamento é idempotente por passo. Passos `completed` não são repetidos; somente passos ainda pendentes, em execução ou com falha são reenfileirados.
+O container verifica renovações periodicamente. Não há TXT ACME estático.
 
-No Control Plane, use **Provisionamento -> Reprocessar** no job existente. Banco, migrations, storage, DNS, administrador e demais passos já concluídos são preservados.
+## Automação do CloudPanel
+
+O `scheduler-cloudpanel-agent` aguarda o site `scheduler.argws.com.br` existir e então:
+
+1. localiza o VHost em `/etc/nginx/sites-enabled`;
+2. garante `server_name scheduler.argws.com.br *.scheduler.argws.com.br;`;
+3. faz backup antes da alteração;
+4. executa `nginx -t` e reverte se a validação falhar;
+5. detecta mudança do hash do certificado;
+6. chama `clpctl site:install:certificate` no host;
+7. valida e recarrega o NGINX;
+8. grava o marcador `last-cloudpanel-installed-at.txt` usado pelo diagnóstico da API.
+
+O agente é propositalmente isolado:
+
+```text
+privileged: true
+network_mode: none
+sem portas publicadas
+root filesystem read-only
+```
+
+Ele possui acesso de root ao host exclusivamente porque precisa executar o `clpctl` e reconciliar o VHost do NGINX. API, workers, banco, Redis, RabbitMQ e demais serviços continuam sem esse privilégio.
+
+## Variáveis principais
+
+```env
+ACME_EMAIL=admin@scheduler.argws.com.br
+ACME_DOMAIN=scheduler.argws.com.br
+ACME_STAGING=false
+ACME_DNS_SLEEP=20
+ACME_CHECK_INTERVAL_SECONDS=43200
+
+CLOUDPANEL_SITE_DOMAIN=scheduler.argws.com.br
+CLOUDPANEL_WILDCARD_DOMAIN=*.scheduler.argws.com.br
+CLOUDPANEL_SYNC_INTERVAL_SECONDS=60
+```
+
+## Resultado operacional
+
+Depois de criar o Reverse Proxy e subir a stack:
+
+```text
+Novo tenant
+  -> banco/migrations/admin/storage
+  -> hostname do tenant
+  -> DNS wildcard já resolve
+  -> certificado wildcard já cobre
+  -> VHost wildcard já aceita
+  -> Scheduler Pro resolve pelo Host
+  -> ACTIVE
+```
+
+Não existe ação CloudPanel por tenant e não existe renovação manual de certificado.
+
+## Domínios externos
+
+Um domínio como `agenda.cliente.com.br` não é coberto por `*.scheduler.argws.com.br`. Esse fluxo continua separado e exige TLS próprio.
