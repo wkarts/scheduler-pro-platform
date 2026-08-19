@@ -121,7 +121,7 @@ certificate_hash() {
 }
 
 install_certificate() {
-  local current previous
+  local current previous vhost_after
   current="$(certificate_hash)"
   previous="$(cat "$STATE_FILE" 2>/dev/null || true)"
 
@@ -144,6 +144,19 @@ install_certificate() {
       --certificate="$HOST_TMP_REL/cert.pem" \
       --certificateChain="$HOST_TMP_REL/ca.pem"; then
     log "clpctl recusou a instalação do certificado; nova tentativa em ${SYNC_INTERVAL}s"
+    rm -f "$HOST_TMP"/*.pem
+    return 1
+  fi
+
+  # CloudPanel pode regenerar partes do VHost ao instalar um certificado. Releia o
+  # arquivo e garanta o wildcard novamente antes de marcar a sincronização como concluída.
+  if ! vhost_after="$(find_vhost)"; then
+    log "VHost desapareceu após clpctl; certificado não será marcado como sincronizado"
+    rm -f "$HOST_TMP"/*.pem
+    return 1
+  fi
+  if ! reconcile_vhost "$vhost_after"; then
+    log "Não foi possível garantir o wildcard após clpctl; nova tentativa será feita"
     rm -f "$HOST_TMP"/*.pem
     return 1
   fi
