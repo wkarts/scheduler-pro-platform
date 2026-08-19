@@ -13,7 +13,8 @@ def test_argws_compose_starts_acme_and_cloudpanel_agent() -> None:
     assert "CLOUDFLARE_MANAGED_WILDCARD_DNS:" in compose
     assert "CLOUDFLARE_MANAGED_WILDCARD_TARGET:" in compose
     assert "privileged: true" in compose
-    assert "network_mode: none" in compose
+    assert "pid: host" in compose
+    assert "network_mode: host" in compose
     assert "- /:/host:rw" in compose
     assert "cloudpanel-agent:${APP_IMAGE_TAG:-latest}" in compose
     assert "acme:${APP_IMAGE_TAG:-latest}" in compose
@@ -41,11 +42,12 @@ def test_embedded_acme_entrypoint_uses_dns01_and_wildcard() -> None:
     assert "acme.sh --cron" in script
 
 
-def test_cloudpanel_agent_reconciles_vhost_and_certificate_without_network() -> None:
+def test_cloudpanel_agent_reconciles_vhost_and_certificate_on_host() -> None:
     script = Path(
         "../../infrastructure/docker/cloudpanel-agent/entrypoint.sh"
     ).resolve().read_text(encoding="utf-8")
 
+    assert "chroot" in script
     assert "clpctl site:install:certificate" in script
     assert "nginx -t" in script
     assert "WILDCARD_DOMAIN" in script
