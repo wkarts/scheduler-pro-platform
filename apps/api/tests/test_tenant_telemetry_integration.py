@@ -1,3 +1,4 @@
+import json
 from uuid import uuid4
 
 import asyncpg
@@ -7,6 +8,16 @@ import pytest
 from app.core.config import settings
 
 pytestmark = pytest.mark.integration
+
+
+def _json_object(value: object) -> dict[str, object]:
+    if isinstance(value, dict):
+        return value
+    if isinstance(value, str):
+        parsed = json.loads(value)
+        assert isinstance(parsed, dict)
+        return parsed
+    raise AssertionError(f"Valor JSON inesperado: {type(value).__name__}")
 
 
 async def test_tenant_browser_telemetry_is_persistent_and_visible_to_control_plane(
@@ -62,8 +73,9 @@ async def test_tenant_browser_telemetry_is_persistent_and_visible_to_control_pla
             marker,
         )
         assert platform_row is not None
-        assert platform_row["details"]["password"] == "[redacted]"
-        assert platform_row["details"]["safe"] == "visible"
+        platform_details = _json_object(platform_row["details"])
+        assert platform_details["password"] == "[redacted]"
+        assert platform_details["safe"] == "visible"
     finally:
         await platform.close()
 
@@ -80,7 +92,8 @@ async def test_tenant_browser_telemetry_is_persistent_and_visible_to_control_pla
             marker,
         )
         assert tenant_row is not None
-        assert tenant_row["details"]["password"] == "[redacted]"
+        tenant_details = _json_object(tenant_row["details"])
+        assert tenant_details["password"] == "[redacted]"
     finally:
         await tenant.close()
 
@@ -101,4 +114,7 @@ async def test_tenant_browser_telemetry_is_persistent_and_visible_to_control_pla
     assert diagnostics.status_code == 200, diagnostics.text
     rows = diagnostics.json()["data"]
     assert any(row["event"] == marker for row in rows)
-    assert {row.get("scope") for row in rows if row["event"] == marker} >= {"platform", "tenant"}
+    assert {row.get("scope") for row in rows if row["event"] == marker} >= {
+        "platform",
+        "tenant",
+    }
