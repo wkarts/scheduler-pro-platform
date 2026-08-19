@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { onMounted, onUnmounted, ref } from 'vue'
+import TenantBrandAssetUploader from './TenantBrandAssetUploader.vue'
 import TenantBrandedLogin from './TenantBrandedLogin.vue'
 import TenantConsole from './TenantConsole.vue'
 import TenantExtensions from './TenantExtensions.vue'
@@ -26,5 +27,6 @@ onUnmounted(() => {
   <template v-else>
     <TenantConsole />
     <TenantExtensions />
+    <TenantBrandAssetUploader />
   </template>
 </template>
