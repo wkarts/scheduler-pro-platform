@@ -22,8 +22,8 @@ Scheduler Pro Docker
 
 A stack inclui dois serviços auxiliares:
 
-- `scheduler-acme`: cria/remover o TXT `_acme-challenge` pela API Cloudflare, emite `scheduler.argws.com.br` + `*.scheduler.argws.com.br` e renova o certificado automaticamente;
-- `scheduler-cloudpanel-agent`: único container privilegiado. Não publica portas, não possui rede e usa o host montado somente para localizar o VHost do CloudPanel, adicionar o wildcard, validar `nginx -t` e instalar/renovar o certificado via `clpctl`.
+- `scheduler-acme`: cria/remove o TXT `_acme-challenge` pela API Cloudflare, emite `scheduler.argws.com.br` + `*.scheduler.argws.com.br` e renova o certificado automaticamente;
+- `scheduler-cloudpanel-agent`: único container root-equivalent ao VPS. Não publica portas nem oferece endpoint. Usa o host montado e os namespaces PID/rede do host somente para localizar o VHost do CloudPanel, adicionar o wildcard, validar `nginx -t` e instalar/renovar o certificado via `clpctl`.
 
 ## Única etapa manual
 
@@ -107,20 +107,23 @@ O `scheduler-cloudpanel-agent` aguarda o site `scheduler.argws.com.br` existir e
 3. faz backup antes da alteração;
 4. executa `nginx -t` e reverte se a validação falhar;
 5. detecta mudança do hash do certificado;
-6. chama `clpctl site:install:certificate` no host;
+6. chama `clpctl site:install:certificate` no contexto real do host;
 7. valida e recarrega o NGINX;
 8. grava o marcador `last-cloudpanel-installed-at.txt` usado pelo diagnóstico da API.
 
-O agente é propositalmente isolado:
+O agente é deliberadamente root-equivalent:
 
 ```text
 privileged: true
-network_mode: none
+pid: host
+network_mode: host
+/:/host:rw
 sem portas publicadas
-root filesystem read-only
+sem endpoint HTTP
+root filesystem do container read-only
 ```
 
-Ele possui acesso de root ao host exclusivamente porque precisa executar o `clpctl` e reconciliar o VHost do NGINX. API, workers, banco, Redis, RabbitMQ e demais serviços continuam sem esse privilégio.
+Os namespaces PID/rede do host são necessários porque `clpctl` e o NGINX pertencem ao VPS, não ao namespace isolado do container. O isolamento aqui é operacional: imagem pequena, sem endpoint, sem portas e lógica dedicada apenas ao CloudPanel. **Esse serviço deve ser tratado como acesso root ao VPS.** API, workers, banco, Redis, RabbitMQ e demais serviços continuam sem esse privilégio.
 
 ## Variáveis principais
 
