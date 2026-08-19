@@ -184,36 +184,53 @@ class AppointmentService:
             raise APIError("APPOINTMENT_SLOT_UNAVAILABLE", "Horário não disponível.", 409)
 
     async def create(self, payload: dict[str, Any]) -> Appointment:
-        await self._require_reference("customers", str(payload["customer_id"]), "CUSTOMER_NOT_FOUND")
-        await self._require_reference("services", str(payload["service_id"]), "SERVICE_NOT_FOUND")
-        await self._require_reference("professionals", str(payload["professional_id"]), "PROFESSIONAL_NOT_FOUND")
         payload = dict(payload)
         payload["starts_at"] = self._aware(payload["starts_at"])
         payload["ends_at"] = self._aware(payload["ends_at"])
         lock_key = f"appointment:{payload['professional_id']}:{payload['starts_at'].isoformat()}:{payload['ends_at'].isoformat()}"
         appointment = Appointment(**payload, status=AppointmentStatus.awaiting_confirmation.value)
         try:
-            async with self.session.begin():
-                await self.session.execute(
-                    text("select pg_advisory_xact_lock(hashtext(:lock_key))"),
-                    {"lock_key": lock_key},
-                )
-                await self._ensure_slot_available(
-                    str(payload["professional_id"]),
-                    payload["starts_at"],
-                    payload["ends_at"],
-                )
-                self.session.add(appointment)
-                await self.session.flush()
-                await self._add_history(appointment.id, appointment.status, "created")
-                await NotificationService(
-                    self.session,
-                    public_base_url=self.public_base_url,
-                ).schedule_for_appointment(str(appointment.id), "appointment_created")
+            # FastAPI/RBAC pode ter feito SELECTs usando esta mesma AsyncSession
+            # antes de a rota chegar aqui. SQLAlchemy 2 inicia uma transação
+            # automaticamente nesses SELECTs; abrir session.begin() novamente
+            # causaria InvalidRequestError. Adotamos a transação corrente (ou a
+            # autobegin iniciada pelo primeiro comando abaixo) e a finalizamos
+            # explicitamente ao concluir a operação de domínio.
+            await self._require_reference(
+                "customers", str(payload["customer_id"]), "CUSTOMER_NOT_FOUND"
+            )
+            await self._require_reference(
+                "services", str(payload["service_id"]), "SERVICE_NOT_FOUND"
+            )
+            await self._require_reference(
+                "professionals",
+                str(payload["professional_id"]),
+                "PROFESSIONAL_NOT_FOUND",
+            )
+            await self.session.execute(
+                text("select pg_advisory_xact_lock(hashtext(:lock_key))"),
+                {"lock_key": lock_key},
+            )
+            await self._ensure_slot_available(
+                str(payload["professional_id"]),
+                payload["starts_at"],
+                payload["ends_at"],
+            )
+            self.session.add(appointment)
+            await self.session.flush()
+            await self._add_history(appointment.id, appointment.status, "created")
+            await NotificationService(
+                self.session,
+                public_base_url=self.public_base_url,
+            ).schedule_for_appointment(str(appointment.id), "appointment_created")
+            await self.session.commit()
             return appointment
         except IntegrityError as exc:
             await self.session.rollback()
             raise APIError("APPOINTMENT_SLOT_UNAVAILABLE", "Horário não disponível.", 409) from exc
+        except Exception:
+            await self.session.rollback()
+            raise
 
     async def _add_history(self, appointment_id: str, status: str, reason: str | None = None) -> None:
         await self.session.execute(
