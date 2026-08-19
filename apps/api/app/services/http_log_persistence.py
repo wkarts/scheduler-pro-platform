@@ -6,6 +6,7 @@ from typing import Any
 from sqlalchemy import text
 
 from app.db.session import PlatformSession, tenant_session
+from app.services.observability_service import ObservabilityService
 from app.services.tenant_resolver import TenantResolver
 
 _SKIP_SUCCESS_PATHS = {
@@ -47,6 +48,7 @@ async def _write_tenant_copy(
         require_active=False,
     )
     async for tenant_db in tenant_session(context):
+        await ObservabilityService(tenant_db).ensure_tenant_schema()
         await tenant_db.execute(
             text(
                 """
@@ -125,6 +127,7 @@ async def persist_http_operation(
 
     try:
         async with PlatformSession() as session:
+            await ObservabilityService(session).ensure_platform_schema()
             if tenant_id is None and clean_host:
                 tenant_id = await session.scalar(
                     text(
