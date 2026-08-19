@@ -37,7 +37,7 @@ def test_admin_has_diagnostics_download_and_frontend_telemetry() -> None:
 
 def test_platform_migration_adds_domain_created_at_for_reconciler() -> None:
     migration = Path(
-        "../migrations/alembic_platform/versions/0009_domain_created_at.py"
+        "migrations/alembic_platform/versions/0009_domain_created_at.py"
     ).resolve().read_text(encoding="utf-8")
 
     assert 'revision = "platform_0009"' in migration
