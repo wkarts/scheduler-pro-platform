@@ -65,10 +65,88 @@ jobs:
           node-version: '22'
       - name: Install
         run: npm install
+      - name: Validate Windows MSI version normalization
+        shell: bash
+        run: |
+          set -euo pipefail
+          tmp="$(mktemp -d)"
+          mkdir -p "$tmp/apps"
+          cp -R apps/desktop "$tmp/apps/desktop"
+          GITHUB_RUN_NUMBER=70000 node scripts/build/normalize-tauri-windows-version.mjs \
+            "$tmp/apps/desktop" \
+            "src-tauri/tauri.conf.json" \
+            "v0.1.0-alpha.999"
+          CONFIG="$tmp/apps/desktop/src-tauri/tauri.conf.json" node --input-type=module <<'NODE'
+          import fs from 'node:fs'
+          const version = JSON.parse(fs.readFileSync(process.env.CONFIG, 'utf8')).version
+          const match = String(version).match(/^\d+\.\d+\.\d+-(\d+)$/)
+          if (!match) throw new Error(`Versão Windows não ficou numeric-only: ${version}`)
+          const prerelease = Number(match[1])
+          if (!Number.isInteger(prerelease) || prerelease < 1 || prerelease > 65535) {
+            throw new Error(`Pré-release MSI fora do limite: ${version}`)
+          }
+          console.log(`Versão MSI validada: ${version}`)
+          NODE
       - name: Typecheck/build
         run: |
           npm run typecheck --workspaces --if-present
           npm run build --workspaces --if-present
+
+  windows-desktop-bundle:
+    name: Windows MSI + NSIS / ${{ matrix.app_name }}
+    runs-on: windows-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { app_path: apps/desktop, app_name: client }
+          - { app_path: apps/admin-desktop, app_name: admin }
+    env:
+      CARGO_INCREMENTAL: '0'
+      CARGO_TERM_COLOR: always
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Install JS deps
+        run: npm install
+      - name: Generate canonical Tauri icon set
+        shell: bash
+        run: npx tauri icon packages/branding/scheduler-pro/brand-symbol.svg --output ${{ matrix.app_path }}/src-tauri/icons
+      - name: Normalize MSI-compatible Windows version
+        shell: bash
+        run: |
+          set -euo pipefail
+          node scripts/build/normalize-tauri-windows-version.mjs \
+            "${{ matrix.app_path }}" \
+            "src-tauri/tauri.conf.json" \
+            "v0.1.0-alpha.${GITHUB_RUN_NUMBER}"
+      - name: Build Windows MSI and NSIS
+        working-directory: ${{ matrix.app_path }}
+        run: npm run tauri:build -- --bundles msi,nsis
+      - name: Require both Windows installers
+        shell: bash
+        run: |
+          set -euo pipefail
+          bundle="${{ matrix.app_path }}/src-tauri/target/release/bundle"
+          msi="$(find "$bundle" -type f -name '*.msi' -print -quit)"
+          nsis="$(find "$bundle" -type f \( -iname '*setup*.exe' -o -iname '*installer*.exe' \) -print -quit)"
+          if [ -z "$msi" ]; then
+            echo 'MSI não foi gerado.' >&2
+            find "$bundle" -maxdepth 4 -type f -print || true
+            exit 1
+          fi
+          if [ -z "$nsis" ]; then
+            echo 'Instalador NSIS não foi gerado.' >&2
+            find "$bundle" -maxdepth 4 -type f -print || true
+            exit 1
+          fi
+          echo "MSI:  $msi"
+          echo "NSIS: $nsis"
 
   docker:
     runs-on: ubuntu-latest

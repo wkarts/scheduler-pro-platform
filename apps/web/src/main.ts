@@ -4,6 +4,7 @@ import App from './App.vue'
 import './styles.css'
 import './operational.css'
 import './tenant-console.css'
+import './tenant-dashboard-polish.css'
 import './branding.css'
 import './pwa'
 
