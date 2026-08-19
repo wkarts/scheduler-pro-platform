@@ -34,13 +34,28 @@ def run_migrations_offline() -> None:
 def run_migrations_online() -> None:
     connectable = create_engine(tenant_url(), poolclass=pool.NullPool)
     with connectable.connect() as connection:
+        # pg_advisory_lock é session-level. Confirme o SELECT do lock antes da
+        # transação Alembic para que uma migration abortada não deixe o próprio
+        # comando de unlock preso em InFailedSqlTransaction.
         connection.execute(text("select pg_advisory_lock(:key)"), {"key": LOCK_KEY})
+        connection.commit()
         try:
-            context.configure(connection=connection, target_metadata=None, compare_type=True)
+            context.configure(
+                connection=connection,
+                target_metadata=None,
+                compare_type=True,
+            )
             with context.begin_transaction():
                 context.run_migrations()
         finally:
-            connection.execute(text("select pg_advisory_unlock(:key)"), {"key": LOCK_KEY})
+            # Se context.run_migrations() falhar, PostgreSQL mantém a transação
+            # em estado aborted. Rollback é obrigatório antes de qualquer SQL.
+            if connection.in_transaction():
+                connection.rollback()
+            connection.execute(
+                text("select pg_advisory_unlock(:key)"),
+                {"key": LOCK_KEY},
+            )
             connection.commit()
     connectable.dispose()
 

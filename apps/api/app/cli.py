@@ -13,6 +13,7 @@ from botocore.exceptions import BotoCoreError, ClientError
 
 from app.core.config import settings
 from app.core.security import hash_password
+from app.core.secrets import secret_resolver
 
 ROOT = Path(__file__).resolve().parents[1]
 IDENTIFIER_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
@@ -81,6 +82,64 @@ def migrate_tenant(database: str, user: str, password: str) -> None:
                 os.environ.pop(key, None)
             else:
                 os.environ[key] = value
+
+
+async def migrate_all_tenants() -> dict[str, int]:
+    """Apply tenant Alembic head to every live tenant database.
+
+    Production deploys upgrade existing tenant databases before the API/workers
+    start consuming a newer schema. Deleted/deleting tenants are intentionally
+    skipped; suspended/failed tenants are migrated so they can be restored later.
+    """
+
+    conn = await _connect(settings.postgres_db)
+    try:
+        rows = await conn.fetch(
+            """
+            select t.id::text as tenant_id, t.slug, t.status,
+                   td.database_name, td.database_user, td.password_ref
+            from tenants t
+            join tenant_databases td on td.tenant_id=t.id
+            where t.status not in ('DELETING','DELETED')
+            order by t.created_at asc, t.id asc
+            """
+        )
+    finally:
+        await conn.close()
+
+    migrated = 0
+    failed = 0
+    for row in rows:
+        database_name = str(row["database_name"])
+        database_user = str(row["database_user"])
+        try:
+            database_password = secret_resolver.resolve(str(row["password_ref"]))
+            # migrate_tenant temporarily sets ALEMBIC_TENANT_* env variables;
+            # run sequentially so credentials can never cross between tenants.
+            await asyncio.to_thread(
+                migrate_tenant,
+                database_name,
+                database_user,
+                database_password,
+            )
+            migrated += 1
+            print(
+                "Tenant migration ready: "
+                f"{row['slug']} ({database_name})"
+            )
+        except Exception as exc:
+            failed += 1
+            raise RuntimeError(
+                "Tenant migration failed before API startup: "
+                f"tenant={row['slug']} database={database_name}: {exc}"
+            ) from exc
+
+    result = {"total": len(rows), "migrated": migrated, "failed": failed}
+    print(
+        "Scheduler Pro tenant migrations completed: "
+        f"{migrated}/{len(rows)} migrated"
+    )
+    return result
 
 
 async def ensure_dev_database() -> None:
@@ -313,6 +372,9 @@ async def main() -> None:
     if command_name == "migrate-platform":
         migrate_platform()
         return
+    if command_name == "migrate-all-tenants":
+        await migrate_all_tenants()
+        return
     if command_name == "migrate-tenant" and len(sys.argv) >= 3:
         database = sys.argv[2]
         user = os.getenv("ALEMBIC_TENANT_USER")
@@ -330,7 +392,8 @@ async def main() -> None:
         await bootstrap_dev()
         return
     print(
-        "Usage: python -m app.cli migrate-platform | migrate-tenant <database> | bootstrap-dev",
+        "Usage: python -m app.cli migrate-platform | migrate-all-tenants | "
+        "migrate-tenant <database> | bootstrap-dev",
         file=sys.stderr,
     )
     raise SystemExit(2)

@@ -149,6 +149,7 @@ jobs:
           path: .ci-diagnostics/
           if-no-files-found: warn
           retention-days: 7
+          include-hidden-files: true
 
       - name: Migration downgrade and re-upgrade
         shell: bash

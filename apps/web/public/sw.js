@@ -1,5 +1,99 @@
-const CACHE = 'scheduler-pro-web-brand-v1.0.0'
-const STATIC_ASSETS = ['/', '/index.html', '/offline.html', '/manifest.webmanifest', '/favicon.svg', '/icons/icon.svg', '/icons/maskable.svg']
-self.addEventListener('install', event => { self.skipWaiting(); event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(STATIC_ASSETS))) })
-self.addEventListener('activate', event => { event.waitUntil(caches.keys().then(keys => Promise.all(keys.filter(key => key !== CACHE).map(key => caches.delete(key)))).then(() => self.clients.claim())) })
-self.addEventListener('fetch', event => { const request=event.request; if(request.method!=='GET')return; event.respondWith(fetch(request).then(response=>{const copy=response.clone();caches.open(CACHE).then(cache=>cache.put(request,copy)).catch(()=>undefined);return response}).catch(()=>caches.match(request).then(cached=>cached||caches.match('/offline.html')))) })
+const CACHE = 'scheduler-pro-web-brand-v2.0.0'
+const STATIC_ASSETS = [
+  '/',
+  '/index.html',
+  '/offline.html',
+  '/manifest.webmanifest',
+  '/favicon.svg',
+  '/icons/icon.svg',
+  '/icons/maskable.svg',
+]
+
+self.addEventListener('install', event => {
+  self.skipWaiting()
+  event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(STATIC_ASSETS)))
+})
+
+self.addEventListener('activate', event => {
+  event.waitUntil(
+    caches.keys()
+      .then(keys => Promise.all(keys.filter(key => key !== CACHE).map(key => caches.delete(key))))
+      .then(() => self.clients.claim()),
+  )
+})
+
+self.addEventListener('fetch', event => {
+  const request = event.request
+  if (request.method !== 'GET') return
+
+  const url = new URL(request.url)
+  if (url.origin !== self.location.origin) return
+
+  // API e páginas públicas de confirmação são estado vivo e nunca devem ficar
+  // presas em uma cópia de cache do Service Worker.
+  if (url.pathname.startsWith('/api/') || url.pathname.startsWith('/a/')) {
+    event.respondWith(fetch(request))
+    return
+  }
+
+  if (request.mode === 'navigate') {
+    event.respondWith(
+      fetch(request)
+        .then(response => {
+          const copy = response.clone()
+          caches.open(CACHE).then(cache => cache.put(request, copy)).catch(() => undefined)
+          return response
+        })
+        .catch(() => caches.match(request).then(cached => cached || caches.match('/offline.html'))),
+    )
+    return
+  }
+
+  event.respondWith(
+    caches.match(request).then(cached => cached || fetch(request).then(response => {
+      const copy = response.clone()
+      caches.open(CACHE).then(cache => cache.put(request, copy)).catch(() => undefined)
+      return response
+    })),
+  )
+})
+
+self.addEventListener('push', event => {
+  let payload = {}
+  try {
+    payload = event.data ? event.data.json() : {}
+  } catch {
+    payload = { body: event.data ? event.data.text() : 'Sua agenda foi atualizada.' }
+  }
+
+  const title = payload.title || 'Scheduler Pro'
+  const options = {
+    body: payload.body || 'Sua agenda foi atualizada.',
+    icon: '/icons/icon.svg',
+    badge: '/icons/maskable.svg',
+    tag: payload.tag || 'scheduler-pro-agenda',
+    renotify: true,
+    data: {
+      url: payload.url || '/#agenda',
+      event_type: payload.event_type || '',
+      appointment_id: payload.appointment_id || '',
+      sequence: payload.sequence || 0,
+    },
+  }
+  event.waitUntil(self.registration.showNotification(title, options))
+})
+
+self.addEventListener('notificationclick', event => {
+  event.notification.close()
+  const target = new URL(event.notification.data?.url || '/#agenda', self.location.origin).href
+  event.waitUntil(
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(clients => {
+      for (const client of clients) {
+        if ('navigate' in client && 'focus' in client) {
+          return client.navigate(target).then(() => client.focus())
+        }
+      }
+      return self.clients.openWindow(target)
+    }),
+  )
+})
