@@ -52,6 +52,17 @@ def test_alembic_revision_capacity_covers_all_tenant_revisions() -> None:
         assert "alter column version_num type varchar(128)" in migration_0006.lower()
 
 
+def test_tenant_alembic_rolls_back_before_unlock_after_failure() -> None:
+    env = (
+        API_ROOT / "migrations" / "alembic_tenant" / "env.py"
+    ).read_text(encoding="utf-8")
+
+    rollback_position = env.index("connection.rollback()")
+    unlock_position = env.index("pg_advisory_unlock")
+    assert rollback_position < unlock_position
+    assert "connection.commit()" in env[unlock_position:]
+
+
 def test_vapid_private_reference_is_not_stored_in_public_tenant_settings() -> None:
     realtime = (API_ROOT / "app" / "services" / "realtime_service.py").read_text(
         encoding="utf-8"
