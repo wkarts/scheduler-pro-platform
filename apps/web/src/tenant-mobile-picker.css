@@ -1,0 +1,13 @@
+/* Dedicated touch picker for agenda advanced operations on phones. */
+.sp-mobile-option-list{display:none}
+@media(max-width:700px){
+  .sp-agenda-ops select[size]{display:none!important}
+  .sp-agenda-ops .sp-mobile-option-list{display:grid;gap:8px;max-height:260px;overflow:auto;padding:2px;overscroll-behavior:contain}
+  .sp-agenda-ops .sp-mobile-option{display:grid;gap:3px;width:100%;min-height:58px;padding:10px 12px;border:1px solid #dbe4ef;border-radius:13px;background:#fff;color:#1e293b;text-align:left;font:inherit;cursor:pointer}
+  .sp-agenda-ops .sp-mobile-option strong{font-size:13px;font-weight:850;overflow-wrap:anywhere}
+  .sp-agenda-ops .sp-mobile-option small{font-size:11px;color:#718096;overflow-wrap:anywhere}
+  .sp-agenda-ops .sp-mobile-option.selected{border-color:#38bdf8;background:#effaff;box-shadow:0 0 0 3px rgba(14,165,233,.1)}
+  .sp-agenda-ops .sp-mobile-option.selected strong{color:#075985}
+  .sp-agenda-ops input[type="datetime-local"],.sp-agenda-ops input[type="date"],.sp-agenda-ops input[type="number"],.sp-agenda-ops select:not([size]),.sp-agenda-ops textarea{font-size:16px!important}
+  .sp-agenda-ops .sp-op-form>label,.sp-agenda-ops .sp-op-grid>label{min-width:0}
+}
