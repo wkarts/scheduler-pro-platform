@@ -21,7 +21,6 @@ type RealtimeOptions = {
 }
 
 type ApiEnvelope<T> = { data: T }
-
 type PushKeyResponse = { public_key: string }
 
 function authHeaders(token: string): HeadersInit {
@@ -116,11 +115,14 @@ export function startRealtimeStream(options: RealtimeOptions): () => void {
   let controller: AbortController | null = null
   let retryTimer: number | undefined
   let cursor = Math.max(options.after || 0, 0)
+  let failures = 0
 
   const scheduleRetry = () => {
     if (stopped) return
     options.onState?.('disconnected')
-    retryTimer = window.setTimeout(() => { void connect() }, 2500)
+    failures += 1
+    const delay = Math.min(30_000, 2_500 * Math.max(1, failures))
+    retryTimer = window.setTimeout(() => { void connect() }, delay)
   }
 
   const parseBlock = async (block: string) => {
@@ -154,9 +156,19 @@ export function startRealtimeStream(options: RealtimeOptions): () => void {
         cache: 'no-store',
         signal: controller.signal,
       })
-      if (!response.ok || !response.body) throw new Error(`Realtime HTTP ${response.status}`)
-      options.onState?.('connected')
 
+      if (response.status === 401 || response.status === 403) {
+        stopped = true
+        options.onState?.('disconnected')
+        window.dispatchEvent(new CustomEvent('scheduler-pro-realtime-unauthorized', {
+          detail: { status: response.status },
+        }))
+        return
+      }
+      if (!response.ok || !response.body) throw new Error(`Realtime HTTP ${response.status}`)
+
+      failures = 0
+      options.onState?.('connected')
       const reader = response.body.getReader()
       const decoder = new TextDecoder()
       let buffer = ''
