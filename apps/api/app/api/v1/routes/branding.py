@@ -1,9 +1,12 @@
-from typing import Any
+from collections.abc import Iterator
+from io import BytesIO
+from typing import Any, Literal
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, File, UploadFile
 from pydantic import BaseModel, Field
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
+from starlette.responses import StreamingResponse
 
 from app.api.deps import (
     get_platform_session,
@@ -11,12 +14,18 @@ from app.api.deps import (
     require_permission,
     require_tenant_capability,
 )
+from app.core.errors import APIError
 from app.core.responses import success
 from app.core.security import AuthPrincipal
 from app.core.tenant_context import TenantContext
 from app.services.branding_service import BrandingService
+from app.services.file_service import TenantFileService
 
 router = APIRouter()
+BrandAssetKind = Literal["logo", "icon", "favicon"]
+BRAND_ASSET_FIELDS = {"logo": "logo_url", "icon": "icon_url", "favicon": "favicon_url"}
+BRAND_ASSET_TYPES = {"image/png", "image/jpeg", "image/webp", "image/svg+xml", "image/x-icon", "image/vnd.microsoft.icon"}
+BRAND_ASSET_MAX_BYTES = 4 * 1024 * 1024
 
 
 class BrandingProfileRequest(BaseModel):
@@ -49,6 +58,13 @@ class BuildProfileRequest(BaseModel):
     config: dict[str, Any] = Field(default_factory=dict)
 
 
+def _stream(body: Any) -> Iterator[bytes]:
+    try:
+        yield from body.iter_chunks(chunk_size=64 * 1024)
+    finally:
+        body.close()
+
+
 @router.get("/manifest")
 async def get_manifest(
     context: TenantContext = Depends(get_tenant_context),
@@ -58,6 +74,62 @@ async def get_manifest(
     return success(await service.manifest_for_context(context))
 
 
+@router.get("/assets/{kind}")
+async def public_brand_asset(
+    kind: BrandAssetKind,
+    context: TenantContext = Depends(get_tenant_context),
+) -> StreamingResponse:
+    result = await TenantFileService(context).get_object(f"branding/{kind}")
+    return StreamingResponse(
+        _stream(result["Body"]),
+        media_type=str(result.get("ContentType") or "application/octet-stream"),
+        headers={
+            "Cache-Control": "public, max-age=300, must-revalidate",
+            "ETag": str(result.get("ETag", "")),
+        },
+    )
+
+
+@router.post("/assets/{kind}")
+async def upload_brand_asset(
+    kind: BrandAssetKind,
+    file: UploadFile = File(...),
+    _: AuthPrincipal = Depends(require_permission("branding.manage")),
+    __: None = Depends(require_tenant_capability("branding")),
+    context: TenantContext = Depends(get_tenant_context),
+    session: AsyncSession = Depends(get_platform_session),
+) -> dict[str, Any]:
+    content_type = str(file.content_type or "").lower()
+    if content_type not in BRAND_ASSET_TYPES:
+        raise APIError(
+            "BRANDING_ASSET_TYPE_INVALID",
+            "Envie PNG, JPEG, WebP, SVG ou ICO.",
+            422,
+        )
+    try:
+        data = await file.read(BRAND_ASSET_MAX_BYTES + 1)
+    finally:
+        await file.close()
+    if not data:
+        raise APIError("BRANDING_ASSET_EMPTY", "Arquivo de marca vazio.", 422)
+    if len(data) > BRAND_ASSET_MAX_BYTES:
+        raise APIError(
+            "BRANDING_ASSET_TOO_LARGE",
+            "O arquivo de marca deve ter no máximo 4 MB.",
+            413,
+        )
+    stored = await TenantFileService(context).upload(
+        f"branding/{kind}", BytesIO(data), content_type
+    )
+    public_url = f"/api/v1/branding/assets/{kind}"
+    manifest = await BrandingService(session).save_profile(
+        context.tenant_id,
+        {BRAND_ASSET_FIELDS[kind]: public_url},
+        tenant_name=context.slug,
+    )
+    return success({"kind": kind, "url": public_url, "file": stored, "manifest": manifest})
+
+
 @router.get("/distribution")
 async def tenant_distribution(
     _: AuthPrincipal = Depends(require_permission("tenant.manage")),
@@ -65,14 +137,6 @@ async def tenant_distribution(
     context: TenantContext = Depends(get_tenant_context),
     session: AsyncSession = Depends(get_platform_session),
 ) -> dict[str, Any]:
-    """Read-only distribution center for the authenticated tenant.
-
-    Build orchestration stays in the Control Plane, but the tenant manager can see
-    which profiles exist and download artifacts that were explicitly produced for
-    its own tenant. No platform RBAC token is required and cross-tenant rows are
-    impossible because every query is scoped by TenantContext.
-    """
-
     profiles = (
         await session.execute(
             text(
@@ -140,9 +204,7 @@ async def save_profile(
 ) -> dict[str, Any]:
     service = BrandingService(session)
     data = payload.model_dump(exclude_none=True)
-    return success(
-        await service.save_profile(context.tenant_id, data, tenant_name=context.slug)
-    )
+    return success(await service.save_profile(context.tenant_id, data, tenant_name=context.slug))
 
 
 @router.post("/publish")
@@ -165,6 +227,4 @@ async def create_build_profile(
     session: AsyncSession = Depends(get_platform_session),
 ) -> dict[str, Any]:
     service = BrandingService(session)
-    return success(
-        await service.create_build_profile(context.tenant_id, payload.model_dump())
-    )
+    return success(await service.create_build_profile(context.tenant_id, payload.model_dump()))

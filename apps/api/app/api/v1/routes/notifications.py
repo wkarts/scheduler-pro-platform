@@ -8,6 +8,7 @@ from app.core.errors import APIError
 from app.core.responses import success
 from app.services.notification_dispatcher import TenantNotificationDispatcher
 from app.services.notification_service import NotificationService
+from app.services.tenant_mail_service import TenantMailService
 
 router = APIRouter()
 
@@ -42,6 +43,29 @@ async def upsert_notification_template(
     if not body:
         raise APIError("NOTIFICATION_TEMPLATE_BODY_REQUIRED", "Corpo do template é obrigatório.", 422)
     return success(await NotificationService(session).upsert_template(key=template_key, channel=channel, body=body, active=active))
+
+
+@router.get("/smtp")
+async def smtp_settings(
+    session: AsyncSession = Depends(get_tenant_session),
+) -> dict[str, Any]:
+    return success(await TenantMailService(session).status())
+
+
+@router.put("/smtp")
+async def configure_smtp(
+    payload: dict[str, Any] = Body(...),
+    session: AsyncSession = Depends(get_tenant_session),
+) -> dict[str, Any]:
+    return success(await TenantMailService(session).configure(payload))
+
+
+@router.post("/smtp/test")
+async def test_smtp(
+    payload: dict[str, Any] = Body(...),
+    session: AsyncSession = Depends(get_tenant_session),
+) -> dict[str, Any]:
+    return success(await TenantMailService(session).send_test(str(payload.get("recipient") or "")))
 
 
 @router.post("/process-due")

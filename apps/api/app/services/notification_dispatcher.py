@@ -5,6 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.services.appointment_confirmation_service import AppointmentConfirmationService
 from app.services.notification_service import NotificationService
+from app.services.tenant_mail_service import TenantMailService
 from app.services.whatsapp_provider import WhatsAppProviderFactory
 
 
@@ -22,10 +23,6 @@ class TenantNotificationDispatcher:
         return str(value) if value else None
 
     async def process_due(self, *, limit: int = 100) -> dict[str, Any]:
-        # O sweep já roda para cada tenant a cada minuto. Antes de enviar os jobs,
-        # encerra reservas que ultrapassaram o prazo de confirmação. O cancelamento
-        # muda o status para CANCELLED, portanto o motor de disponibilidade libera
-        # o slot imediatamente sem outro processo auxiliar.
         confirmation = await AppointmentConfirmationService(self.session).expire_due(
             limit=min(max(limit, 1), 500)
         )
@@ -34,7 +31,7 @@ class TenantNotificationDispatcher:
             await self.session.execute(
                 text(
                     """
-                    select id::text, recipient, payload
+                    select id::text, channel, recipient, template_key, payload
                     from notification_jobs
                     where status='PENDING' and scheduled_at <= now()
                     order by scheduled_at asc
@@ -46,7 +43,8 @@ class TenantNotificationDispatcher:
             )
         ).mappings().all()
         instance_name = await self._instance_name()
-        provider = WhatsAppProviderFactory.make(instance_name)
+        whatsapp_provider = WhatsAppProviderFactory.make(instance_name)
+        mailer = TenantMailService(self.session)
         sent = 0
         failed = 0
         for row in rows:
@@ -63,7 +61,17 @@ class TenantNotificationDispatcher:
                 failed += 1
                 continue
             try:
-                await provider.send_text(str(row["recipient"]), message)
+                channel = str(row["channel"] or "whatsapp").lower()
+                if channel == "email":
+                    subject = str(
+                        payload.get("subject")
+                        or NotificationService.email_subject(str(row["template_key"] or ""), payload)
+                    )
+                    await mailer.send(str(row["recipient"]), subject, message)
+                elif channel == "whatsapp":
+                    await whatsapp_provider.send_text(str(row["recipient"]), message)
+                else:
+                    raise RuntimeError(f"Canal de notificação não suportado: {channel}")
                 await self.session.execute(
                     text(
                         "update notification_jobs set status='SENT', "
