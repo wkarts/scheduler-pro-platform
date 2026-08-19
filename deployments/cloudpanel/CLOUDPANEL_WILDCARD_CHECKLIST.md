@@ -1,55 +1,45 @@
 # Checklist — Scheduler Pro wildcard no CloudPanel
 
-## Cloudflare
+## Única ação manual
 
-- `proxy.scheduler.argws.com.br` aponta para o IP público do servidor.
-- `*.scheduler.argws.com.br` é criado/reconciliado pelo Scheduler Pro como CNAME para `proxy.scheduler.argws.com.br`.
-- Proxy Cloudflare desligado (`DNS only`) para os hostnames gerenciados.
-- API Token restrito à zone `argws.com.br` com `Zone:Read` + `DNS:Edit`.
+No CloudPanel crie/mantenha somente um Reverse Proxy:
 
-## CloudPanel
-
-Crie/mantenha somente um Reverse Proxy:
-
-- Domínio: `scheduler.argws.com.br`
-- URL: `http://127.0.0.1:18080`
-
-No VHost use um único `server_name`:
-
-```nginx
-server_name scheduler.argws.com.br *.scheduler.argws.com.br;
+```text
+Domínio: scheduler.argws.com.br
+URL: http://127.0.0.1:18080
 ```
 
-Use `VHOST_WILDCARD_EXAMPLE.conf` como referência. Não crie um bloco por tenant.
+Depois suba a stack completa no Dockge/Compose. Não execute script no VPS e não edite o VHost manualmente.
 
-## ACME
+## A stack faz automaticamente
 
-O container `scheduler-acme` sobe com `compose.argws.yaml` e emite:
+- garante `*.scheduler.argws.com.br` na Cloudflare em DNS-only;
+- usa o `CLOUDFLARE_API_TOKEN` no ACME DNS-01;
+- cria/remove `_acme-challenge.scheduler.argws.com.br`;
+- emite e renova `scheduler.argws.com.br` + `*.scheduler.argws.com.br`;
+- aguarda o Reverse Proxy existir no CloudPanel;
+- adiciona `*.scheduler.argws.com.br` ao `server_name` do VHost;
+- valida com `nginx -t` e faz rollback se necessário;
+- instala e renova o certificado via `clpctl site:install:certificate`;
+- recarrega o NGINX;
+- preserva o header `Host` para o TenantResolver.
 
-- `scheduler.argws.com.br`
-- `*.scheduler.argws.com.br`
+## Serviços auxiliares
 
-O TXT `_acme-challenge.scheduler.argws.com.br` é temporário e criado/removido automaticamente pelo plugin Cloudflare do acme.sh.
-
-## Sincronização CloudPanel
-
-Uma vez no host:
-
-```bash
-sudo bash scripts/install-cloudpanel-cert-sync.sh .env
+```text
+scheduler-acme
+scheduler-cloudpanel-agent
 ```
 
-Depois disso a renovação é automática: o ACME Docker renova e o sync instala no CloudPanel somente quando o hash do bundle muda.
+O `scheduler-cloudpanel-agent` é o único serviço privilegiado, não publica portas e usa `network_mode: none`.
 
 ## Verificação
 
 ```bash
-docker compose --env-file .env -f compose.argws.yaml ps scheduler-acme
-ls -l scheduler-pro-data/certs/
-sudo tail -n 100 /var/log/scheduler-pro-cloudpanel-cert-sync.log
+docker compose --env-file .env -f compose.argws.yaml ps scheduler-acme scheduler-cloudpanel-agent
 ```
 
-No navegador teste um hostname de tenant, por exemplo:
+Depois teste:
 
 ```text
 https://tenant.scheduler.argws.com.br
