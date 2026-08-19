@@ -59,7 +59,7 @@ async def editor_state(
                 """
                 select id::text, version_number, created_at
                 from landing_page_versions
-                where landing_page_id=:id::uuid
+                where landing_page_id=cast(:id as uuid)
                 order by version_number desc
                 limit 50
                 """
