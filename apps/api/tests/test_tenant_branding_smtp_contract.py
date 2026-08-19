@@ -8,28 +8,17 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def test_tenant_schema_head_includes_smtp_configuration() -> None:
-    assert TENANT_MIGRATION_HEAD == "tenant_0008_mail_mode"
-    smtp_migration = (
+    assert TENANT_MIGRATION_HEAD == "tenant_0007_smtp"
+    migration = (
         ROOT
         / "migrations"
         / "alembic_tenant"
         / "versions"
         / "0007_tenant_smtp.py"
     ).read_text(encoding="utf-8")
-    delivery_mode_migration = (
-        ROOT
-        / "migrations"
-        / "alembic_tenant"
-        / "versions"
-        / "0008_mail_delivery_mode.py"
-    ).read_text(encoding="utf-8")
-    assert 'revision = "tenant_0007_smtp"' in smtp_migration
-    assert "create table if not exists tenant_smtp_settings" in smtp_migration
-    assert "appointment_confirmation_request_email" in smtp_migration
-    assert 'revision = "tenant_0008_mail_mode"' in delivery_mode_migration
-    assert 'down_revision = "tenant_0007_smtp"' in delivery_mode_migration
-    assert "delivery_mode" in delivery_mode_migration
-    assert "platform" in delivery_mode_migration
+    assert 'revision = "tenant_0007_smtp"' in migration
+    assert "create table if not exists tenant_smtp_settings" in migration
+    assert "appointment_confirmation_request_email" in migration
 
 
 def test_smtp_config_requires_connection_and_sender() -> None:
