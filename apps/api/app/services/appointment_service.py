@@ -95,8 +95,10 @@ class AppointmentService:
             {
                 "dow": dow,
                 "professional_id": professional_id,
-                "start_time": local_start.timetz().replace(tzinfo=None).isoformat(),
-                "end_time": local_end.timetz().replace(tzinfo=None).isoformat(),
+                # asyncpg infere TIME a partir do CAST e exige datetime.time,
+                # não string ISO. Manter objetos time evita DataError em produção.
+                "start_time": local_start.timetz().replace(tzinfo=None),
+                "end_time": local_end.timetz().replace(tzinfo=None),
             },
         )
         return bool(result)
