@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import TenantConsoleV2 from './TenantConsoleV2.vue'
+import TenantConsole from './TenantConsole.vue'
 </script>
 
 <template>
-  <TenantConsoleV2 />
+  <TenantConsole />
 </template>
