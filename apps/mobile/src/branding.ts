@@ -1,3 +1,5 @@
+import { currentMobileInstanceOrigin } from './runtime-instance'
+
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'https://scheduler.argws.com.br/api/v1'
 
 export type BrandingManifest = {
@@ -17,11 +19,23 @@ export type BrandingManifest = {
 
 type ApiResponse<T> = { data: T; meta: Record<string, unknown> }
 
+function absoluteAsset(value?: string | null): string | null | undefined {
+  if (!value || !value.startsWith('/')) return value
+  const origin = currentMobileInstanceOrigin()
+  return origin ? `${origin}${value}` : value
+}
+
 export async function loadBrandingManifest(): Promise<BrandingManifest | null> {
   try {
     const response = await fetch(`${API_BASE_URL}/branding/manifest`, { headers: { Accept: 'application/json' } })
     if (!response.ok) return null
     const payload = (await response.json()) as ApiResponse<BrandingManifest>
+    payload.data.assets = {
+      ...payload.data.assets,
+      logo_url: absoluteAsset(payload.data.assets.logo_url),
+      icon_url: absoluteAsset(payload.data.assets.icon_url),
+      favicon_url: absoluteAsset(payload.data.assets.favicon_url),
+    }
     return payload.data
   } catch {
     return null
