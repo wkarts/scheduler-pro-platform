@@ -10,6 +10,7 @@ from typing import Any
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import settings
 from app.core.errors import APIError
 from app.core.secrets import seal_secret, secret_resolver
 
@@ -27,10 +28,11 @@ class TenantSmtpConfig:
     use_tls: bool
     use_ssl: bool
     timeout_seconds: int
+    password_value: str = ""
 
     @property
     def configured(self) -> bool:
-        auth_ready = not self.username or bool(self.password_ref)
+        auth_ready = not self.username or bool(self.password_ref or self.password_value)
         return bool(self.host and self.from_email and auth_ready)
 
 
@@ -38,12 +40,36 @@ class TenantMailService:
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
 
+    @staticmethod
+    def platform_available() -> bool:
+        auth_ready = not settings.smtp_username or bool(settings.smtp_password)
+        return bool(settings.smtp_host and settings.smtp_from_email and auth_ready)
+
+    @staticmethod
+    def _platform_config() -> TenantSmtpConfig | None:
+        if not TenantMailService.platform_available():
+            return None
+        return TenantSmtpConfig(
+            enabled=True,
+            host=str(settings.smtp_host or ""),
+            port=int(settings.smtp_port),
+            username=str(settings.smtp_username or ""),
+            password_ref="",
+            password_value=str(settings.smtp_password or ""),
+            from_email=str(settings.smtp_from_email or ""),
+            from_name=str(settings.smtp_from_name or "Scheduler Pro"),
+            reply_to=str(settings.smtp_reply_to or ""),
+            use_tls=bool(settings.smtp_use_tls),
+            use_ssl=bool(settings.smtp_use_ssl),
+            timeout_seconds=int(settings.smtp_timeout_seconds),
+        )
+
     async def _row(self) -> dict[str, Any] | None:
         row = (
             await self.session.execute(
                 text(
                     """
-                    select enabled, host, port, username, password_ref,
+                    select enabled, delivery_mode, host, port, username, password_ref,
                            from_email, from_name, reply_to, use_tls, use_ssl,
                            timeout_seconds, updated_at
                     from tenant_smtp_settings
@@ -56,10 +82,14 @@ class TenantMailService:
 
     async def status(self) -> dict[str, Any]:
         row = await self._row()
+        platform_available = self.platform_available()
         if row is None:
             return {
                 "enabled": False,
+                "delivery_mode": "tenant",
                 "configured": False,
+                "platform_available": platform_available,
+                "platform_sender": settings.smtp_from_email if platform_available else None,
                 "host": "",
                 "port": 587,
                 "username": "",
@@ -74,13 +104,20 @@ class TenantMailService:
             }
         username = str(row["username"] or "")
         password_configured = bool(row["password_ref"])
+        mode = str(row.get("delivery_mode") or "tenant")
+        tenant_configured = bool(
+            row["host"]
+            and row["from_email"]
+            and (not username or password_configured)
+        )
+        configured = platform_available if mode == "platform" else tenant_configured
         return {
             "enabled": bool(row["enabled"]),
-            "configured": bool(
-                row["host"]
-                and row["from_email"]
-                and (not username or password_configured)
-            ),
+            "delivery_mode": mode,
+            "configured": configured,
+            "tenant_configured": tenant_configured,
+            "platform_available": platform_available,
+            "platform_sender": settings.smtp_from_email if platform_available else None,
             "host": str(row["host"] or ""),
             "port": int(row["port"] or 587),
             "username": username,
@@ -96,6 +133,16 @@ class TenantMailService:
 
     async def configure(self, payload: dict[str, Any]) -> dict[str, Any]:
         current = await self._row() or {}
+        delivery_mode = str(
+            payload.get("delivery_mode", current.get("delivery_mode") or "tenant")
+        ).strip().lower()
+        if delivery_mode not in {"tenant", "platform"}:
+            raise APIError(
+                "TENANT_SMTP_DELIVERY_MODE_INVALID",
+                "Escolha usar a conta de e-mail da plataforma ou uma conta própria.",
+                422,
+            )
+
         host = str(payload.get("host", current.get("host") or "")).strip()
         username = str(payload.get("username", current.get("username") or "")).strip()
         from_email = str(payload.get("from_email", current.get("from_email") or "")).strip()
@@ -114,6 +161,7 @@ class TenantMailService:
             password_ref = seal_secret(password)
         if not username:
             password_ref = ""
+
         if port < 1 or port > 65535:
             raise APIError("TENANT_SMTP_PORT_INVALID", "Porta SMTP inválida.", 422)
         if timeout_seconds < 1 or timeout_seconds > 120:
@@ -124,27 +172,38 @@ class TenantMailService:
                 "Escolha STARTTLS ou SSL/TLS, não ambos.",
                 422,
             )
+
+        if enabled and delivery_mode == "platform" and not self.platform_available():
+            raise APIError(
+                "PLATFORM_SMTP_UNAVAILABLE",
+                "O e-mail compartilhado da plataforma ainda não está configurado. Use uma conta própria ou peça ao administrador para configurar o SMTP da plataforma.",
+                409,
+            )
         auth_ready = not username or bool(password_ref)
-        if enabled and (not host or not from_email or not auth_ready):
+        if enabled and delivery_mode == "tenant" and (
+            not host or not from_email or not auth_ready
+        ):
             raise APIError(
                 "TENANT_SMTP_INCOMPLETE",
-                "Para ativar o e-mail informe servidor, remetente e, quando houver usuário, a senha SMTP.",
+                "Para ativar a conta própria informe servidor, remetente e, quando houver usuário, a senha SMTP.",
                 422,
             )
+
         await self.session.execute(
             text(
                 """
                 insert into tenant_smtp_settings(
-                  singleton, enabled, host, port, username, password_ref,
+                  singleton, enabled, delivery_mode, host, port, username, password_ref,
                   from_email, from_name, reply_to, use_tls, use_ssl,
                   timeout_seconds, updated_at
                 ) values(
-                  1, :enabled, :host, :port, :username, :password_ref,
+                  1, :enabled, :delivery_mode, :host, :port, :username, :password_ref,
                   :from_email, :from_name, :reply_to, :use_tls, :use_ssl,
                   :timeout_seconds, now()
                 )
                 on conflict(singleton) do update set
                   enabled=excluded.enabled,
+                  delivery_mode=excluded.delivery_mode,
                   host=excluded.host,
                   port=excluded.port,
                   username=excluded.username,
@@ -160,6 +219,7 @@ class TenantMailService:
             ),
             {
                 "enabled": enabled,
+                "delivery_mode": delivery_mode,
                 "host": host or None,
                 "port": port,
                 "username": username or None,
@@ -177,7 +237,7 @@ class TenantMailService:
 
     async def config(self, *, require_enabled: bool = True) -> TenantSmtpConfig | None:
         row = await self._row()
-        if not row:
+        if not row or str(row.get("delivery_mode") or "tenant") != "tenant":
             return None
         config = TenantSmtpConfig(
             enabled=bool(row["enabled"]),
@@ -203,11 +263,10 @@ class TenantMailService:
         subject: str,
         body: str,
     ) -> None:
-        password = (
-            secret_resolver.resolve(config.password_ref)
-            if config.username and config.password_ref
-            else ""
-        )
+        password = config.password_value
+        if not password and config.username and config.password_ref:
+            password = secret_resolver.resolve(config.password_ref)
+
         message = EmailMessage()
         message["Subject"] = subject
         message["From"] = (
@@ -245,13 +304,22 @@ class TenantMailService:
             client.send_message(message)
 
     async def send(self, to: str, subject: str, body: str) -> None:
-        config = await self.config(require_enabled=True)
-        if config is None:
+        row = await self._row()
+        if not row or not bool(row["enabled"]):
             raise APIError(
                 "TENANT_SMTP_DISABLED",
-                "SMTP do tenant não está ativo.",
+                "O envio de e-mail deste tenant está desativado.",
                 409,
             )
+        mode = str(row.get("delivery_mode") or "tenant")
+        config = self._platform_config() if mode == "platform" else await self.config()
+        if config is None:
+            message = (
+                "O e-mail compartilhado da plataforma não está disponível."
+                if mode == "platform"
+                else "A conta SMTP própria do tenant ainda não está completa."
+            )
+            raise APIError("TENANT_SMTP_UNAVAILABLE", message, 409)
         await asyncio.to_thread(self._send_sync, config, to, subject, body)
 
     async def send_test(self, recipient: str) -> dict[str, Any]:
@@ -262,9 +330,14 @@ class TenantMailService:
                 "Informe o destinatário do teste.",
                 422,
             )
+        status = await self.status()
         await self.send(
             recipient,
-            "Scheduler Pro — teste SMTP",
-            "Esta mensagem confirma que o SMTP deste tenant está configurado e enviando corretamente.",
+            "Scheduler Pro — teste de e-mail",
+            "Esta mensagem confirma que o canal de e-mail deste tenant está configurado e enviando corretamente.",
         )
-        return {"sent": True, "recipient": recipient}
+        return {
+            "sent": True,
+            "recipient": recipient,
+            "delivery_mode": status["delivery_mode"],
+        }
