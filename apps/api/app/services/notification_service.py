@@ -96,14 +96,10 @@ class NotificationService:
         return default if value is None else value
 
     async def _email_enabled(self) -> bool:
-        enabled = await self.session.scalar(
-            text(
-                "select enabled from tenant_smtp_settings "
-                "where singleton=1 and host is not null and from_email is not null "
-                "and password_ref is not null"
-            )
-        )
-        return bool(enabled)
+        from app.services.tenant_mail_service import TenantMailService
+
+        status = await TenantMailService(self.session).status()
+        return bool(status.get("enabled") and status.get("configured"))
 
     async def _timezone(self) -> ZoneInfo:
         context_timezone = str(
