@@ -28,6 +28,24 @@ function rewriteUrl(value: string): string {
   return value
 }
 
+function requestInitFrom(input: Request): RequestInit {
+  const init: RequestInit = {
+    method: input.method,
+    headers: input.headers,
+    credentials: input.credentials,
+    mode: input.mode,
+    cache: input.cache,
+    redirect: input.redirect,
+    referrer: input.referrer,
+    referrerPolicy: input.referrerPolicy,
+    integrity: input.integrity,
+    keepalive: input.keepalive,
+    signal: input.signal,
+  }
+  if (!['GET', 'HEAD'].includes(input.method.toUpperCase()) && input.body) init.body = input.body
+  return init
+}
+
 export function installRuntimeFetch(): void {
   if (installed) return
   installed = true
@@ -38,7 +56,7 @@ export function installRuntimeFetch(): void {
     if (input instanceof URL) return originalFetch(new URL(rewriteUrl(input.toString())), init)
     if (input instanceof Request) {
       const rewritten = rewriteUrl(input.url)
-      if (rewritten !== input.url) return originalFetch(new Request(rewritten, input), init)
+      if (rewritten !== input.url) return originalFetch(rewritten, { ...requestInitFrom(input), ...(init || {}) })
     }
     return originalFetch(input, init)
   }) as typeof window.fetch
