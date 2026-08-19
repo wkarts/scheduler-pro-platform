@@ -13,7 +13,7 @@ fi
 
 mkdir -p /certs /acme.sh
 
-# O plugin dns_cf cria/removerá automaticamente o TXT _acme-challenge usando
+# O plugin dns_cf cria/remove automaticamente o TXT _acme-challenge usando
 # CLOUDFLARE_API_TOKEN exposto ao container como CF_Token. O desafio/token ACME
 # é obtido do Let's Encrypt a cada order; não existe TXT estático para manter.
 # CF_Zone_ID é opcional: a zone pode ser descoberta pelo token com Zone:Read.
@@ -23,15 +23,29 @@ unset CF_Zone_ID || true
 acme.sh --set-default-ca --server "$SERVER"
 acme.sh --register-account -m "$EMAIL" --server "$SERVER" || true
 
-ISSUE_ARGS="--dns dns_cf -d $DOMAIN -d *.$DOMAIN --keylength ec-256 --server $SERVER"
-if [ "$DNS_SLEEP" -gt 0 ] 2>/dev/null; then
-  ISSUE_ARGS="$ISSUE_ARGS --dnssleep $DNS_SLEEP"
-fi
+issue_certificate() {
+  if [ "$DNS_SLEEP" -gt 0 ] 2>/dev/null; then
+    acme.sh --issue \
+      --dns dns_cf \
+      -d "$DOMAIN" \
+      -d "*.$DOMAIN" \
+      --keylength ec-256 \
+      --server "$SERVER" \
+      --dnssleep "$DNS_SLEEP"
+  else
+    acme.sh --issue \
+      --dns dns_cf \
+      -d "$DOMAIN" \
+      -d "*.$DOMAIN" \
+      --keylength ec-256 \
+      --server "$SERVER"
+  fi
+}
 
 # Primeira emissão ou atualização do order. Se o certificado já existir e não
 # precisar ser reemitido, acme.sh pode retornar um estado de no-op; nesse caso
 # executamos renew sem --force para respeitar rate limits do Let's Encrypt.
-if ! sh -c "acme.sh --issue $ISSUE_ARGS"; then
+if ! issue_certificate; then
   acme.sh --renew -d "$DOMAIN" --ecc --server "$SERVER"
 fi
 
