@@ -56,7 +56,7 @@ class TenantNotificationDispatcher:
                 await self.session.execute(
                     text(
                         "update notification_jobs set status='FAILED', "
-                        "error='Mensagem vazia' where id=:id::uuid"
+                        "error='Mensagem vazia' where id=cast(:id as uuid)"
                     ),
                     {"id": row["id"]},
                 )
@@ -67,7 +67,7 @@ class TenantNotificationDispatcher:
                 await self.session.execute(
                     text(
                         "update notification_jobs set status='SENT', "
-                        "sent_at=now(), error=null where id=:id::uuid"
+                        "sent_at=now(), error=null where id=cast(:id as uuid)"
                     ),
                     {"id": row["id"]},
                 )
@@ -76,7 +76,7 @@ class TenantNotificationDispatcher:
                 await self.session.execute(
                     text(
                         "update notification_jobs set status='FAILED', "
-                        "error=:error where id=:id::uuid"
+                        "error=:error where id=cast(:id as uuid)"
                     ),
                     {"id": row["id"], "error": str(exc)[:1000]},
                 )
