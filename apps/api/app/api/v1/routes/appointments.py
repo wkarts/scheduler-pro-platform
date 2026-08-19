@@ -1,14 +1,15 @@
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from typing import Any
 
 from fastapi import APIRouter, Depends, Query
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_tenant_session
+from app.api.deps import get_tenant_context, get_tenant_session
 from app.core.enums import AppointmentStatus
 from app.core.responses import success
+from app.core.tenant_context import TenantContext
 from app.services.appointment_service import AppointmentService
 from app.services.notification_service import NotificationService
 
@@ -22,6 +23,21 @@ class AppointmentCreate(BaseModel):
     starts_at: datetime
     ends_at: datetime
     source: str = Field(default="web", max_length=32)
+
+
+class AppointmentQuickCreate(BaseModel):
+    starts_at: datetime
+    customer_id: str | None = None
+    customer_name: str = Field(default="Cliente", min_length=2, max_length=160)
+    customer_phone: str | None = Field(default=None, max_length=40)
+    customer_email: EmailStr | None = None
+    service_id: str | None = None
+    service_name: str = Field(default="Atendimento", min_length=2, max_length=160)
+    duration_minutes: int = Field(default=30, ge=5, le=720)
+    price: float | None = Field(default=None, ge=0)
+    professional_id: str | None = None
+    professional_name: str = Field(default="Agenda geral", min_length=2, max_length=160)
+    source: str = Field(default="tenant-web-quick", max_length=32)
 
 
 class AppointmentStatusUpdate(BaseModel):
@@ -44,6 +60,11 @@ class AppointmentNote(BaseModel):
     note: str = Field(min_length=1, max_length=4000)
 
 
+def _public_base_url(context: TenantContext) -> str:
+    scheme = "http" if context.hostname in {"localhost", "127.0.0.1"} else "https"
+    return f"{scheme}://{context.hostname}"
+
+
 @router.get("")
 async def list_appointments(
     day: date | None = Query(default=None),
@@ -64,10 +85,177 @@ async def list_appointments(
 @router.post("")
 async def create_appointment(
     payload: AppointmentCreate,
+    context: TenantContext = Depends(get_tenant_context),
     session: AsyncSession = Depends(get_tenant_session),
 ) -> dict[str, Any]:
-    appointment = await AppointmentService(session).create(payload.model_dump())
+    appointment = await AppointmentService(
+        session,
+        public_base_url=_public_base_url(context),
+    ).create(payload.model_dump())
     return success({"id": appointment.id, "status": appointment.status})
+
+
+async def _quick_customer(
+    session: AsyncSession,
+    payload: AppointmentQuickCreate,
+) -> str:
+    if payload.customer_id:
+        return payload.customer_id
+    customer_id: str | None = None
+    if payload.customer_phone:
+        customer_id = await session.scalar(
+            text(
+                """
+                select id::text from customers
+                where phone=:phone
+                order by created_at desc
+                limit 1
+                """
+            ),
+            {"phone": payload.customer_phone},
+        )
+    if customer_id:
+        return str(customer_id)
+    return str(
+        await session.scalar(
+            text(
+                """
+                insert into customers(name, phone, email, notes)
+                values(:name, :phone, :email, 'Criado automaticamente pela agenda rápida')
+                returning id::text
+                """
+            ),
+            {
+                "name": payload.customer_name,
+                "phone": payload.customer_phone,
+                "email": str(payload.customer_email) if payload.customer_email else None,
+            },
+        )
+    )
+
+
+async def _quick_service(
+    session: AsyncSession,
+    payload: AppointmentQuickCreate,
+) -> tuple[str, int]:
+    if payload.service_id:
+        row = (
+            await session.execute(
+                text(
+                    "select id::text, duration_minutes from services "
+                    "where id=cast(:id as uuid)"
+                ),
+                {"id": payload.service_id},
+            )
+        ).mappings().first()
+        if row:
+            return str(row["id"]), int(row["duration_minutes"])
+    row = (
+        await session.execute(
+            text(
+                """
+                select id::text, duration_minutes
+                from services
+                where lower(name)=lower(:name) and active='true'
+                order by name
+                limit 1
+                """
+            ),
+            {"name": payload.service_name},
+        )
+    ).mappings().first()
+    if row:
+        return str(row["id"]), int(row["duration_minutes"])
+    created = (
+        await session.execute(
+            text(
+                """
+                insert into services(name, duration_minutes, price, active)
+                values(:name, :duration, :price, 'true')
+                returning id::text, duration_minutes
+                """
+            ),
+            {
+                "name": payload.service_name,
+                "duration": payload.duration_minutes,
+                "price": payload.price,
+            },
+        )
+    ).mappings().one()
+    return str(created["id"]), int(created["duration_minutes"])
+
+
+async def _quick_professional(
+    session: AsyncSession,
+    payload: AppointmentQuickCreate,
+) -> str:
+    if payload.professional_id:
+        return payload.professional_id
+    professional_id = await session.scalar(
+        text(
+            """
+            select id::text from professionals
+            where lower(name)=lower(:name)
+            order by name
+            limit 1
+            """
+        ),
+        {"name": payload.professional_name},
+    )
+    if professional_id:
+        return str(professional_id)
+    return str(
+        await session.scalar(
+            text(
+                "insert into professionals(name) values(:name) returning id::text"
+            ),
+            {"name": payload.professional_name},
+        )
+    )
+
+
+@router.post("/quick")
+async def create_quick_appointment(
+    payload: AppointmentQuickCreate,
+    context: TenantContext = Depends(get_tenant_context),
+    session: AsyncSession = Depends(get_tenant_session),
+) -> dict[str, Any]:
+    """Agenda sem obrigar o tenant a manter cadastros auxiliares.
+
+    Quando cliente/serviço/profissional não são informados por ID, registros
+    mínimos são criados/reutilizados internamente. Assim a agenda continua sendo
+    o produto principal mesmo quando os módulos de cadastro estiverem bloqueados.
+    """
+
+    customer_id = await _quick_customer(session, payload)
+    service_id, duration = await _quick_service(session, payload)
+    professional_id = await _quick_professional(session, payload)
+    await session.commit()
+
+    starts_at = payload.starts_at
+    ends_at = starts_at + timedelta(minutes=duration)
+    appointment = await AppointmentService(
+        session,
+        public_base_url=_public_base_url(context),
+    ).create(
+        {
+            "customer_id": customer_id,
+            "service_id": service_id,
+            "professional_id": professional_id,
+            "starts_at": starts_at,
+            "ends_at": ends_at,
+            "source": payload.source,
+        }
+    )
+    return success(
+        {
+            "id": appointment.id,
+            "status": appointment.status,
+            "customer_id": customer_id,
+            "service_id": service_id,
+            "professional_id": professional_id,
+        }
+    )
 
 
 @router.get("/{appointment_id}")
@@ -149,9 +337,13 @@ async def add_appointment_note(
 async def update_status(
     appointment_id: str,
     payload: AppointmentStatusUpdate,
+    context: TenantContext = Depends(get_tenant_context),
     session: AsyncSession = Depends(get_tenant_session),
 ) -> dict[str, Any]:
-    data = await AppointmentService(session).update_status(
+    data = await AppointmentService(
+        session,
+        public_base_url=_public_base_url(context),
+    ).update_status(
         appointment_id,
         payload.status,
         payload.reason,
@@ -163,9 +355,13 @@ async def update_status(
 async def reschedule_appointment(
     appointment_id: str,
     payload: AppointmentReschedule,
+    context: TenantContext = Depends(get_tenant_context),
     session: AsyncSession = Depends(get_tenant_session),
 ) -> dict[str, Any]:
-    service = AppointmentService(session)
+    service = AppointmentService(
+        session,
+        public_base_url=_public_base_url(context),
+    )
     current = await service.get(appointment_id)
     professional_id = payload.professional_id or str(current["professional_id"])
     await service._require_reference(
@@ -207,10 +403,14 @@ async def reschedule_appointment(
         AppointmentStatus.awaiting_confirmation.value,
         "Aguardando nova confirmação",
     )
-    await NotificationService(session).schedule_for_appointment(
+    await NotificationService(
+        session,
+        public_base_url=_public_base_url(context),
+    ).schedule_for_appointment(
         appointment_id,
-        "appointment_created",
+        "appointment_rescheduled",
         reason=payload.reason,
+        rotate_confirmation=True,
     )
     await session.commit()
     return success(await service.get(appointment_id))
