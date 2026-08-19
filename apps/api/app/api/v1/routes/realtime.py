@@ -10,12 +10,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import (
     get_current_user,
+    get_tenant_context,
     get_tenant_session,
     require_permission,
     require_tenant_capability,
 )
 from app.core.responses import success
 from app.core.security import AuthPrincipal
+from app.core.tenant_context import TenantContext
+from app.db.session import tenant_session
 from app.services.realtime_service import RealtimeEventService, WebPushService
 
 router = APIRouter()
@@ -47,32 +50,36 @@ class PushUnsubscribePayload(BaseModel):
 async def event_stream(
     request: Request,
     after: int = Query(default=0, ge=0),
-    session: AsyncSession = Depends(get_tenant_session),
+    context: TenantContext = Depends(get_tenant_context),
 ) -> StreamingResponse:
-    service = RealtimeEventService(session)
-
     async def generate() -> AsyncIterator[str]:
         cursor = after
-        while True:
-            if await request.is_disconnected():
-                break
-            rows = await service.list_after(cursor, limit=100)
-            # SELECT abre transação no AsyncSession. Fechar a transação após cada
-            # leitura evita prender uma conexão PostgreSQL durante toda a vida do
-            # SSE; a próxima iteração adquire conexão somente quando necessário.
-            await session.rollback()
-            if rows:
-                for row in rows:
-                    cursor = int(row["sequence"])
-                    payload = json.dumps(row, ensure_ascii=False, default=str)
-                    yield (
-                        f"id: {cursor}\n"
-                        f"event: {row['event_type']}\n"
-                        f"data: {payload}\n\n"
-                    )
-            else:
-                yield ": keepalive\n\n"
-            await asyncio.sleep(1)
+        # A sessão é criada dentro do gerador, e não como dependency da rota.
+        # Assim ela vive exatamente pelo tempo do StreamingResponse e funciona
+        # corretamente também nas versões FastAPI em que dependencies `yield`
+        # são finalizadas antes de o corpo do stream terminar.
+        async for live_session in tenant_session(context):
+            service = RealtimeEventService(live_session)
+            while True:
+                if await request.is_disconnected():
+                    return
+                rows = await service.list_after(cursor, limit=100)
+                # SELECT abre transação; rollback libera a conexão do pool entre
+                # polls sem alterar nenhum dado.
+                await live_session.rollback()
+                if rows:
+                    for row in rows:
+                        cursor = int(row["sequence"])
+                        payload = json.dumps(row, ensure_ascii=False, default=str)
+                        yield (
+                            f"id: {cursor}\n"
+                            f"event: {row['event_type']}\n"
+                            f"data: {payload}\n\n"
+                        )
+                else:
+                    yield ": keepalive\n\n"
+                await asyncio.sleep(1)
+            return
 
     return StreamingResponse(
         generate(),
