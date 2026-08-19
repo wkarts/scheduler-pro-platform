@@ -25,7 +25,7 @@ def _authorize(value: str | None) -> None:
 
 def _client() -> httpx.AsyncClient:
     transport = httpx.AsyncHTTPTransport(uds=DOCKER_SOCKET)
-    return httpx.AsyncClient(transport=transport, base_url="http://docker", timeout=20.0)
+    return httpx.AsyncClient(transport=transport, base_url="http://docker", timeout=90.0)
 
 
 def _decode_logs(content: bytes) -> list[dict[str, str]]:
@@ -135,11 +135,17 @@ async def logs(
     tail: int = Query(default=500, ge=1, le=5000),
     since: int | None = Query(default=None, ge=0),
     search: str | None = Query(default=None, max_length=300),
+    all_lines: bool = Query(default=False),
     x_log_agent_token: str | None = Header(default=None),
 ) -> dict[str, Any]:
     _authorize(x_log_agent_token)
     resolved = await _resolve_container(container)
-    params: dict[str, str] = {"stdout": "1", "stderr": "1", "timestamps": "1", "tail": str(tail)}
+    params: dict[str, str] = {
+        "stdout": "1",
+        "stderr": "1",
+        "timestamps": "1",
+        "tail": "all" if all_lines else str(tail),
+    }
     if since is not None:
         params["since"] = str(since)
     try:
@@ -154,4 +160,9 @@ async def logs(
     if search:
         needle = search.casefold()
         entries = [entry for entry in entries if needle in entry["message"].casefold()]
-    return {"container": resolved, "entries": entries, "count": len(entries)}
+    return {
+        "container": resolved,
+        "entries": entries,
+        "count": len(entries),
+        "all_lines": all_lines,
+    }
