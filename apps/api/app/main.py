@@ -1,3 +1,4 @@
+import asyncio
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from time import perf_counter
@@ -15,11 +16,16 @@ from app.core.errors import APIError, api_error_handler, unhandled_error_handler
 from app.core.logging import configure_logging
 from app.core.security import decode_access_token
 from app.db.session import close_database_engines
+from app.services.http_log_persistence import persist_http_operation
+
+_log_tasks: set[asyncio.Task[None]] = set()
 
 
 @asynccontextmanager
 async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     yield
+    if _log_tasks:
+        await asyncio.gather(*list(_log_tasks), return_exceptions=True)
     await close_database_engines()
 
 
@@ -37,6 +43,34 @@ def _request_principal(request: Request) -> dict[str, Any]:
         "user_type": payload.get("user_type"),
         "session_id": payload.get("sid"),
     }
+
+
+def _queue_http_log(
+    request: Request,
+    *,
+    status_code: int,
+    duration_ms: float,
+    principal: dict[str, Any],
+    error_type: str | None = None,
+) -> None:
+    task = asyncio.create_task(
+        persist_http_operation(
+            method=request.method,
+            path=request.url.path,
+            query=request.url.query or None,
+            status_code=status_code,
+            duration_ms=duration_ms,
+            request_id=request.state.request_id,
+            correlation_id=request.state.correlation_id,
+            host=request.headers.get("host", ""),
+            client_ip=request.client.host if request.client else None,
+            user_agent=request.headers.get("user-agent"),
+            principal=principal,
+            error_type=error_type,
+        )
+    )
+    _log_tasks.add(task)
+    task.add_done_callback(_log_tasks.discard)
 
 
 def create_app() -> FastAPI:
@@ -79,12 +113,14 @@ def create_app() -> FastAPI:
         request.state.correlation_id = (
             request.headers.get("x-correlation-id") or settings.new_id("corr")
         )
+        principal = _request_principal(request)
         started = perf_counter()
         status_code = 500
         try:
             response = await call_next(request)
             status_code = response.status_code
-        except Exception:
+        except Exception as exc:
+            duration_ms = round((perf_counter() - started) * 1000, 3)
             logger.exception(
                 "http_request_failed",
                 request_id=request.state.request_id,
@@ -92,10 +128,19 @@ def create_app() -> FastAPI:
                 method=request.method,
                 path=request.url.path,
                 client_ip=request.client.host if request.client else None,
-                duration_ms=round((perf_counter() - started) * 1000, 3),
-                **_request_principal(request),
+                duration_ms=duration_ms,
+                **principal,
+            )
+            _queue_http_log(
+                request,
+                status_code=500,
+                duration_ms=duration_ms,
+                principal=principal,
+                error_type=type(exc).__name__,
             )
             raise
+
+        duration_ms = round((perf_counter() - started) * 1000, 3)
         response.headers["x-request-id"] = request.state.request_id
         response.headers["x-correlation-id"] = request.state.correlation_id
         logger.info(
@@ -106,10 +151,16 @@ def create_app() -> FastAPI:
             path=request.url.path,
             query=request.url.query or None,
             status_code=status_code,
-            duration_ms=round((perf_counter() - started) * 1000, 3),
+            duration_ms=duration_ms,
             client_ip=request.client.host if request.client else None,
             user_agent=(request.headers.get("user-agent") or "")[:240] or None,
-            **_request_principal(request),
+            **principal,
+        )
+        _queue_http_log(
+            request,
+            status_code=status_code,
+            duration_ms=duration_ms,
+            principal=principal,
         )
         return response
 
