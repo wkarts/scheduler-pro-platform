@@ -28,7 +28,8 @@ async function download(button: HTMLButtonElement): Promise<void> {
     const tenantSelect = document.querySelector<HTMLSelectElement>('.company-switcher select')
     const params = new URLSearchParams()
     if (tenantSelect?.value) params.set('tenant', tenantSelect.value)
-    const query = params.size ? `?${params.toString()}` : ''
+    const encoded = params.toString()
+    const query = encoded ? `?${encoded}` : ''
     const response = await fetch(`${API_BASE_URL}/platform/observability/logs/export${query}`, {
       headers: { Authorization: `Bearer ${accessToken}` },
     })
