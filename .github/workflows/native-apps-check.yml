@@ -12,10 +12,13 @@ on:
       - 'scripts/build/validate-desktop-local.mjs'
       - 'scripts/build/validate-desktop-webview.mjs'
       - 'scripts/build/configure-desktop-webview.mjs'
+      - 'scripts/build/prepare-windows-tauri-version.mjs'
+      - 'scripts/build/run-tauri-build.mjs'
       - 'package.json'
       - 'package-lock.json'
       - '.github/workflows/native-apps-check.yml'
       - '.github/workflows/release.yml'
+      - '.github/workflows/desktop-artifacts.yml'
   workflow_dispatch:
 
 permissions:
@@ -32,6 +35,8 @@ jobs:
           cache: npm
       - name: Install JS deps
         run: npm install
+      - name: Validate Windows MSI version normalizer
+        run: node scripts/build/prepare-windows-tauri-version.mjs --self-test
       - name: Validate client desktop bundled frontend
         run: npm --workspace apps/desktop run typecheck
       - name: Validate admin desktop bundled frontend
@@ -67,3 +72,41 @@ jobs:
           if (-not (Test-Path (Join-Path $target 'icon.png'))) {
             throw 'Tauri icon.png was not generated on Windows'
           }
+
+  windows-installers:
+    name: Windows MSI + NSIS / ${{ matrix.app_name }}
+    runs-on: windows-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { app_path: apps/desktop, app_name: client }
+          - { app_path: apps/admin-desktop, app_name: admin }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Install JS deps
+        run: npm install
+      - name: Generate official Tauri icons
+        shell: pwsh
+        run: npx tauri icon packages/branding/scheduler-pro/brand-symbol.svg --output ${{ matrix.app_path }}/src-tauri/icons
+      - name: Validate local bundled frontend
+        run: node scripts/build/validate-desktop-local.mjs "${{ matrix.app_path }}"
+      - name: Build real Windows installers
+        working-directory: ${{ matrix.app_path }}
+        run: npm run tauri:build -- --bundles msi,nsis
+      - name: Assert MSI and NSIS were generated
+        shell: pwsh
+        run: |
+          $bundle = Join-Path '${{ matrix.app_path }}' 'src-tauri/target/release/bundle'
+          $msi = Get-ChildItem $bundle -Recurse -Filter *.msi -ErrorAction SilentlyContinue
+          $exe = Get-ChildItem $bundle -Recurse -Filter *.exe -ErrorAction SilentlyContinue
+          if (-not $msi) { throw 'MSI installer was not generated' }
+          if (-not $exe) { throw 'NSIS installer was not generated' }
+          Write-Host "MSI: $($msi.FullName -join ', ')"
+          Write-Host "NSIS: $($exe.FullName -join ', ')"
