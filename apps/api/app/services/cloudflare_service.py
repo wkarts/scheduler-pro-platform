@@ -97,7 +97,12 @@ class CloudflareService:
                 "CLOUDFLARE_TOKEN_MISSING",
                 "Token Cloudflare não configurado.",
                 424,
-                {"hint": "Configure CLOUDFLARE_API_TOKEN; dry-run nunca é ativado implicitamente."},
+                {
+                    "hint": (
+                        "Configure CLOUDFLARE_API_TOKEN; dry-run nunca é ativado "
+                        "implicitamente."
+                    )
+                },
             )
 
         headers = {
@@ -117,7 +122,10 @@ class CloudflareService:
                 "CLOUDFLARE_NETWORK_ERROR",
                 "Não foi possível conectar à API Cloudflare.",
                 424,
-                {"operation": f"{method} {path}", "exception": exc.__class__.__name__},
+                {
+                    "operation": f"{method} {path}",
+                    "exception": exc.__class__.__name__,
+                },
             ) from exc
 
         try:
@@ -348,7 +356,10 @@ class CloudflareService:
     ) -> dict[str, Any]:
         clean_hostname = self._clean_hostname(hostname)
         if self.dry_run:
-            return self._dry_result("GET /dns_records", {"records": [], "name": clean_hostname})
+            return self._dry_result(
+                "GET /dns_records",
+                {"records": [], "name": clean_hostname},
+            )
         params: dict[str, str] = {"name": clean_hostname, "per_page": "100"}
         if record_type:
             params["type"] = record_type.upper()
@@ -375,10 +386,17 @@ class CloudflareService:
         }
 
     @classmethod
-    def _dns_record_matches(cls, record: dict[str, Any], desired: dict[str, Any]) -> bool:
+    def _dns_record_matches(
+        cls,
+        record: dict[str, Any],
+        desired: dict[str, Any],
+    ) -> bool:
         record_type = str(record.get("type") or "").upper()
         record_name = cls._clean_hostname(str(record.get("name") or ""))
-        record_content = cls._clean_content(str(record.get("content") or ""), record_type)
+        record_content = cls._clean_content(
+            str(record.get("content") or ""),
+            record_type,
+        )
         return (
             record_type == desired["type"]
             and record_name == desired["name"]
@@ -470,11 +488,28 @@ class CloudflareService:
                 "result": desired,
             }
 
-        existing = await self.list_dns_records(desired["name"], desired["type"])
+        # Cloudflare não permite A/AAAA/CNAME concorrentes no mesmo hostname.
+        # A implementação antiga filtrava apenas o tipo desejado; portanto um A
+        # legado ficava invisível e o POST do novo CNAME retornava HTTP 400/81053.
+        # Como ensure_dns_record é um reconciliador (estado desejado), convergimos
+        # somente os tipos de endereço conflitantes e preservamos TXT/MX/etc.
+        existing = await self.list_dns_records(desired["name"])
         raw_records = existing.get("result")
-        records = [record for record in raw_records if isinstance(record, dict)] if isinstance(raw_records, list) else []
+        all_records = (
+            [record for record in raw_records if isinstance(record, dict)]
+            if isinstance(raw_records, list)
+            else []
+        )
+        records = [
+            record
+            for record in all_records
+            if str(record.get("type") or "").upper() == desired["type"]
+        ]
 
-        exact = next((record for record in records if self._dns_record_matches(record, desired)), None)
+        exact = next(
+            (record for record in records if self._dns_record_matches(record, desired)),
+            None,
+        )
         if exact is not None:
             return {
                 "success": True,
@@ -486,13 +521,58 @@ class CloudflareService:
                 "duplicate_count": max(len(records) - 1, 0),
             }
 
-        # Prefere reconciliar um registro com o mesmo conteúdo; caso contrário, o
-        # registro do mesmo nome/tipo é sobrescrito. Nunca aceita estado incorreto.
+        address_types = {"A", "AAAA", "CNAME"}
+        blockers = [
+            record
+            for record in all_records
+            if str(record.get("type") or "").upper() in address_types
+            and str(record.get("id") or "")
+            and not (
+                str(record.get("type") or "").upper() == desired["type"]
+                and self._clean_content(
+                    str(record.get("content") or ""),
+                    desired["type"],
+                )
+                == desired["content"]
+            )
+        ]
+        removed_conflicts: list[dict[str, Any]] = []
+        for blocker in blockers:
+            await self.delete_dns_record(str(blocker["id"]))
+            removed_conflicts.append(
+                {
+                    "id": str(blocker.get("id") or ""),
+                    "type": str(blocker.get("type") or ""),
+                    "name": str(blocker.get("name") or ""),
+                    "content": str(blocker.get("content") or ""),
+                    "proxied": bool(blocker.get("proxied", False)),
+                }
+            )
+
+        if removed_conflicts:
+            # Reconsulta após excluir A/AAAA/CNAME incompatíveis para não tentar
+            # atualizar um registro que acabou de ser removido.
+            existing = await self.list_dns_records(desired["name"])
+            raw_records = existing.get("result")
+            all_records = (
+                [record for record in raw_records if isinstance(record, dict)]
+                if isinstance(raw_records, list)
+                else []
+            )
+            records = [
+                record
+                for record in all_records
+                if str(record.get("type") or "").upper() == desired["type"]
+            ]
+
         same_content = next(
             (
                 record
                 for record in records
-                if self._clean_content(str(record.get("content") or ""), desired["type"])
+                if self._clean_content(
+                    str(record.get("content") or ""),
+                    desired["type"],
+                )
                 == desired["content"]
             ),
             None,
@@ -529,6 +609,7 @@ class CloudflareService:
                     "recovered_after_api_error": True,
                     "result": verified,
                     "lookup": lookup,
+                    "removed_conflicts": removed_conflicts,
                 }
             raise APIError(
                 "CLOUDFLARE_DNS_RECONCILIATION_ERROR",
@@ -538,6 +619,7 @@ class CloudflareService:
                     "desired": desired,
                     "existing": lookup.get("result"),
                     "operation": operation,
+                    "removed_conflicts": removed_conflicts,
                     "cloudflare_error": {
                         "code": exc.code,
                         "message": exc.message,
@@ -556,6 +638,7 @@ class CloudflareService:
                     "desired": desired,
                     "observed": lookup.get("result"),
                     "operation": operation,
+                    "removed_conflicts": removed_conflicts,
                     "response": response,
                 },
             )
@@ -568,6 +651,7 @@ class CloudflareService:
             "result": verified,
             "cloudflare": response,
             "lookup": lookup,
+            "removed_conflicts": removed_conflicts,
             "duplicate_count": max(len(records) - 1, 0),
         }
 
@@ -580,9 +664,11 @@ class CloudflareService:
     async def list_custom_hostnames(self, hostname: str) -> dict[str, Any]:
         clean = self._clean_hostname(hostname)
         if self.dry_run:
-            return self._dry_result("GET /custom_hostnames", {"hostname": clean, "records": []})
+            return self._dry_result(
+                "GET /custom_hostnames",
+                {"hostname": clean, "records": []},
+            )
         path = await self._zone_path("/custom_hostnames")
-        # A API representa o filtro aninhado como hostname.exact na query string.
         return await self._request(
             "GET",
             f"{path}?{urlencode({'hostname.exact': clean, 'per_page': '50'})}",
@@ -596,7 +682,11 @@ class CloudflareService:
                 "method": "http",
                 "type": "dv",
                 "certificate_authority": self.custom_hostname_ca,
-                "settings": {"http2": "on", "min_tls_version": "1.2", "tls_1_3": "on"},
+                "settings": {
+                    "http2": "on",
+                    "min_tls_version": "1.2",
+                    "tls_1_3": "on",
+                },
             },
         }
         if self.custom_hostname_origin:
@@ -615,19 +705,27 @@ class CloudflareService:
                 {
                     "hostname": clean,
                     "status": "active",
-                    "ssl": {"status": "active", "certificate_authority": self.custom_hostname_ca},
+                    "ssl": {
+                        "status": "active",
+                        "certificate_authority": self.custom_hostname_ca,
+                    },
                 },
             )
 
         lookup = await self.list_custom_hostnames(clean)
         raw = lookup.get("result")
-        records = [item for item in raw if isinstance(item, dict)] if isinstance(raw, list) else []
+        records = (
+            [item for item in raw if isinstance(item, dict)]
+            if isinstance(raw, list)
+            else []
+        )
         usable = next(
             (
                 item
                 for item in records
                 if self._clean_hostname(str(item.get("hostname") or "")) == clean
-                and str(item.get("status") or "") not in {"deleted", "pending_deletion"}
+                and str(item.get("status") or "")
+                not in {"deleted", "pending_deletion"}
             ),
             None,
         )
@@ -644,16 +742,22 @@ class CloudflareService:
         except APIError as exc:
             after = await self.list_custom_hostnames(clean)
             after_records = after.get("result")
-            recovered = next(
-                (
-                    item
-                    for item in after_records
-                    if isinstance(item, dict)
-                    and self._clean_hostname(str(item.get("hostname") or "")) == clean
-                    and str(item.get("status") or "") not in {"deleted", "pending_deletion"}
-                ),
-                None,
-            ) if isinstance(after_records, list) else None
+            recovered = (
+                next(
+                    (
+                        item
+                        for item in after_records
+                        if isinstance(item, dict)
+                        and self._clean_hostname(str(item.get("hostname") or ""))
+                        == clean
+                        and str(item.get("status") or "")
+                        not in {"deleted", "pending_deletion"}
+                    ),
+                    None,
+                )
+                if isinstance(after_records, list)
+                else None
+            )
             if recovered is not None:
                 return {
                     "success": True,

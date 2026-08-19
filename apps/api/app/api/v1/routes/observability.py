@@ -1,6 +1,6 @@
 from typing import Any
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Response
 from pydantic import BaseModel, Field
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -11,9 +11,11 @@ from app.api.deps import (
     get_tenant_session,
     require_platform_permission,
 )
+from app.core.errors import APIError
 from app.core.responses import success
 from app.core.security import AuthPrincipal
 from app.db.session import tenant_session
+from app.services.diagnostics_export_service import DiagnosticsExportService
 from app.services.docker_console_service import DockerConsoleService
 from app.services.observability_service import ObservabilityService
 from app.services.tenant_resolver import TenantResolver
@@ -101,6 +103,39 @@ async def platform_log_summary(
             if str(row.get("tenant_id")) in allowed
         ]
     return success(data)
+
+
+@router.get("/logs/export")
+async def export_complete_diagnostics(
+    tenant: str | None = Query(default=None),
+    principal: AuthPrincipal = Depends(require_platform_permission("observability.export")),
+    session: AsyncSession = Depends(get_platform_session),
+) -> Response:
+    """Download one redacted ZIP with DB, Docker and browser diagnostics."""
+
+    if tenant:
+        assert_platform_tenant_access(principal, tenant)
+    if not principal.is_super_admin and "audit.read" not in principal.permissions:
+        raise APIError(
+            "DIAGNOSTICS_AUDIT_PERMISSION_REQUIRED",
+            "O pacote completo inclui auditoria e exige a permissão audit.read.",
+            403,
+        )
+
+    allowed = None if principal.is_super_admin else set(principal.tenant_ids)
+    payload, filename = await DiagnosticsExportService(session).build_bundle(
+        tenant_id=tenant,
+        allowed_tenant_ids=allowed,
+    )
+    return Response(
+        content=payload,
+        media_type="application/zip",
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"',
+            "Cache-Control": "no-store",
+            "X-Content-Type-Options": "nosniff",
+        },
+    )
 
 
 @router.post("/logs/ingest")

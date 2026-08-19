@@ -126,7 +126,7 @@ async def _reconcile_managed_domains() -> dict[str, object]:
                         where is_temporary=true
                            or lower(hostname)=:root
                            or lower(hostname) like :suffix
-                        order by created_at asc
+                        order by id asc
                         """
                     ),
                     {"root": root, "suffix": suffix},
