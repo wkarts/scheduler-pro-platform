@@ -98,17 +98,18 @@ services:
       - ${SCHEDULER_PRO_DATA_ROOT:-./scheduler-pro-data}/acme:/acme.sh
       - ${SCHEDULER_PRO_DATA_ROOT:-./scheduler-pro-data}/certs:/certs
 
-  # Único serviço com privilégio de host. Não publica portas e não possui rede.
-  # Ele aguarda o Reverse Proxy criado manualmente no CloudPanel, adiciona o
-  # server_name wildcard com rollback + nginx -t e instala/renova o certificado
-  # via clpctl. Nenhum script precisa ser executado manualmente no VPS.
+  # Único serviço root-equivalent ao VPS. Não publica porta nem expõe endpoint.
+  # Os namespaces PID/rede do host permitem que clpctl e nginx operem no contexto
+  # real do CloudPanel. O agente apenas aguarda o Reverse Proxy, adiciona o
+  # server_name wildcard com rollback + nginx -t e instala/renova o certificado.
   scheduler-cloudpanel-agent:
     image: *cloudpanel-agent-image
     pull_policy: always
     restart: unless-stopped
     user: "0:0"
     privileged: true
-    network_mode: none
+    pid: host
+    network_mode: host
     read_only: true
     depends_on:
       scheduler-storage-init: {condition: service_completed_successfully}
