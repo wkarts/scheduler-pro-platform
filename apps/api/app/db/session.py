@@ -4,14 +4,27 @@ from collections import OrderedDict
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
 
-from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.ext.asyncio import (
+    AsyncEngine,
+    AsyncSession,
+    async_sessionmaker,
+    create_async_engine,
+)
 
 from app.core.config import settings
 from app.core.secrets import secret_resolver
 from app.core.tenant_context import TenantContext
 
-platform_engine = create_async_engine(settings.platform_database_url, pool_pre_ping=True, future=True)
-PlatformSession = async_sessionmaker(platform_engine, expire_on_commit=False, class_=AsyncSession)
+platform_engine = create_async_engine(
+    settings.platform_database_url,
+    pool_pre_ping=True,
+    future=True,
+)
+PlatformSession = async_sessionmaker(
+    platform_engine,
+    expire_on_commit=False,
+    class_=AsyncSession,
+)
 
 
 @dataclass(slots=True)
@@ -70,11 +83,18 @@ async def get_tenant_engine(context: TenantContext) -> AsyncEngine:
 
         password = secret_resolver.resolve(context.database_password_ref)
         engine = create_async_engine(
-            settings.tenant_database_url(context.database, context.database_user, password),
+            settings.tenant_database_url(
+                context.database,
+                context.database_user,
+                password,
+            ),
             pool_pre_ping=True,
             future=True,
         )
-        _tenant_engines[cache_key] = _TenantEngineEntry(engine=engine, last_used=now)
+        _tenant_engines[cache_key] = _TenantEngineEntry(
+            engine=engine,
+            last_used=now,
+        )
         _tenant_engine_metrics["misses"] += 1
 
         max_entries = max(settings.tenant_engine_cache_max, 1)
@@ -109,6 +129,16 @@ def tenant_engine_cache_metrics() -> dict[str, int]:
 
 async def tenant_session(context: TenantContext) -> AsyncIterator[AsyncSession]:
     engine = await get_tenant_engine(context)
-    factory = async_sessionmaker(engine, expire_on_commit=False, class_=AsyncSession)
+    factory = async_sessionmaker(
+        engine,
+        expire_on_commit=False,
+        class_=AsyncSession,
+    )
     async with factory() as session:
+        # Serviços de domínio não devem depender de o endpoint lembrar de
+        # repassar timezone/tenant manualmente. O contexto acompanha a sessão.
+        session.info["tenant_id"] = context.tenant_id
+        session.info["tenant_slug"] = context.slug
+        session.info["tenant_hostname"] = context.hostname
+        session.info["tenant_timezone"] = context.timezone
         yield session
