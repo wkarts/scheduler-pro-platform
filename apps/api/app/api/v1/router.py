@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends
 
 from app.api.deps import require_permission, require_tenant_capability
 from app.api.v1.routes import (
+    appointment_confirmations,
     appointments,
     auth,
     availability,
@@ -29,7 +30,11 @@ api_router = APIRouter()
 api_router.include_router(health.router, tags=["Health"])
 api_router.include_router(public.router, prefix="/public", tags=["Public"])
 api_router.include_router(auth.router, prefix="/auth", tags=["Authentication"])
-api_router.include_router(password_reset_pages.router, prefix="/auth", tags=["Authentication"])
+api_router.include_router(
+    password_reset_pages.router,
+    prefix="/auth",
+    tags=["Authentication"],
+)
 api_router.include_router(
     customers.router,
     prefix="/customers",
@@ -76,6 +81,15 @@ api_router.include_router(
     appointments.router,
     prefix="/appointments",
     tags=["Appointments"],
+    dependencies=[
+        Depends(require_tenant_capability("appointments")),
+        Depends(require_permission("appointments.create")),
+    ],
+)
+api_router.include_router(
+    appointment_confirmations.router,
+    prefix="/appointment-confirmations",
+    tags=["Appointment Confirmations"],
     dependencies=[
         Depends(require_tenant_capability("appointments")),
         Depends(require_permission("appointments.create")),
