@@ -69,6 +69,14 @@ jobs:
             file: infrastructure/docker/proxy/Dockerfile
             tag: proxy
             build_args: ""
+          - name: acme
+            file: infrastructure/docker/acme/Dockerfile
+            tag: acme
+            build_args: ""
+          - name: cloudpanel-agent
+            file: infrastructure/docker/cloudpanel-agent/Dockerfile
+            tag: cloudpanel-agent
+            build_args: ""
     steps:
       - uses: actions/checkout@v4
       - uses: docker/setup-buildx-action@v3
@@ -103,7 +111,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          for image in python-base api worker web admin proxy; do
+          for image in python-base api worker web admin proxy acme cloudpanel-agent; do
             docker buildx imagetools inspect "${REGISTRY_PREFIX}/${image}:${GITHUB_SHA}" >/dev/null
           done
       - name: Publicar a tag somente após o conjunto completo existir
@@ -116,7 +124,7 @@ jobs:
             echo "Tag GHCR inválida: ${RELEASE_TAG}" >&2
             exit 2
           fi
-          for image in python-base api worker web admin proxy; do
+          for image in python-base api worker web admin proxy acme cloudpanel-agent; do
             source_ref="${REGISTRY_PREFIX}/${image}:${GITHUB_SHA}"
             target_ref="${REGISTRY_PREFIX}/${image}:${RELEASE_TAG}"
             docker buildx imagetools create --tag "${target_ref}" "${source_ref}"
@@ -128,5 +136,5 @@ jobs:
             echo "Tag: \`${RELEASE_TAG}\`"
             echo "SHA imutável: \`${GITHUB_SHA}\`"
             echo
-            echo "A tag somente foi publicada após base, API, workers, web, admin e proxy concluírem com sucesso."
+            echo "A tag somente foi publicada após base, API, workers, web, admin, proxy, ACME e CloudPanel Agent concluírem com sucesso."
           } >> "${GITHUB_STEP_SUMMARY}"
