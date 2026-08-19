@@ -15,6 +15,8 @@ from app.core.errors import APIError
 from app.core.tenant_context import TenantContext
 from app.services.appointment_confirmation_service import AppointmentConfirmationService
 from app.services.branding_service import BrandingService
+from app.services.realtime_service import RealtimeEventService
+from app.workers.celery_app import celery_app
 
 router = APIRouter(prefix="/a", tags=["Public Appointment Action"])
 
@@ -243,10 +245,30 @@ async def appointment_action_submit(
     page = await service.page_settings()
     branding = await BrandingService(platform_session).manifest_for_context(context)
     try:
+        before = await service.snapshot(token)
         response_snapshot = await service.respond(token, action)
         confirmed = (
             str(response_snapshot.get("state") or "").upper() == "CONFIRMED"
         )
+        before_state = str(before.get("state") or "").upper()
+        appointment_id = str(response_snapshot.get("appointment_id") or "")
+        if before_state == "PENDING" and appointment_id:
+            event = await RealtimeEventService(tenant_session).emit_appointment(
+                appointment_id,
+                (
+                    "appointment.customer_confirmed"
+                    if confirmed
+                    else "appointment.customer_cancelled"
+                ),
+                actor="customer-public-link",
+            )
+            event_id = str(event.get("id") or "") if event else ""
+            if event_id:
+                celery_app.send_task(
+                    "app.workers.tasks.dispatch_realtime_push",
+                    args=[context.tenant_id, event_id],
+                    queue="notifications",
+                )
         return _render_page(
             snapshot=response_snapshot,
             page=page,
