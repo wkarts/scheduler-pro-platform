@@ -2,6 +2,7 @@ import asyncio
 
 from sqlalchemy import text
 
+from app.cli import migrate_all_tenants
 from app.core.config import settings
 from app.core.security import hash_password
 from app.db.session import PlatformSession
@@ -69,5 +70,14 @@ async def bootstrap_platform_admin() -> None:
     print(f"Scheduler Pro platform admin ready: {normalized_email}")
 
 
+async def bootstrap_platform() -> None:
+    # Mantém compatibilidade com deployments antigos que ainda não possuam o
+    # serviço one-shot scheduler-tenant-migrate no Compose. Em deployments atuais
+    # este segundo passe é idempotente e garante que API/workers nunca iniciem
+    # contra tenant databases sem o Alembic head esperado pela imagem nova.
+    await migrate_all_tenants()
+    await bootstrap_platform_admin()
+
+
 if __name__ == "__main__":
-    asyncio.run(bootstrap_platform_admin())
+    asyncio.run(bootstrap_platform())

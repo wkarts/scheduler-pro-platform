@@ -65,28 +65,8 @@ jobs:
           node-version: '22'
       - name: Install
         run: npm install
-      - name: Validate Windows MSI version normalization
-        shell: bash
-        run: |
-          set -euo pipefail
-          tmp="$(mktemp -d)"
-          mkdir -p "$tmp/apps"
-          cp -R apps/desktop "$tmp/apps/desktop"
-          GITHUB_RUN_NUMBER=70000 node scripts/build/normalize-tauri-windows-version.mjs \
-            "$tmp/apps/desktop" \
-            "src-tauri/tauri.conf.json" \
-            "v0.1.0-alpha.999"
-          CONFIG="$tmp/apps/desktop/src-tauri/tauri.conf.json" node --input-type=module <<'NODE'
-          import fs from 'node:fs'
-          const version = JSON.parse(fs.readFileSync(process.env.CONFIG, 'utf8')).version
-          const match = String(version).match(/^\d+\.\d+\.\d+-(\d+)$/)
-          if (!match) throw new Error(`Versão Windows não ficou numeric-only: ${version}`)
-          const prerelease = Number(match[1])
-          if (!Number.isInteger(prerelease) || prerelease < 1 || prerelease > 65535) {
-            throw new Error(`Pré-release MSI fora do limite: ${version}`)
-          }
-          console.log(`Versão MSI validada: ${version}`)
-          NODE
+      - name: Validate Windows Tauri MSI version contract
+        run: node scripts/build/prepare-windows-tauri-version.mjs --self-test
       - name: Typecheck/build
         run: |
           npm run typecheck --workspaces --if-present

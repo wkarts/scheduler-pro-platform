@@ -6,6 +6,7 @@ import './operational.css'
 import './tenant-console.css'
 import './tenant-dashboard-polish.css'
 import './branding.css'
+import './tenant-dashboard.css'
 import './pwa'
 
 createApp(App).use(createPinia()).mount('#app')
