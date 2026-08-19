@@ -20,10 +20,22 @@ def test_confirmation_migration_contains_realtime_and_push_tables() -> None:
     assert 'revision = "tenant_0006_appointment_confirmation"' in migration
     assert "appointment_confirmation_requests" in migration
     assert "tenant_realtime_events" in migration
+    assert "web_push_vapid_keys" in migration
     assert "web_push_subscriptions" in migration
     assert "tenant_confirmation_confirmed" in migration
     assert "tenant_confirmation_cancelled" in migration
     assert "tenant_confirmation_expired" in migration
+
+
+def test_vapid_private_reference_is_not_stored_in_public_tenant_settings() -> None:
+    realtime = (API_ROOT / "app" / "services" / "realtime_service.py").read_text(
+        encoding="utf-8"
+    )
+
+    assert "web_push_vapid_keys" in realtime
+    assert "private_key_ref" in realtime
+    assert "web_push_vapid_private_key_ref" not in realtime
+    assert "pg_advisory_xact_lock" in realtime
 
 
 def test_realtime_event_catalog_covers_customer_and_operator_flow() -> None:
