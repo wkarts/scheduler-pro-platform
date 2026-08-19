@@ -18,7 +18,7 @@ from app.services.tenant_resolver import TenantResolver
 
 router = APIRouter()
 PLATFORM_MIGRATION_HEAD = "platform_0008"
-TENANT_MIGRATION_HEAD = "tenant_0005_password_recovery"
+TENANT_MIGRATION_HEAD = "tenant_0006_appointment_confirmation"
 
 
 @router.get("/health")
