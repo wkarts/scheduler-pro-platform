@@ -1,0 +1,34 @@
+/* Correção incremental do menu responsivo do tenant.
+   TenantConsole mantém seu estado collapsed; quando o drawer mobile está aberto,
+   os rótulos precisam permanecer visíveis independentemente desse estado. */
+@media (max-width: 1024px) {
+  .tenant-console.mobileOpen .sidebar {
+    width: min(88vw, 330px) !important;
+    max-width: 330px !important;
+  }
+
+  .tenant-console.mobileOpen .sidebar .nav-list .nav-item,
+  .tenant-console.mobileOpen .sidebar .sidebar-footer .nav-item {
+    justify-content: flex-start !important;
+    gap: 11px !important;
+    padding-left: 14px !important;
+    padding-right: 14px !important;
+  }
+
+  .tenant-console.mobileOpen .sidebar .nav-list .nav-item > span,
+  .tenant-console.mobileOpen .sidebar .sidebar-footer .nav-item > span,
+  .tenant-console.mobileOpen .sidebar .brand > div:not(.brand-mark),
+  .tenant-console.mobileOpen .sidebar .version-info,
+  .tenant-console.mobileOpen .sidebar .sp-version {
+    display: block !important;
+    opacity: 1 !important;
+    visibility: visible !important;
+    width: auto !important;
+    max-width: none !important;
+  }
+
+  .tenant-console.mobileOpen .sidebar .brand {
+    justify-content: flex-start !important;
+    gap: 11px !important;
+  }
+}
