@@ -68,6 +68,7 @@ class DomainProvisioningService:
                 "wildcard": f"*.{settings.effective_local_acme_domain}",
                 "dns_proxied": settings.cloudflare_temporary_record_proxied,
                 "issuer": "letsencrypt",
+                "challenge": "dns-01",
             }
         return {
             "mode": "cloudflare_saas",
@@ -131,12 +132,20 @@ class DomainProvisioningService:
             "last_check",
         ):
             previous.pop(stale_key, None)
+        wildcard_mode = bool(settings.cloudflare_managed_wildcard_dns)
+        target = (
+            settings.managed_wildcard_target
+            if wildcard_mode
+            else settings.tenant_domain_target
+        )
         domain.status = "ACTIVE"
         domain.validation = {
             **previous,
             "mode": "temporary_dns",
+            "dns_mode": "wildcard" if wildcard_mode else "per_tenant",
             "record_exists": True,
-            "target": settings.tenant_domain_target,
+            "target": target,
+            "wildcard_hostname": settings.managed_wildcard_hostname if wildcard_mode else None,
             "dns": dns_result,
             "tls": self._managed_tls_metadata(),
             "integration_status": "HEALTHY",
@@ -182,12 +191,58 @@ class DomainProvisioningService:
         return resource_was_verified
 
     async def _ensure_managed_domain_dns(self, domain: Domain) -> None:
-        result = await self.cloudflare.ensure_dns_record(
-            domain.hostname,
-            settings.tenant_domain_target,
-            record_type=settings.cloudflare_temporary_record_type,
-            proxied=settings.cloudflare_temporary_record_proxied,
-        )
+        if settings.cloudflare_managed_wildcard_dns:
+            wildcard = await self.cloudflare.ensure_dns_record(
+                settings.managed_wildcard_hostname,
+                settings.managed_wildcard_target,
+                record_type=settings.cloudflare_temporary_record_type,
+                proxied=False,
+            )
+
+            # Migração sem indisponibilidade: registros específicos antigos têm
+            # precedência sobre o wildcard. Se um tenant legado ainda possui CNAME/A
+            # próprio (inclusive laranja/proxied), reconcilie-o para DNS-only. Para
+            # tenants novos não criamos registro individual: o wildcard resolve tudo.
+            existing_specific = await self.cloudflare.list_dns_records(
+                domain.hostname,
+                settings.cloudflare_temporary_record_type,
+            )
+            raw_specific = existing_specific.get("result")
+            specific_records = (
+                [item for item in raw_specific if isinstance(item, dict)]
+                if isinstance(raw_specific, list)
+                else []
+            )
+            specific: dict[str, Any]
+            if specific_records:
+                specific = await self.cloudflare.ensure_dns_record(
+                    domain.hostname,
+                    settings.managed_wildcard_target,
+                    record_type=settings.cloudflare_temporary_record_type,
+                    proxied=False,
+                )
+            else:
+                specific = {
+                    "success": True,
+                    "skipped": True,
+                    "reason": "hostname resolved by managed wildcard DNS",
+                }
+
+            result: dict[str, Any] = {
+                "success": True,
+                "mode": "wildcard",
+                "wildcard_hostname": settings.managed_wildcard_hostname,
+                "target": settings.managed_wildcard_target,
+                "wildcard": wildcard,
+                "legacy_specific": specific,
+            }
+        else:
+            result = await self.cloudflare.ensure_dns_record(
+                domain.hostname,
+                settings.tenant_domain_target,
+                record_type=settings.cloudflare_temporary_record_type,
+                proxied=settings.cloudflare_temporary_record_proxied,
+            )
         domain.is_temporary = True
         await self._mark_temporary_dns_active(domain, result)
 
