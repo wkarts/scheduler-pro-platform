@@ -30,7 +30,7 @@ const booking=ref({
 })
 
 const token=()=>localStorage.getItem('scheduler_pro_access_token')||''
-const canBooking=computed(()=>capabilities.value.has('appointments'))
+const canBooking=computed(()=>capabilities.value.has('public_booking'))
 const canMessages=computed(()=>capabilities.value.has('notifications'))
 const publicUrl=computed(()=>`${window.location.origin}/agendar`)
 const whatsappTemplates=computed(()=>templates.value.filter(item=>item.channel==='whatsapp'))
