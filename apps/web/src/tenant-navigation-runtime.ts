@@ -1,6 +1,6 @@
 const EXTENSION_ROUTES: Record<string, string> = {
   'Calendário': 'calendar',
-  'Personalização': 'branding',
+  'Personalização': 'personalizacao',
   'E-mail SMTP': 'smtp',
 }
 
@@ -26,6 +26,17 @@ function extensionButtonFor(route: string): HTMLButtonElement | null {
   const [label] = entry
   return Array.from(document.querySelectorAll<HTMLButtonElement>('.tenant-console .sp-extension-nav'))
     .find((button) => button.textContent?.trim().includes(label)) || null
+}
+
+function primeVisibleLabels(): void {
+  const root = tenantRoot()
+  if (!root) return
+  for (const button of Array.from(root.querySelectorAll<HTMLButtonElement>('.sidebar .nav-item'))) {
+    const regular = Array.from(button.querySelectorAll('span'))
+      .find((span) => !span.classList.contains('sp-runtime-mobile-label'))
+    const text = regular?.textContent?.trim() || ''
+    if (text) button.dataset.spLabel = text
+  }
 }
 
 function cacheAndRestoreLabels(): void {
@@ -76,9 +87,19 @@ function syncSelectedNavigation(): void {
 function openExtensionFromHash(): void {
   const route = currentRoute()
   if (!isExtensionRoute(route)) return
-  if (document.body.classList.contains('sp-extension-open')) return
   const button = extensionButtonFor(route)
   if (!button || syncing) return
+
+  const expectedLabel = Object.entries(EXTENSION_ROUTES).find(([, value]) => value === route)?.[0] || ''
+  const currentTitle = document.querySelector<HTMLElement>('.sp-extension-header h1')?.textContent || ''
+  const alreadyOpen = document.body.classList.contains('sp-extension-open')
+  const correctOpenView = alreadyOpen && (
+    (expectedLabel === 'Calendário' && currentTitle.includes('Calendário')) ||
+    (expectedLabel === 'Personalização' && currentTitle.includes('Personalização')) ||
+    (expectedLabel === 'E-mail SMTP' && currentTitle.includes('E-mail'))
+  )
+  if (correctOpenView) return
+
   syncing = true
   button.click()
   window.setTimeout(() => {
@@ -143,9 +164,13 @@ function handleClick(event: MouseEvent): void {
 export function installTenantNavigationRuntime(): void {
   const initialRoute = currentRoute()
   if (!isExtensionRoute(initialRoute)) lastBaseRoute = initialRoute || 'dashboard'
+  document.addEventListener('pointerdown', primeVisibleLabels, true)
   document.addEventListener('click', handleClick)
   window.addEventListener('hashchange', synchronize)
   observer = new MutationObserver(() => synchronize())
   observer.observe(document.body, { subtree: true, childList: true, attributes: true, attributeFilter: ['class'] })
-  window.requestAnimationFrame(synchronize)
+  window.requestAnimationFrame(() => {
+    primeVisibleLabels()
+    synchronize()
+  })
 }
