@@ -1,10 +1,44 @@
-/* Correção incremental do menu responsivo do tenant.
-   TenantConsole mantém seu estado collapsed; quando o drawer mobile está aberto,
-   os rótulos precisam permanecer visíveis independentemente desse estado. */
+/* Navegação tenant responsiva.
+   O console principal mantém o estado collapsed; o runtime restaura os rótulos
+   quando o drawer mobile está aberto e sincroniza as extensões com a rota. */
+.tenant-console .sidebar {
+  overflow-x: hidden !important;
+}
+
+.tenant-console.collapsed:not(.mobileOpen) .sidebar .sp-extension-nav > span,
+.tenant-console.collapsed:not(.mobileOpen) .sidebar .sp-runtime-mobile-label {
+  display: none !important;
+}
+
+.tenant-console.collapsed:not(.mobileOpen) .sidebar .sp-extension-nav {
+  justify-content: center !important;
+  gap: 0 !important;
+}
+
+.tenant-console .sidebar .sp-extension-nav.active {
+  background: linear-gradient(90deg, rgba(14, 165, 233, .24), rgba(6, 182, 212, .12)) !important;
+  box-shadow: inset 4px 0 0 #38bdf8;
+}
+
+/* A Agenda Smart e as extensões substituem, e não se sobrepõem, à view antiga. */
+.tenant-console .main-content:has(> .sp-smart-agenda) > .view-stack,
+.tenant-console .main-content:has(> .sp-extension-root) > .view-stack,
+body.sp-smart-agenda-open .tenant-console .main-content > .view-stack,
+body.sp-extension-open .tenant-console .main-content > .view-stack {
+  display: none !important;
+}
+
+body.sp-smart-agenda-open .tenant-console .page-actions,
+body.sp-extension-open .tenant-console .page-actions {
+  display: none !important;
+}
+
 @media (max-width: 1024px) {
   .tenant-console.mobileOpen .sidebar {
     width: min(88vw, 330px) !important;
     max-width: 330px !important;
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
   }
 
   .tenant-console.mobileOpen .sidebar .nav-list .nav-item,
@@ -19,16 +53,26 @@
   .tenant-console.mobileOpen .sidebar .sidebar-footer .nav-item > span,
   .tenant-console.mobileOpen .sidebar .brand > div:not(.brand-mark),
   .tenant-console.mobileOpen .sidebar .version-info,
-  .tenant-console.mobileOpen .sidebar .sp-version {
+  .tenant-console.mobileOpen .sidebar .sp-version,
+  .tenant-console.mobileOpen .sidebar .sp-runtime-mobile-label {
     display: block !important;
     opacity: 1 !important;
     visibility: visible !important;
     width: auto !important;
     max-width: none !important;
+    white-space: normal !important;
+  }
+
+  .tenant-console.mobileOpen .sidebar .nav-item > svg {
+    flex: 0 0 auto !important;
   }
 
   .tenant-console.mobileOpen .sidebar .brand {
     justify-content: flex-start !important;
     gap: 11px !important;
+  }
+
+  .tenant-console.mobileOpen .sidebar .nav-list {
+    overflow-x: hidden !important;
   }
 }
