@@ -2,6 +2,8 @@ const EXTENSION_ROUTES: Record<string, string> = {
   'Calendário': 'calendar',
   'Personalização': 'personalizacao',
   'E-mail SMTP': 'smtp',
+  'Agenda pública': 'agenda-publica',
+  'Mensagens': 'mensagens',
 }
 
 let observer: MutationObserver | undefined
@@ -85,6 +87,15 @@ function syncSelectedNavigation(): void {
   }
 }
 
+function titleMatches(expectedLabel: string, currentTitle: string): boolean {
+  if (expectedLabel === 'Calendário') return currentTitle.includes('Calendário')
+  if (expectedLabel === 'Personalização') return currentTitle.includes('Personalização')
+  if (expectedLabel === 'E-mail SMTP') return currentTitle.includes('E-mail')
+  if (expectedLabel === 'Agenda pública') return currentTitle.includes('Agenda pública')
+  if (expectedLabel === 'Mensagens') return currentTitle.includes('Mensagens')
+  return false
+}
+
 function openExtensionFromHash(): void {
   const route = currentRoute()
   if (!isExtensionRoute(route)) return
@@ -93,12 +104,8 @@ function openExtensionFromHash(): void {
 
   const expectedLabel = Object.entries(EXTENSION_ROUTES).find(([, value]) => value === route)?.[0] || ''
   const currentTitle = document.querySelector<HTMLElement>('.sp-extension-header h1')?.textContent || ''
-  const alreadyOpen = document.body.classList.contains('sp-extension-open')
-  const correctOpenView = alreadyOpen && (
-    (expectedLabel === 'Calendário' && currentTitle.includes('Calendário')) ||
-    (expectedLabel === 'Personalização' && currentTitle.includes('Personalização')) ||
-    (expectedLabel === 'E-mail SMTP' && currentTitle.includes('E-mail'))
-  )
+  const alreadyOpen = document.body.classList.contains('sp-extension-open') || Boolean(document.querySelector('.sp-booking-message-root'))
+  const correctOpenView = alreadyOpen && titleMatches(expectedLabel, currentTitle)
   if (correctOpenView) return
 
   syncing = true
@@ -112,7 +119,8 @@ function openExtensionFromHash(): void {
 function closeExtensionForBaseRoute(): void {
   const route = currentRoute()
   if (isExtensionRoute(route)) return
-  if (!document.body.classList.contains('sp-extension-open')) return
+  const extensionOpen = document.body.classList.contains('sp-extension-open') || Boolean(document.querySelector('.sp-booking-message-root'))
+  if (!extensionOpen) return
   document.querySelector<HTMLButtonElement>('.sp-extension-root .sp-icon-button')?.click()
 }
 
