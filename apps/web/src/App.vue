@@ -7,6 +7,7 @@ import TenantBrandedLogin from './TenantBrandedLogin.vue'
 import TenantConsole from './TenantConsole.vue'
 import TenantExtensions from './TenantExtensions.vue'
 import TenantMailModeSelector from './TenantMailModeSelector.vue'
+import TenantPwaInstallSurface from './TenantPwaInstallSurface.vue'
 import TenantUniversalDownloads from './TenantUniversalDownloads.vue'
 
 const authenticated = ref(Boolean(localStorage.getItem('scheduler_pro_access_token')))
@@ -37,4 +38,5 @@ onUnmounted(() => {
     <TenantBrandAssetUploader />
     <TenantUniversalDownloads />
   </template>
+  <TenantPwaInstallSurface />
 </template>
