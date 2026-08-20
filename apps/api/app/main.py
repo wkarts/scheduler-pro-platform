@@ -1,4 +1,5 @@
 import asyncio
+import os
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from time import perf_counter
@@ -16,14 +17,24 @@ from app.core.errors import APIError, api_error_handler, unhandled_error_handler
 from app.core.logging import configure_logging
 from app.core.security import decode_access_token
 from app.db.session import PlatformSession, close_database_engines
+from app.distribution_sync import run as run_distribution_sync
 from app.services.http_log_persistence import persist_http_operation
 from app.services.observability_service import ObservabilityService
 
 _log_tasks: set[asyncio.Task[None]] = set()
+_distribution_task: asyncio.Task[None] | None = None
+
+
+def _distribution_sync_enabled() -> bool:
+    raw = os.getenv("DISTRIBUTION_SYNC_ENABLED")
+    if raw is None:
+        return settings.app_env != "development"
+    return raw.strip().lower() in {"1", "true", "yes", "on"}
 
 
 @asynccontextmanager
 async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+    global _distribution_task
     try:
         async with PlatformSession() as session:
             await ObservabilityService(session).ensure_platform_schema()
@@ -31,7 +42,19 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
         # Observability must not prevent the API from starting; readiness still
         # reports the actual dependency state and later log writes are fail-open.
         pass
+
+    if _distribution_sync_enabled():
+        _distribution_task = asyncio.create_task(
+            run_distribution_sync(),
+            name="scheduler-pro-distribution-sync",
+        )
+
     yield
+
+    if _distribution_task is not None:
+        _distribution_task.cancel()
+        await asyncio.gather(_distribution_task, return_exceptions=True)
+        _distribution_task = None
     if _log_tasks:
         await asyncio.gather(*list(_log_tasks), return_exceptions=True)
     await close_database_engines()
