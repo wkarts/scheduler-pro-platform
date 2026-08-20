@@ -8,7 +8,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def test_tenant_schema_head_includes_smtp_configuration() -> None:
-    assert TENANT_MIGRATION_HEAD == "tenant_0007_smtp"
+    assert TENANT_MIGRATION_HEAD == "tenant_0008_open_booking"
     migration = (
         ROOT
         / "migrations"
@@ -16,9 +16,18 @@ def test_tenant_schema_head_includes_smtp_configuration() -> None:
         / "versions"
         / "0007_tenant_smtp.py"
     ).read_text(encoding="utf-8")
+    open_booking = (
+        ROOT
+        / "migrations"
+        / "alembic_tenant"
+        / "versions"
+        / "0008_open_booking_and_slot_reuse.py"
+    ).read_text(encoding="utf-8")
     assert 'revision = "tenant_0007_smtp"' in migration
     assert "create table if not exists tenant_smtp_settings" in migration
     assert "appointment_confirmation_request_email" in migration
+    assert 'revision = "tenant_0008_open_booking"' in open_booking
+    assert 'down_revision = "tenant_0007_smtp"' in open_booking
 
 
 def test_smtp_config_requires_connection_and_sender() -> None:
