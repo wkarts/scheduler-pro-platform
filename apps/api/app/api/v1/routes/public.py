@@ -1,6 +1,9 @@
+from datetime import date, datetime
 from typing import Any
 
-from fastapi import APIRouter, Depends
+import bleach
+from fastapi import APIRouter, Depends, Query
+from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import (
@@ -13,8 +16,50 @@ from app.core.responses import success
 from app.core.tenant_context import TenantContext
 from app.services.branding_service import BrandingService
 from app.services.landing_service import LandingPageService
+from app.services.public_booking_service import PublicBookingService
 
 router = APIRouter()
+
+
+class PublicBookingCreate(BaseModel):
+    service_id: str = Field(min_length=10, max_length=80)
+    professional_id: str = Field(min_length=10, max_length=80)
+    starts_at: datetime
+    customer_name: str = Field(min_length=2, max_length=160)
+    customer_phone: str | None = Field(default=None, max_length=40)
+    customer_email: EmailStr | None = None
+
+
+def _public_base_url(context: TenantContext) -> str:
+    scheme = "http" if context.hostname in {"localhost", "127.0.0.1"} else "https"
+    return f"{scheme}://{context.hostname}"
+
+
+def _safe_booking_html(value: str) -> str:
+    return bleach.clean(
+        value,
+        tags={
+            "section",
+            "div",
+            "p",
+            "span",
+            "h1",
+            "h2",
+            "h3",
+            "h4",
+            "strong",
+            "em",
+            "small",
+            "br",
+            "ul",
+            "ol",
+            "li",
+            "a",
+        },
+        attributes={"a": ["href", "target", "rel"], "*": ["class"]},
+        protocols={"http", "https", "mailto", "tel"},
+        strip=True,
+    )
 
 
 @router.get("/landing")
@@ -34,3 +79,80 @@ async def landing(
             "landing_page": page,
         }
     )
+
+
+@router.get("/booking")
+async def public_booking_catalog(
+    _: None = Depends(require_tenant_capability("appointments")),
+    context: TenantContext = Depends(get_tenant_context),
+    tenant_session: AsyncSession = Depends(get_tenant_session),
+    platform_session: AsyncSession = Depends(get_platform_session),
+) -> dict[str, Any]:
+    service = PublicBookingService(
+        tenant_session,
+        public_base_url=_public_base_url(context),
+        timezone=context.timezone,
+    )
+    catalog = await service.catalog()
+    catalog["config"]["custom_html"] = _safe_booking_html(
+        str(catalog["config"].get("custom_html") or "")
+    )
+    branding = await BrandingService(platform_session).manifest_for_context(context)
+    return success(
+        {
+            **catalog,
+            "tenant": {
+                "id": context.tenant_id,
+                "slug": context.slug,
+                "hostname": context.hostname,
+                "timezone": context.timezone,
+            },
+            "branding": branding,
+        }
+    )
+
+
+@router.get("/booking/availability")
+async def public_booking_availability(
+    day: date = Query(...),
+    service_id: str = Query(...),
+    professional_id: str | None = Query(default=None),
+    _: None = Depends(require_tenant_capability("appointments")),
+    context: TenantContext = Depends(get_tenant_context),
+    session: AsyncSession = Depends(get_tenant_session),
+) -> dict[str, Any]:
+    service = PublicBookingService(
+        session,
+        public_base_url=_public_base_url(context),
+        timezone=context.timezone,
+    )
+    return success(
+        await service.availability(
+            day=day,
+            service_id=service_id,
+            professional_id=professional_id,
+        )
+    )
+
+
+@router.post("/booking")
+async def create_public_booking(
+    payload: PublicBookingCreate,
+    _: None = Depends(require_tenant_capability("appointments")),
+    context: TenantContext = Depends(get_tenant_context),
+    session: AsyncSession = Depends(get_tenant_session),
+) -> dict[str, Any]:
+    service = PublicBookingService(
+        session,
+        public_base_url=_public_base_url(context),
+        timezone=context.timezone,
+    )
+    data = await service.book(
+        service_id=payload.service_id,
+        professional_id=payload.professional_id,
+        starts_at=payload.starts_at,
+        customer_name=payload.customer_name,
+        customer_phone=payload.customer_phone,
+        customer_email=str(payload.customer_email) if payload.customer_email else None,
+    )
+    return success(data)
