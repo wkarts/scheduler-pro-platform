@@ -7,6 +7,7 @@ const EXTENSION_ROUTES: Record<string, string> = {
 let observer: MutationObserver | undefined
 let syncing = false
 let lastBaseRoute = 'dashboard'
+let refreshTimer: number | undefined
 
 function tenantRoot(): HTMLElement | null {
   return document.querySelector<HTMLElement>('.tenant-console')
@@ -129,6 +130,15 @@ function closeMobileDrawerIfNeeded(): void {
   root.querySelector<HTMLButtonElement>('.topbar > .icon-button:first-child')?.click()
 }
 
+function refreshCurrentView(): void {
+  if (refreshTimer !== undefined) window.clearTimeout(refreshTimer)
+  refreshTimer = window.setTimeout(() => {
+    const buttons = Array.from(document.querySelectorAll<HTMLButtonElement>('.tenant-console .page-actions button'))
+    const refresh = buttons.find((button) => button.textContent?.trim().toLowerCase().includes('atualizar'))
+    if (refresh && !refresh.disabled) refresh.click()
+  }, 40)
+}
+
 function handleClick(event: MouseEvent): void {
   const target = event.target instanceof Element ? event.target : null
   const extensionClose = target?.closest<HTMLButtonElement>('.sp-extension-root .sp-icon-button')
@@ -138,6 +148,7 @@ function handleClick(event: MouseEvent): void {
     window.setTimeout(() => {
       syncing = false
       synchronize()
+      refreshCurrentView()
     }, 0)
     return
   }
@@ -158,7 +169,13 @@ function handleClick(event: MouseEvent): void {
   window.setTimeout(() => {
     closeMobileDrawerIfNeeded()
     synchronize()
+    refreshCurrentView()
   }, 0)
+}
+
+function handleHashChange(): void {
+  synchronize()
+  refreshCurrentView()
 }
 
 export function installTenantNavigationRuntime(): void {
@@ -166,7 +183,7 @@ export function installTenantNavigationRuntime(): void {
   if (!isExtensionRoute(initialRoute)) lastBaseRoute = initialRoute || 'dashboard'
   document.addEventListener('pointerdown', primeVisibleLabels, true)
   document.addEventListener('click', handleClick)
-  window.addEventListener('hashchange', synchronize)
+  window.addEventListener('hashchange', handleHashChange)
   observer = new MutationObserver(() => synchronize())
   observer.observe(document.body, { subtree: true, childList: true, attributes: true, attributeFilter: ['class'] })
   window.requestAnimationFrame(() => {
