@@ -1,4 +1,4 @@
-const CACHE = 'scheduler-pro-web-brand-v2.0.0'
+const CACHE = 'scheduler-pro-web-brand-v3.0.0'
 const STATIC_ASSETS = [
   '/',
   '/index.html',
@@ -29,16 +29,14 @@ self.addEventListener('fetch', event => {
   const url = new URL(request.url)
   if (url.origin !== self.location.origin) return
 
-  // API e páginas públicas de confirmação são estado vivo e nunca devem ficar
-  // presas em uma cópia de cache do Service Worker.
-  if (url.pathname.startsWith('/api/') || url.pathname.startsWith('/a/')) {
+  if (url.pathname.startsWith('/api/') || url.pathname.startsWith('/a/') || url.pathname.startsWith('/agendar')) {
     event.respondWith(fetch(request))
     return
   }
 
   if (request.mode === 'navigate') {
     event.respondWith(
-      fetch(request)
+      fetch(request, { cache: 'no-store' })
         .then(response => {
           const copy = response.clone()
           caches.open(CACHE).then(cache => cache.put(request, copy)).catch(() => undefined)
