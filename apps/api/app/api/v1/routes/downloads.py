@@ -1,116 +1,44 @@
 from __future__ import annotations
 
-import os
-import time
 from typing import Any
+from urllib.parse import quote
 
-import httpx
 from fastapi import APIRouter, Depends
+from fastapi.responses import StreamingResponse
 
 from app.api.deps import get_tenant_context, require_permission, require_tenant_capability
-from app.core.errors import APIError
 from app.core.responses import success
 from app.core.security import AuthPrincipal
 from app.core.tenant_context import TenantContext
+from app.services.distribution_artifact_service import DistributionArtifactService
 
 router = APIRouter()
-_CACHE_TTL_SECONDS = 300
-_cache: dict[str, Any] = {"expires_at": 0.0, "payload": None}
 
 
 def _asset_target(name: str) -> tuple[str, str] | None:
-    lower = name.lower()
-    if not lower.startswith("scheduler-pro-client-"):
-        return None
-    if "desktop-windows" in lower and lower.endswith(".tar.gz"):
-        return "desktop-windows", "installer-bundle"
-    if "desktop-linux" in lower and lower.endswith(".tar.gz"):
-        return "desktop-linux", "installer-bundle"
-    if "desktop-macos" in lower and lower.endswith(".tar.gz"):
-        return "desktop-macos", "installer-bundle"
-    if "-android-" in lower and lower.endswith(".apk"):
-        return "android", "apk"
-    if "-ios-" in lower and lower.endswith(".ipa"):
-        return "ios", "ipa-unsigned"
-    return None
+    """Backward-compatible contract used by tests and release tooling."""
+    return DistributionArtifactService._asset_target(name)
 
 
 async def _latest_release_catalog() -> dict[str, Any]:
-    now = time.monotonic()
-    cached = _cache.get("payload")
-    if cached is not None and float(_cache.get("expires_at") or 0) > now:
-        return dict(cached)
-
-    repository = os.getenv("GITHUB_ACTIONS_REPOSITORY", "wkarts/scheduler-pro-platform").strip()
-    token = os.getenv("GITHUB_ACTIONS_TOKEN", "").strip()
-    api_base = os.getenv("GITHUB_ACTIONS_API_BASE_URL", "https://api.github.com").rstrip("/")
-    if not repository:
-        raise APIError("DISTRIBUTION_REPOSITORY_MISSING", "Catálogo de aplicativos não configurado.", 424)
-
-    headers = {
-        "Accept": "application/vnd.github+json",
-        "X-GitHub-Api-Version": "2022-11-28",
-        "User-Agent": "scheduler-pro-distribution",
-    }
-    if token:
-        headers["Authorization"] = f"Bearer {token}"
-
-    try:
-        async with httpx.AsyncClient(timeout=20) as client:
-            response = await client.get(
-                f"{api_base}/repos/{repository}/releases/latest",
-                headers=headers,
-            )
-    except httpx.HTTPError as exc:
-        raise APIError(
-            "DISTRIBUTION_CATALOG_UNAVAILABLE",
-            "Não foi possível consultar os aplicativos disponíveis agora.",
-            424,
-        ) from exc
-
-    if response.status_code >= 400:
-        raise APIError(
-            "DISTRIBUTION_CATALOG_UNAVAILABLE",
-            "Não foi possível consultar os aplicativos disponíveis agora.",
-            424,
-            {"status_code": response.status_code},
-        )
-
-    release = response.json()
+    service = DistributionArtifactService()
+    manifest = await service.read_latest_manifest(required=True)
+    assert manifest is not None
     artifacts: list[dict[str, Any]] = []
-    for asset in release.get("assets", []):
-        name = str(asset.get("name") or "")
-        mapped = _asset_target(name)
-        if mapped is None:
-            continue
-        target, artifact_type = mapped
-        artifacts.append(
-            {
-                "id": str(asset.get("id") or name),
-                "target": target,
-                "artifact_type": artifact_type,
-                "name": name,
-                "download_url": asset.get("browser_download_url"),
-                "size_bytes": int(asset.get("size") or 0),
-                "created_at": asset.get("created_at"),
-                "metadata": {
-                    "universal": True,
-                    "release": release.get("tag_name"),
-                    "content_type": asset.get("content_type"),
-                },
-            }
-        )
-
-    payload = {
+    for item in manifest.get("artifacts", []):
+        artifact = dict(item)
+        artifact_id = str(artifact.get("id") or "")
+        artifact.pop("object_key", None)
+        artifact["download_url"] = f"/api/v1/downloads/apps/{artifact_id}"
+        artifacts.append(artifact)
+    return {
         "universal": True,
-        "release": release.get("tag_name"),
-        "published_at": release.get("published_at"),
-        "release_url": release.get("html_url"),
+        "source": "internal_bucket",
+        "release": manifest.get("release"),
+        "published_at": manifest.get("published_at"),
+        "synced_at": manifest.get("synced_at"),
         "artifacts": artifacts,
     }
-    _cache["payload"] = payload
-    _cache["expires_at"] = now + _CACHE_TTL_SECONDS
-    return payload
 
 
 @router.get("/apps")
@@ -133,4 +61,30 @@ async def universal_apps(
                 "mobile": "No primeiro acesso, informe a URL deste tenant. O Mobile usa interface própria e as mesmas APIs.",
             },
         }
+    )
+
+
+@router.get("/apps/{artifact_id}")
+async def download_universal_app(
+    artifact_id: str,
+    _: AuthPrincipal = Depends(require_permission("tenant.manage")),
+    __: None = Depends(require_tenant_capability("builds")),
+) -> StreamingResponse:
+    service = DistributionArtifactService()
+    artifact, stored = await service.get_artifact_object(artifact_id)
+    body = stored["Body"]
+    filename = str(artifact.get("name") or "scheduler-pro-app")
+    content_type = str(stored.get("ContentType") or artifact.get("metadata", {}).get("content_type") or "application/octet-stream")
+    headers = {
+        "Content-Disposition": f"attachment; filename*=UTF-8''{quote(filename)}",
+        "Cache-Control": "private, max-age=300",
+        "X-Scheduler-Pro-Release": str(artifact.get("metadata", {}).get("release") or ""),
+    }
+    content_length = stored.get("ContentLength")
+    if content_length is not None:
+        headers["Content-Length"] = str(int(content_length))
+    return StreamingResponse(
+        service.iter_body(body),
+        media_type=content_type,
+        headers=headers,
     )
