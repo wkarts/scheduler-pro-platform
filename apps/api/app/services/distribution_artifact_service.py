@@ -5,6 +5,7 @@ import hashlib
 import json
 import os
 import tempfile
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterator
 
@@ -26,7 +27,10 @@ class DistributionArtifactService:
     latest_key = "distribution/manifest/latest.json"
 
     def __init__(self) -> None:
-        self.bucket = settings.distribution_bucket
+        self.bucket = os.getenv("DISTRIBUTION_BUCKET", "scheduler-distribution").strip() or "scheduler-distribution"
+        self.source_repository = os.getenv("GITHUB_ACTIONS_REPOSITORY", "wkarts/scheduler-pro-platform").strip()
+        self.source_token = os.getenv("GITHUB_ACTIONS_TOKEN", "").strip()
+        self.source_api_base = os.getenv("GITHUB_ACTIONS_API_BASE_URL", "https://api.github.com").rstrip("/")
         self.s3 = boto3.client(
             "s3",
             endpoint_url=settings.s3_endpoint,
@@ -87,15 +91,14 @@ class DistributionArtifactService:
             "X-GitHub-Api-Version": "2022-11-28",
             "User-Agent": "scheduler-pro-artifact-sync",
         }
-        if settings.github_actions_token:
-            headers["Authorization"] = f"Bearer {settings.github_actions_token}"
+        if self.source_token:
+            headers["Authorization"] = f"Bearer {self.source_token}"
         return headers
 
     async def fetch_latest_release(self) -> dict[str, Any]:
-        repository = settings.github_actions_repository.strip()
-        if not repository:
+        if not self.source_repository:
             raise APIError("DISTRIBUTION_REPOSITORY_MISSING", "Origem de releases não configurada.", 424)
-        url = f"{settings.github_actions_api_base_url.rstrip('/')}/repos/{repository}/releases/latest"
+        url = f"{self.source_api_base}/repos/{self.source_repository}/releases/latest"
         try:
             async with httpx.AsyncClient(timeout=30, follow_redirects=True) as client:
                 response = await client.get(url, headers=self._source_headers())
@@ -112,11 +115,7 @@ class DistributionArtifactService:
 
     async def read_latest_manifest(self, *, required: bool = True) -> dict[str, Any] | None:
         try:
-            result = await asyncio.to_thread(
-                self.s3.get_object,
-                Bucket=self.bucket,
-                Key=self.latest_key,
-            )
+            result = await asyncio.to_thread(self.s3.get_object, Bucket=self.bucket, Key=self.latest_key)
             raw = await asyncio.to_thread(result["Body"].read)
             return dict(json.loads(raw.decode("utf-8")))
         except ClientError as exc:
@@ -188,13 +187,7 @@ class DistributionArtifactService:
     async def _upload_file(self, path: Path, key: str, content_type: str | None) -> None:
         extra = {"ContentType": content_type or "application/octet-stream"}
         try:
-            await asyncio.to_thread(
-                self.s3.upload_file,
-                str(path),
-                self.bucket,
-                key,
-                ExtraArgs=extra,
-            )
+            await asyncio.to_thread(self.s3.upload_file, str(path), self.bucket, key, ExtraArgs=extra)
         except (BotoCoreError, ClientError, OSError) as exc:
             raise APIError(
                 "DISTRIBUTION_STORAGE_UNAVAILABLE",
@@ -225,7 +218,11 @@ class DistributionArtifactService:
         release = await self.fetch_latest_release()
         current = await self.read_latest_manifest(required=False)
         if self._manifest_matches_release(current, release):
-            return {"changed": False, "release": release.get("tag_name"), "artifacts": len(current.get("artifacts", [])) if current else 0}
+            return {
+                "changed": False,
+                "release": release.get("tag_name"),
+                "artifacts": len(current.get("artifacts", [])) if current else 0,
+            }
 
         tag = str(release.get("tag_name") or "release-unknown").replace("/", "-")
         artifacts: list[dict[str, Any]] = []
@@ -241,7 +238,11 @@ class DistributionArtifactService:
                 local_path = tmpdir / safe_name
                 size, sha256 = await self._download_asset(asset, local_path)
                 object_key = f"distribution/releases/{tag}/{target}/{safe_name}"
-                await self._upload_file(local_path, object_key, str(asset.get("content_type") or "application/octet-stream"))
+                await self._upload_file(
+                    local_path,
+                    object_key,
+                    str(asset.get("content_type") or "application/octet-stream"),
+                )
                 artifact_id = hashlib.sha256(f"{tag}:{name}".encode()).hexdigest()[:24]
                 artifacts.append(
                     {
@@ -270,7 +271,7 @@ class DistributionArtifactService:
             "source": "internal_bucket",
             "release": release.get("tag_name"),
             "published_at": release.get("published_at"),
-            "synced_at": __import__("datetime").datetime.now(__import__("datetime").timezone.utc).isoformat(),
+            "synced_at": datetime.now(timezone.utc).isoformat(),
             "artifacts": artifacts,
         }
         await self._write_manifest(manifest)
@@ -279,7 +280,10 @@ class DistributionArtifactService:
     async def get_artifact_object(self, artifact_id: str) -> tuple[dict[str, Any], dict[str, Any]]:
         manifest = await self.read_latest_manifest(required=True)
         assert manifest is not None
-        artifact = next((item for item in manifest.get("artifacts", []) if str(item.get("id")) == artifact_id), None)
+        artifact = next(
+            (item for item in manifest.get("artifacts", []) if str(item.get("id")) == artifact_id),
+            None,
+        )
         if artifact is None:
             raise APIError("DISTRIBUTION_ARTIFACT_NOT_FOUND", "Aplicativo não encontrado no catálogo atual.", 404)
         key = str(artifact.get("object_key") or "")
