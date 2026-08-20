@@ -58,7 +58,7 @@ async def smart_appointment_lookups(
                 """
                 select id::text, name, duration_minutes, price, active
                 from services
-                where active=true
+                where lower(coalesce(active::text, '')) in ('true', 't', '1', 'yes', 'on', 'active', 'enabled')
                   and (:q = '%%' or name ilike :q)
                 order by name
                 limit :limit
