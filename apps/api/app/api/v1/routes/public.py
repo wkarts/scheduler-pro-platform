@@ -83,7 +83,7 @@ async def landing(
 
 @router.get("/booking")
 async def public_booking_catalog(
-    _: None = Depends(require_tenant_capability("appointments")),
+    _: None = Depends(require_tenant_capability("public_booking")),
     context: TenantContext = Depends(get_tenant_context),
     tenant_session: AsyncSession = Depends(get_tenant_session),
     platform_session: AsyncSession = Depends(get_platform_session),
@@ -117,7 +117,7 @@ async def public_booking_availability(
     day: date = Query(...),
     service_id: str = Query(...),
     professional_id: str | None = Query(default=None),
-    _: None = Depends(require_tenant_capability("appointments")),
+    _: None = Depends(require_tenant_capability("public_booking")),
     context: TenantContext = Depends(get_tenant_context),
     session: AsyncSession = Depends(get_tenant_session),
 ) -> dict[str, Any]:
@@ -138,7 +138,7 @@ async def public_booking_availability(
 @router.post("/booking")
 async def create_public_booking(
     payload: PublicBookingCreate,
-    _: None = Depends(require_tenant_capability("appointments")),
+    _: None = Depends(require_tenant_capability("public_booking")),
     context: TenantContext = Depends(get_tenant_context),
     session: AsyncSession = Depends(get_tenant_session),
 ) -> dict[str, Any]:
