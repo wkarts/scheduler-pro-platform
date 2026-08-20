@@ -2,7 +2,9 @@ from pathlib import Path
 
 from app.services.tenant_access_resend_service import TenantAccessResendService
 
-ROOT = Path(__file__).resolve().parents[3]
+FILE_PATH = Path(__file__).resolve()
+API_ROOT = FILE_PATH.parents[1]
+ROOT = API_ROOT.parent.parent if API_ROOT.name == "api" and API_ROOT.parent.name == "apps" else API_ROOT
 
 
 def test_cancelled_slots_are_reusable_and_conflicts_are_professional_scoped() -> None:
