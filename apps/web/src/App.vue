@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import { onMounted, onUnmounted, ref } from 'vue'
+import PublicBookingPage from './PublicBookingPage.vue'
 import TenantAgendaOperations from './TenantAgendaOperations.vue'
 import TenantAgendaSmartWorkspace from './TenantAgendaSmartWorkspace.vue'
+import TenantBookingAndMessages from './TenantBookingAndMessages.vue'
 import TenantBrandAssetUploader from './TenantBrandAssetUploader.vue'
 import TenantBrandedLogin from './TenantBrandedLogin.vue'
 import TenantConsole from './TenantConsole.vue'
@@ -11,6 +13,7 @@ import TenantPwaInstallSurface from './TenantPwaInstallSurface.vue'
 import TenantUniversalDownloads from './TenantUniversalDownloads.vue'
 
 const authenticated = ref(Boolean(localStorage.getItem('scheduler_pro_access_token')))
+const publicBooking = ref(window.location.pathname.replace(/\/+$/, '') === '/agendar')
 let authPoll: number | undefined
 
 function refreshAuthState(): void {
@@ -28,15 +31,19 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <TenantBrandedLogin v-if="!authenticated" @authenticated="refreshAuthState" />
+  <PublicBookingPage v-if="publicBooking" />
   <template v-else>
-    <TenantConsole />
-    <TenantExtensions />
-    <TenantAgendaOperations />
-    <TenantAgendaSmartWorkspace />
-    <TenantMailModeSelector />
-    <TenantBrandAssetUploader />
-    <TenantUniversalDownloads />
+    <TenantBrandedLogin v-if="!authenticated" @authenticated="refreshAuthState" />
+    <template v-else>
+      <TenantConsole />
+      <TenantExtensions />
+      <TenantBookingAndMessages />
+      <TenantAgendaOperations />
+      <TenantAgendaSmartWorkspace />
+      <TenantMailModeSelector />
+      <TenantBrandAssetUploader />
+      <TenantUniversalDownloads />
+    </template>
+    <TenantPwaInstallSurface />
   </template>
-  <TenantPwaInstallSurface />
 </template>
