@@ -12,8 +12,8 @@ from app.core.security import hash_password
 
 pytestmark = pytest.mark.integration
 
-PLATFORM_MIGRATION_HEAD = "platform_0008"
-TENANT_MIGRATION_HEAD = "tenant_0007_smtp"
+PLATFORM_MIGRATION_HEAD = "platform_0009_public_booking"
+TENANT_MIGRATION_HEAD = "tenant_0008_open_booking"
 
 
 async def tenant_login(client: httpx.AsyncClient, host: str = "localhost") -> dict:

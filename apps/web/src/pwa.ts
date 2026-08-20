@@ -16,6 +16,7 @@ export type PwaInstallResult = 'accepted' | 'dismissed' | 'installed' | 'manual'
 export const PWA_INSTALL_STATE_EVENT = 'scheduler:pwa-install-state'
 
 let deferredPrompt: BeforeInstallPromptEvent | null = null
+let reloadingForWorker = false
 
 function iosDevice(): boolean {
   const ua = navigator.userAgent
@@ -99,8 +100,27 @@ if (typeof displayMode.addEventListener === 'function') {
 }
 
 if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (reloadingForWorker) return
+    reloadingForWorker = true
+    window.location.reload()
+  })
+
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register('/sw.js').then(() => notifyInstallState()).catch(() => undefined)
+    navigator.serviceWorker.register('/sw.js').then((registration) => {
+      notifyInstallState()
+      void registration.update()
+      window.setInterval(() => {
+        if (document.visibilityState === 'visible') void registration.update()
+      }, 60_000)
+    }).catch(() => undefined)
+  })
+
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState !== 'visible') return
+    navigator.serviceWorker.getRegistration().then((registration) => {
+      if (registration) void registration.update()
+    }).catch(() => undefined)
   })
 }
 

@@ -13,6 +13,7 @@ from app.core.responses import success
 from app.core.security import AuthPrincipal
 from app.db.session import tenant_session
 from app.services.observability_service import ObservabilityService
+from app.services.tenant_access_resend_service import TenantAccessResendService
 from app.services.tenant_management_service import TenantManagementService
 from app.services.tenant_resolver import TenantResolver
 
@@ -39,6 +40,19 @@ class TenantPrincipalAdminUpdateRequest(BaseModel):
     def require_change(self) -> "TenantPrincipalAdminUpdateRequest":
         if self.email is None and self.display_name is None and self.password is None:
             raise ValueError("Informe e-mail, nome ou nova senha.")
+        return self
+
+
+class TenantAccessResendRequest(BaseModel):
+    email: EmailStr | None = None
+    display_name: str | None = Field(default=None, min_length=2, max_length=160)
+    password: str | None = Field(default=None, min_length=12, max_length=128)
+    generate_password: bool = False
+
+    @model_validator(mode="after")
+    def validate_password_mode(self) -> "TenantAccessResendRequest":
+        if self.password is not None and self.generate_password:
+            raise ValueError("Informe uma nova senha ou gere uma senha temporária, não ambos.")
         return self
 
 
@@ -147,6 +161,26 @@ async def update_tenant_principal_admin(
             email=str(payload.email) if payload.email is not None else None,
             display_name=payload.display_name,
             password=payload.password,
+            actor=principal.email,
+        )
+    )
+
+
+@router.post("/{tenant_id}/principal-admin/resend-access")
+async def resend_tenant_principal_admin_access(
+    tenant_id: str,
+    payload: TenantAccessResendRequest,
+    principal: AuthPrincipal = Depends(require_platform_permission("tenants.update")),
+    session: AsyncSession = Depends(get_platform_session),
+) -> dict[str, Any]:
+    assert_platform_tenant_access(principal, tenant_id)
+    return success(
+        await TenantAccessResendService(session).resend(
+            tenant_id,
+            email=str(payload.email) if payload.email is not None else None,
+            display_name=payload.display_name,
+            password=payload.password,
+            generate_password=payload.generate_password,
             actor=principal.email,
         )
     )

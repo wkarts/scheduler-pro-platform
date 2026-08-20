@@ -73,6 +73,7 @@ class NotificationService:
             "appointment_confirmation_request": "Confirme seu agendamento",
             "appointment_confirmation_request_email": "Confirme seu agendamento",
             "appointment_created": "Agendamento recebido",
+            "appointment_created_email": "Agendamento recebido",
             "appointment_rescheduled": "Seu agendamento foi reagendado",
             "appointment_rescheduled_email": "Seu agendamento foi reagendado",
             "appointment_confirmed": "Agendamento confirmado",
@@ -84,7 +85,9 @@ class NotificationService:
             "appointment_reminder_2h": "Seu atendimento está próximo",
             "appointment_reminder_2h_email": "Seu atendimento está próximo",
             "appointment_completed": "Obrigado pelo atendimento",
+            "appointment_completed_email": "Obrigado pelo atendimento",
             "appointment_no_show": "Atualização do agendamento",
+            "appointment_no_show_email": "Atualização do agendamento",
         }
         return f"{subjects.get(template_key, 'Atualização do agendamento')} — {service}"
 
@@ -138,6 +141,26 @@ class NotificationService:
             or DEFAULT_TEMPLATES.get(normalized)
             or "{{message}}"
         )
+
+    async def _template_subject(
+        self,
+        template_key: str,
+        context: dict[str, Any],
+    ) -> str:
+        subject = await self.session.scalar(
+            text(
+                """
+                select subject
+                from notification_templates
+                where key=:template_key and channel='email' and active=true
+                limit 1
+                """
+            ),
+            {"template_key": template_key},
+        )
+        if subject:
+            return self._render(str(subject), context)
+        return self.email_subject(template_key, context)
 
     async def _appointment_context(
         self,
@@ -279,13 +302,16 @@ class NotificationService:
                 "appointment_cancelled",
                 "appointment_reminder_24h",
                 "appointment_reminder_2h",
+                "appointment_created",
+                "appointment_completed",
+                "appointment_no_show",
             }:
                 stored_key = f"{template_key}_email"
             body = await self._template_body(stored_key, channel)
             message = self._render(body, context)
             payload = {**context, "message": message}
             if channel == "email":
-                payload["subject"] = self.email_subject(stored_key, context)
+                payload["subject"] = await self._template_subject(stored_key, context)
             await self._enqueue(
                 appointment_id=appointment_id,
                 template_key=stored_key,
@@ -394,10 +420,10 @@ class NotificationService:
             await self.session.execute(
                 text(
                     f"""
-                    select id::text, key, channel, body, active, created_at
+                    select id::text, key, channel, body, subject, active, created_at
                     from notification_templates
                     where {' and '.join(clauses)}
-                    order by key asc
+                    order by channel asc, key asc
                     """
                 ),
                 params,
@@ -412,24 +438,27 @@ class NotificationService:
         channel: str,
         body: str,
         active: bool = True,
+        subject: str | None = None,
     ) -> dict[str, Any]:
         row = (
             await self.session.execute(
                 text(
                     """
-                    insert into notification_templates(key, channel, body, active)
-                    values(:key, :channel, :body, :active)
+                    insert into notification_templates(key, channel, body, subject, active)
+                    values(:key, :channel, :body, :subject, :active)
                     on conflict (key) do update set
                         channel=excluded.channel,
                         body=excluded.body,
+                        subject=excluded.subject,
                         active=excluded.active
-                    returning id::text, key, channel, body, active, created_at
+                    returning id::text, key, channel, body, subject, active, created_at
                     """
                 ),
                 {
                     "key": key,
                     "channel": channel,
                     "body": body,
+                    "subject": subject,
                     "active": active,
                 },
             )
