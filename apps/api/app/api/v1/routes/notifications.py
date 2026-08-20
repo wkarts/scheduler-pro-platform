@@ -37,12 +37,28 @@ async def upsert_notification_template(
     payload: dict[str, Any] = Body(...),
     session: AsyncSession = Depends(get_tenant_session),
 ) -> dict[str, Any]:
-    channel = str(payload.get("channel") or "whatsapp")
+    channel = str(payload.get("channel") or "whatsapp").strip().lower()
+    if channel not in {"whatsapp", "email"}:
+        raise APIError("NOTIFICATION_TEMPLATE_CHANNEL_INVALID", "Canal de mensagem inválido.", 422)
     body = str(payload.get("body") or "").strip()
     active = bool(payload.get("active", True))
+    subject_value = payload.get("subject")
+    subject = str(subject_value).strip() if subject_value is not None else None
     if not body:
         raise APIError("NOTIFICATION_TEMPLATE_BODY_REQUIRED", "Corpo do template é obrigatório.", 422)
-    return success(await NotificationService(session).upsert_template(key=template_key, channel=channel, body=body, active=active))
+    if subject is not None and len(subject) > 240:
+        raise APIError("NOTIFICATION_TEMPLATE_SUBJECT_TOO_LONG", "O assunto do e-mail deve ter no máximo 240 caracteres.", 422)
+    if channel != "email":
+        subject = None
+    return success(
+        await NotificationService(session).upsert_template(
+            key=template_key,
+            channel=channel,
+            body=body,
+            active=active,
+            subject=subject,
+        )
+    )
 
 
 @router.get("/smtp")
