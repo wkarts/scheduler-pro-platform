@@ -16,6 +16,11 @@ ACTIVE_SLOT_STATUSES = (
 
 
 def upgrade() -> None:
+    # A exclusão usa igualdade GiST sobre professional_id (UUID). O PostgreSQL
+    # fornece essa operator class pela extensão trusted btree_gist. Ela precisa
+    # existir antes da constraint; a criação é idempotente por banco do tenant.
+    op.execute("create extension if not exists btree_gist")
+
     # O schema legado usava UNIQUE(professional_id, starts_at, ends_at), o que
     # mantinha o horário bloqueado mesmo depois de CANCELLED/NO_SHOW/COMPLETED.
     op.execute(
@@ -109,3 +114,5 @@ def downgrade() -> None:
         """
     )
     op.execute("alter table notification_templates drop column if exists subject")
+    # Não removemos btree_gist no downgrade: a extensão é de escopo do banco e
+    # pode ser reutilizada por outras constraints/migrations do tenant.
