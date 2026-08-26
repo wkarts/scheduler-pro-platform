@@ -5,7 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.core.errors import APIError
-from app.core.tenant_context import TenantContext
+from app.core.tenant_context import DEFAULT_TENANT_STORAGE_QUOTA_BYTES, TenantContext
 
 
 class TenantResolver:
@@ -34,6 +34,18 @@ class TenantResolver:
             )
 
     @staticmethod
+    def _storage_quota(row: Any) -> int:
+        tenant_settings = row.get("tenant_settings") if hasattr(row, "get") else None
+        if not isinstance(tenant_settings, dict):
+            return DEFAULT_TENANT_STORAGE_QUOTA_BYTES
+        raw = tenant_settings.get("storage_quota_bytes")
+        try:
+            quota = int(raw or DEFAULT_TENANT_STORAGE_QUOTA_BYTES)
+        except (TypeError, ValueError):
+            return DEFAULT_TENANT_STORAGE_QUOTA_BYTES
+        return min(max(quota, 128 * 1024 * 1024), 1024 * 1024 * 1024 * 1024)
+
+    @staticmethod
     def _context(row: Any) -> TenantContext:
         return TenantContext(
             tenant_id=row["tenant_id"],
@@ -45,6 +57,7 @@ class TenantResolver:
             hostname=row["hostname"],
             timezone=row["timezone"],
             database_credential_version=int(row["credential_version"] or 1),
+            storage_quota_bytes=TenantResolver._storage_quota(row),
         )
 
     async def resolve(self, hostname: str) -> TenantContext:
@@ -52,6 +65,7 @@ class TenantResolver:
             """
             select
                 t.id::text as tenant_id, t.slug, t.status as tenant_status, t.timezone,
+                t.settings as tenant_settings,
                 td.database_name, td.database_user, td.password_ref, td.credential_version,
                 ts.bucket, d.hostname, d.status as domain_status
             from tenants t
@@ -74,6 +88,7 @@ class TenantResolver:
                     storage_bucket=settings.dev_tenant_bucket,
                     hostname=hostname,
                     database_credential_version=1,
+                    storage_quota_bytes=DEFAULT_TENANT_STORAGE_QUOTA_BYTES,
                 )
             raise APIError(
                 "TENANT_NOT_FOUND",
@@ -89,6 +104,7 @@ class TenantResolver:
             """
             select
                 t.id::text as tenant_id, t.slug, t.status as tenant_status, t.timezone,
+                t.settings as tenant_settings,
                 td.database_name, td.database_user, td.password_ref, td.credential_version,
                 ts.bucket,
                 coalesce(dp.hostname, da.hostname) as hostname,
