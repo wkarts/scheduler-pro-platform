@@ -28,10 +28,11 @@ class WhatsAppProvider(ABC):
 
 
 class EvolutionWhatsAppProvider(WhatsAppProvider):
-    """Conector interno preservado por compatibilidade.
+    """Adapter privado da Evolution API.
 
-    O nome/classe e os contratos deste arquivo são implementação privada. Rotas,
-    respostas e interfaces públicas devem passar por ARGWSWhatsAppService.
+    O nome do provider permanece interno. A interface pública pode usar uma
+    nomenclatura neutra, mas conexão, sessão, QR, pareamento e envio continuam
+    sendo executados diretamente pela Evolution API configurada no Scheduler Pro.
     """
 
     def __init__(self, instance_name: str | None = None) -> None:
@@ -56,8 +57,8 @@ class EvolutionWhatsAppProvider(WhatsAppProvider):
     ) -> dict[str, Any]:
         if not self.base_url or not self.token:
             raise APIError(
-                "WHATSAPP_CONNECTOR_NOT_CONFIGURED",
-                "Conector interno de comunicação não configurado.",
+                "EVOLUTION_NOT_CONFIGURED",
+                "Serviço de WhatsApp não configurado.",
                 424,
             )
         async with httpx.AsyncClient(timeout=45) as client:
@@ -69,13 +70,13 @@ class EvolutionWhatsAppProvider(WhatsAppProvider):
                 params=params,
             )
         try:
-            data = response.json()
+            data = response.json() if response.content else {"ok": True}
         except ValueError:
             data = {"raw": response.text[:4000]}
         if response.status_code >= 400:
             raise APIError(
-                "WHATSAPP_CONNECTOR_ERROR",
-                "Falha no conector interno de comunicação.",
+                "EVOLUTION_API_ERROR",
+                "Falha no serviço de WhatsApp.",
                 424,
                 {
                     "status_code": response.status_code,
@@ -86,17 +87,38 @@ class EvolutionWhatsAppProvider(WhatsAppProvider):
             )
         return dict(data) if isinstance(data, dict) else {"data": data}
 
+    @staticmethod
+    def _status_code(error: APIError) -> int:
+        if not isinstance(error.details, dict):
+            return 0
+        try:
+            return int(error.details.get("status_code") or 0)
+        except (TypeError, ValueError):
+            return 0
+
+    @staticmethod
+    def _schema_rejection(error: APIError) -> bool:
+        if EvolutionWhatsAppProvider._status_code(error) not in {400, 422}:
+            return False
+        details = error.details if isinstance(error.details, dict) else {}
+        message = str(details.get("response") or "").casefold()
+        return any(
+            marker in message
+            for marker in (
+                "textmessage",
+                "text message",
+                "property text",
+                "field text",
+                "text is required",
+            )
+        )
+
     async def ensure_instance(self) -> dict[str, Any]:
         try:
             status = await self.connection_status()
             return {"created": False, "instance": self.instance, "status": status}
         except APIError as exc:
-            status_code = (
-                int(exc.details.get("status_code", 0))
-                if isinstance(exc.details, dict)
-                else 0
-            )
-            if status_code != 404:
+            if self._status_code(exc) != 404:
                 raise
         created = await self._request(
             "POST",
@@ -115,12 +137,31 @@ class EvolutionWhatsAppProvider(WhatsAppProvider):
         return {"instance": self.instance, "ensure": ensured, "connection": connection}
 
     async def connect_pairing(self, phone_number: str) -> dict[str, Any]:
+        """Solicita pareamento preservando compatibilidade entre builds Evolution v2.
+
+        O contrato utilizado pela Financial Platform envia `number` no endpoint
+        /instance/connect/{instance}. Alguns builds antigos aceitam os parâmetros
+        pairingCode/phoneNumber; esse formato fica somente como fallback após uma
+        rejeição de schema, nunca como substituto do fluxo principal.
+        """
         ensured = await self.ensure_instance()
-        connection = await self._request(
-            "GET",
-            f"/instance/connect/{self.instance}",
-            params={"pairingCode": "true", "phoneNumber": phone_number},
-        )
+        normalized = "".join(char for char in str(phone_number or "") if char.isdigit())
+        if not normalized:
+            raise APIError("PHONE_REQUIRED", "Informe o telefone para pareamento.", 422)
+        try:
+            connection = await self._request(
+                "GET",
+                f"/instance/connect/{self.instance}",
+                params={"number": normalized},
+            )
+        except APIError as exc:
+            if self._status_code(exc) not in {400, 422}:
+                raise
+            connection = await self._request(
+                "GET",
+                f"/instance/connect/{self.instance}",
+                params={"pairingCode": "true", "phoneNumber": normalized},
+            )
         return {"instance": self.instance, "ensure": ensured, "connection": connection}
 
     async def connection_status(self) -> dict[str, Any]:
@@ -130,11 +171,25 @@ class EvolutionWhatsAppProvider(WhatsAppProvider):
         return await self._request("DELETE", f"/instance/logout/{self.instance}")
 
     async def send_text(self, to: str, message: str) -> dict[str, Any]:
-        payload = {"number": to, "textMessage": {"text": message}}
-        return await self._request("POST", f"/message/sendText/{self.instance}", payload)
+        """Mantém o payload histórico do Scheduler e aceita o schema moderno.
+
+        O fallback só ocorre quando a Evolution rejeita explicitamente o schema
+        antes do envio. Timeouts/5xx não são repetidos para evitar duplicidade.
+        """
+        path = f"/message/sendText/{self.instance}"
+        compatible = {"number": to, "textMessage": {"text": message}}
+        try:
+            return await self._request("POST", path, compatible)
+        except APIError as exc:
+            if not self._schema_rejection(exc):
+                raise
+            modern = {"number": to, "text": message}
+            return await self._request("POST", path, modern)
 
 
 class WhatsAppProviderFactory:
     @staticmethod
     def make(instance_name: str | None = None) -> WhatsAppProvider:
+        # Evolution continua sendo o provider real e único por trás da camada
+        # visual neutra do Scheduler Pro.
         return EvolutionWhatsAppProvider(instance_name)
