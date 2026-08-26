@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, type CSSProperties } from 'vue'
 import { CalendarDays, LoaderCircle } from 'lucide-vue-next'
 import { applyBranding, type BrandingManifest } from './branding'
 import PublicBookingWidget from './PublicBookingWidget.vue'
@@ -8,12 +8,44 @@ import PublicLandingRenderer from './PublicLandingRenderer.vue'
 type Service = { id:string; name:string; duration_minutes:number; price?:number|null }
 type Professional = { id:string; name:string }
 type BookingConfig = {
-  enabled:boolean; title:string; subtitle:string; success_message:string; custom_html:string; allow_any_professional:boolean
-  require_name:boolean; require_phone:boolean; service_mode:'DISABLED'|'OPTIONAL'|'REQUIRED'; email_mode:'DISABLED'|'OPTIONAL'|'REQUIRED'
-  default_duration_minutes:number; simultaneous_capacity:number; public_url:string
+  enabled:boolean
+  title:string
+  subtitle:string
+  success_message:string
+  custom_html:string
+  allow_any_professional:boolean
+  require_name:boolean
+  require_phone:boolean
+  service_mode:'DISABLED'|'OPTIONAL'|'REQUIRED'
+  email_mode:'DISABLED'|'OPTIONAL'|'REQUIRED'
+  default_duration_minutes:number
+  simultaneous_capacity:number
+  public_url:string
 }
-type Catalog = { config:BookingConfig; services:Service[]; professionals:Professional[]; branding:BrandingManifest }
-type PageContent = { version:number; global_styles?:Record<string,unknown>; seo?:Record<string,unknown>; blocks?:Array<Record<string,unknown>> }
+type LandingBlock = {
+  id:string
+  type:string
+  props:Record<string,unknown>
+  style?:CSSProperties
+  responsive?:{
+    desktop?:CSSProperties
+    tablet?:CSSProperties
+    mobile?:CSSProperties
+    hidden?:{desktop?:boolean;tablet?:boolean;mobile?:boolean}
+  }
+}
+type Catalog = {
+  config:BookingConfig
+  services:Service[]
+  professionals:Professional[]
+  branding:BrandingManifest
+}
+type PageContent = {
+  version:number
+  global_styles?:Record<string,unknown>
+  seo?:Record<string,unknown>
+  blocks?:LandingBlock[]
+}
 type LandingPage = { status:string; template_key?:string|null; content:PageContent }
 type LandingEnvelope = { landing_page:LandingPage }
 type Envelope<T> = { data?:T; error?:{message?:string;code?:string} }
@@ -22,24 +54,51 @@ const catalog=ref<Catalog|null>(null)
 const landing=ref<LandingPage|null>(null)
 const loading=ref(true)
 const error=ref('')
-const modernLanding=computed(()=>Boolean(landing.value?.content?.version>=2&&Array.isArray(landing.value?.content?.blocks)&&landing.value!.content.blocks!.length))
+const modernLanding=computed(()=>{
+  const page=landing.value
+  return Boolean(
+    (page?.content?.version ?? 0) >= 2 &&
+    Array.isArray(page?.content?.blocks) &&
+    (page?.content?.blocks?.length ?? 0) > 0,
+  )
+})
 
 async function request<T>(path:string):Promise<T>{
-  const response=await fetch(`${window.location.origin}/api/v1/public${path}`,{cache:'no-store',headers:{Accept:'application/json'}})
+  const response=await fetch(`${window.location.origin}/api/v1/public${path}`,{
+    cache:'no-store',
+    headers:{Accept:'application/json'},
+  })
   const payload=await response.json().catch(()=>({})) as Envelope<T>
-  if(!response.ok||payload.data===undefined)throw new Error(payload.error?.message||`Falha HTTP ${response.status}`)
+  if(!response.ok||payload.data===undefined){
+    throw new Error(payload.error?.message||`Falha HTTP ${response.status}`)
+  }
   return payload.data
 }
 
-function upsertMeta(selector:string,attribute:'name'|'property',key:string,value:string):void{
+function upsertMeta(
+  selector:string,
+  attribute:'name'|'property',
+  key:string,
+  value:string,
+):void{
   let element=document.head.querySelector<HTMLMetaElement>(selector)
-  if(!element){element=document.createElement('meta');element.setAttribute(attribute,key);document.head.appendChild(element)}
+  if(!element){
+    element=document.createElement('meta')
+    element.setAttribute(attribute,key)
+    document.head.appendChild(element)
+  }
   element.content=value
 }
+
 function applySocialMetadata(page:LandingPage):void{
   const seo=page.content.seo||{}
-  const title=String(seo.title||catalog.value?.config.title||catalog.value?.branding.app.public_name||'Agendamento online')
-  const description=String(seo.description||catalog.value?.config.subtitle||'Agende seu horário online.')
+  const title=String(
+    seo.title||catalog.value?.config.title||
+    catalog.value?.branding.app.public_name||'Agendamento online',
+  )
+  const description=String(
+    seo.description||catalog.value?.config.subtitle||'Agende seu horário online.',
+  )
   const shareImage=String(seo.share_image||catalog.value?.branding.assets.logo_url||'')
   const canonical=String(seo.canonical_url||window.location.href.split('#')[0])
   document.title=title
@@ -48,29 +107,48 @@ function applySocialMetadata(page:LandingPage):void{
   upsertMeta('meta[property="og:description"]','property','og:description',description)
   upsertMeta('meta[property="og:type"]','property','og:type','website')
   upsertMeta('meta[property="og:url"]','property','og:url',canonical)
-  upsertMeta('meta[name="twitter:card"]','name','twitter:card',shareImage?'summary_large_image':'summary')
-  if(shareImage){upsertMeta('meta[property="og:image"]','property','og:image',shareImage);upsertMeta('meta[name="twitter:image"]','name','twitter:image',shareImage)}
+  upsertMeta(
+    'meta[name="twitter:card"]',
+    'name',
+    'twitter:card',
+    shareImage?'summary_large_image':'summary',
+  )
+  if(shareImage){
+    upsertMeta('meta[property="og:image"]','property','og:image',shareImage)
+    upsertMeta('meta[name="twitter:image"]','name','twitter:image',shareImage)
+  }
   let link=document.head.querySelector<HTMLLinkElement>('link[rel="canonical"]')
-  if(!link){link=document.createElement('link');link.rel='canonical';document.head.appendChild(link)}
+  if(!link){
+    link=document.createElement('link')
+    link.rel='canonical'
+    document.head.appendChild(link)
+  }
   link.href=canonical
 }
 
 async function load():Promise<void>{
-  loading.value=true;error.value=''
+  loading.value=true
+  error.value=''
   try{
     const booking=await request<Catalog>('/booking')
-    catalog.value=booking;applyBranding(booking.branding)
+    catalog.value=booking
+    applyBranding(booking.branding)
     try{
       const page=await request<LandingEnvelope>('/landing?slug=home')
       landing.value=page.landing_page
-      if(page.landing_page?.content?.version>=2)applySocialMetadata(page.landing_page)
+      if((page.landing_page?.content?.version ?? 0)>=2){
+        applySocialMetadata(page.landing_page)
+      }
     }catch{
       // Compatibilidade: uma falha, capability ausente ou página antiga nunca
       // impede o formulário público que já existia antes do editor visual.
       landing.value=null
     }
-  }catch(exc){error.value=exc instanceof Error?exc.message:'Agenda pública indisponível.'}
-  finally{loading.value=false}
+  }catch(exc){
+    error.value=exc instanceof Error?exc.message:'Agenda pública indisponível.'
+  }finally{
+    loading.value=false
+  }
 }
 
 onMounted(()=>void load())
@@ -78,7 +156,10 @@ onMounted(()=>void load())
 
 <template>
   <main class="public-booking-page">
-    <div v-if="loading" class="public-booking-loading"><LoaderCircle :size="34" class="spin"/><strong>Carregando agenda...</strong></div>
+    <div v-if="loading" class="public-booking-loading">
+      <LoaderCircle :size="34" class="spin"/>
+      <strong>Carregando agenda...</strong>
+    </div>
 
     <template v-else-if="catalog">
       <PublicLandingRenderer
@@ -94,18 +175,39 @@ onMounted(()=>void load())
       <section v-else class="public-booking-shell">
         <header class="public-booking-hero">
           <div class="public-booking-brand">
-            <img v-if="catalog.branding.assets.logo_url" :src="catalog.branding.assets.logo_url" :alt="catalog.branding.app.public_name"/>
+            <img
+              v-if="catalog.branding.assets.logo_url"
+              :src="catalog.branding.assets.logo_url"
+              :alt="catalog.branding.app.public_name"
+            />
             <span v-else>SP</span>
-            <div><strong>{{ catalog.branding.app.public_name || 'Scheduler Pro' }}</strong><small>{{ catalog.branding.app.slogan || 'Agendamento online' }}</small></div>
+            <div>
+              <strong>{{ catalog.branding.app.public_name || 'Scheduler Pro' }}</strong>
+              <small>{{ catalog.branding.app.slogan || 'Agendamento online' }}</small>
+            </div>
           </div>
-          <div class="public-booking-copy"><span>Agenda aberta</span><h1>{{ catalog.config.title }}</h1><p>{{ catalog.config.subtitle }}</p></div>
-          <div v-if="catalog.config.custom_html" class="public-booking-custom" v-html="catalog.config.custom_html"></div>
+          <div class="public-booking-copy">
+            <span>Agenda aberta</span>
+            <h1>{{ catalog.config.title }}</h1>
+            <p>{{ catalog.config.subtitle }}</p>
+          </div>
+          <div
+            v-if="catalog.config.custom_html"
+            class="public-booking-custom"
+            v-html="catalog.config.custom_html"
+          ></div>
         </header>
-        <section class="legacy-booking"><PublicBookingWidget :catalog="catalog"/></section>
+        <section class="legacy-booking">
+          <PublicBookingWidget :catalog="catalog"/>
+        </section>
       </section>
     </template>
 
-    <section v-else class="public-booking-unavailable"><CalendarDays :size="48"/><h1>Agenda indisponível</h1><p>{{ error || 'O estabelecimento não está recebendo agendamentos online neste momento.' }}</p></section>
+    <section v-else class="public-booking-unavailable">
+      <CalendarDays :size="48"/>
+      <h1>Agenda indisponível</h1>
+      <p>{{ error || 'O estabelecimento não está recebendo agendamentos online neste momento.' }}</p>
+    </section>
   </main>
 </template>
 
