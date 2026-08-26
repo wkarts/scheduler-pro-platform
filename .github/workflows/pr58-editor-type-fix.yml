@@ -1,0 +1,38 @@
+name: PR58 editor type fix
+
+on:
+  push:
+    branches:
+      - feat/unified-tenant-ux-responsive-editor-storage-20260826
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/unified-tenant-ux-responsive-editor-storage-20260826
+      - name: Fix responsive hidden typing
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('apps/web/src/TenantPublicPageEditorV2.vue')
+          text = path.read_text(encoding='utf-8')
+          old = "type ResponsiveStyles={desktop:CSSProperties;tablet:CSSProperties;mobile:CSSProperties;hidden:Record<Device,boolean>}"
+          new = "type ResponsiveStyles={desktop:CSSProperties;tablet:CSSProperties;mobile:CSSProperties;hidden:Partial<Record<Device,boolean>>}"
+          if old not in text:
+              raise SystemExit('responsive type marker not found')
+          path.write_text(text.replace(old, new, 1), encoding='utf-8')
+          PY
+      - name: Commit correction and remove helper
+        run: |
+          git rm .github/workflows/pr58-editor-type-fix.yml
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add apps/web/src/TenantPublicPageEditorV2.vue
+          git commit -m 'fix: ajusta tipagem responsiva do editor v2'
+          git push origin HEAD:feat/unified-tenant-ux-responsive-editor-storage-20260826
