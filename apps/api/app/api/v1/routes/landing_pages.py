@@ -2,11 +2,20 @@ from typing import Any
 
 from fastapi import APIRouter, Body, Depends
 from pydantic import BaseModel, Field
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_current_user, get_tenant_session
+from app.api.deps import (
+    get_current_user,
+    get_platform_session,
+    get_tenant_context,
+    get_tenant_session,
+)
+from app.core.errors import APIError
 from app.core.responses import success
 from app.core.security import AuthPrincipal
+from app.core.tenant_context import TenantContext
+from app.services.global_template_service import GlobalTemplateService
 from app.services.landing_service import LandingPageService
 
 router = APIRouter()
@@ -21,8 +30,31 @@ class DuplicateRequest(BaseModel):
 
 
 @router.get("/templates")
-async def templates() -> dict[str, Any]:
-    return success(LandingPageService.templates())
+async def templates(
+    context: TenantContext = Depends(get_tenant_context),
+    platform: AsyncSession = Depends(get_platform_session),
+) -> dict[str, Any]:
+    legacy = [
+        {**item, "source": "builtin", "version": None}
+        for item in LandingPageService.templates()
+    ]
+    global_rows = await GlobalTemplateService(platform).list(
+        surface="LANDING",
+        tenant_id=context.tenant_id,
+    )
+    global_templates = [
+        {
+            "key": row["key"],
+            "name": row["name"],
+            "description": row.get("description") or "Modelo global da plataforma.",
+            "segment": row.get("segment") or "global",
+            "source": "global",
+            "version": row.get("published_version"),
+            "template_id": row["id"],
+        }
+        for row in global_rows
+    ]
+    return success(global_templates + legacy)
 
 
 @router.get("/{slug}")
@@ -78,14 +110,47 @@ async def apply_template(
     slug: str,
     template_key: str,
     principal: AuthPrincipal = Depends(get_current_user),
+    context: TenantContext = Depends(get_tenant_context),
     session: AsyncSession = Depends(get_tenant_session),
+    platform: AsyncSession = Depends(get_platform_session),
 ) -> dict[str, Any]:
-    data = await LandingPageService(session).apply_template(
+    global_service = GlobalTemplateService(platform)
+    try:
+        template = await global_service.content(
+            surface="LANDING",
+            key=template_key,
+            tenant_id=context.tenant_id,
+        )
+    except APIError as exc:
+        if exc.code != "GLOBAL_TEMPLATE_NOT_FOUND":
+            raise
+        data = await LandingPageService(session).apply_template(
+            slug,
+            template_key,
+            created_by=principal.user_id,
+        )
+        return success(data)
+
+    draft = await LandingPageService(session).save_draft(
         slug,
-        template_key,
+        template["version"]["content"],
         created_by=principal.user_id,
+        label=f"Modelo global: {template['name']} v{template['version']['version_number']}",
     )
-    return success(data)
+    source_key = f"global:{template['key']}@{template['version']['version_number']}"
+    await session.execute(
+        text("update landing_pages set template_key=:key where slug=:slug"),
+        {"key": source_key, "slug": slug},
+    )
+    await session.commit()
+    return success(
+        {
+            **draft,
+            "template_key": source_key,
+            "global_template_id": template["id"],
+            "global_template_version": template["version"]["version_number"],
+        }
+    )
 
 
 @router.post("/{slug}/publish")
