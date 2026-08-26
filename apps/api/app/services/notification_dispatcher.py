@@ -5,6 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.services.appointment_confirmation_service import AppointmentConfirmationService
 from app.services.notification_service import NotificationService
+from app.services.phone_normalization import PhoneNormalizationService
 from app.services.tenant_event_log import record_tenant_event
 from app.services.tenant_mail_service import TenantMailService
 from app.services.whatsapp_provider import WhatsAppProviderFactory
@@ -56,6 +57,7 @@ class TenantNotificationDispatcher:
         ).mappings().all()
         instance_name = await self._instance_name()
         whatsapp_provider = WhatsAppProviderFactory.make(instance_name)
+        phone_service = await PhoneNormalizationService.from_session(self.session)
         mailer = TenantMailService(self.session)
         sent = 0
         failed = 0
@@ -98,7 +100,12 @@ class TenantNotificationDispatcher:
                     )
                     await mailer.send(str(row["recipient"]), subject, message)
                 elif channel == "whatsapp":
-                    await whatsapp_provider.send_text(str(row["recipient"]), message)
+                    normalized_recipient = phone_service.normalize(
+                        str(row["recipient"] or ""),
+                        required=True,
+                    )
+                    assert normalized_recipient is not None
+                    await whatsapp_provider.send_text(normalized_recipient, message)
                 else:
                     raise RuntimeError(f"Canal de notificação não suportado: {channel}")
                 await self.session.execute(
