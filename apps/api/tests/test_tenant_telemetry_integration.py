@@ -1,4 +1,5 @@
 import json
+import time
 from uuid import uuid4
 
 import asyncpg
@@ -6,6 +7,8 @@ import httpx
 import pytest
 
 from app.core.config import settings
+from app.core.secrets import secret_resolver
+from app.services.two_factor_service import TwoFactorService
 
 pytestmark = pytest.mark.integration
 
@@ -18,6 +21,67 @@ def _json_object(value: object) -> dict[str, object]:
         assert isinstance(parsed, dict)
         return parsed
     raise AssertionError(f"Valor JSON inesperado: {type(value).__name__}")
+
+
+async def _platform_login_with_2fa(client: httpx.AsyncClient) -> dict:
+    login = await client.post(
+        "/api/v1/auth/platform/login",
+        json={
+            "email": settings.dev_platform_admin_email,
+            "password": settings.dev_platform_admin_password,
+        },
+    )
+    assert login.status_code == 200, login.text
+    data = login.json()["data"]
+    headers = {"Authorization": f"Bearer {data['access_token']}"}
+    state_response = await client.get(
+        "/api/v1/auth/platform/2fa/state",
+        headers=headers,
+    )
+    assert state_response.status_code == 200, state_response.text
+    state = state_response.json()["data"]
+
+    if state["enabled"]:
+        conn = await asyncpg.connect(
+            host=settings.postgres_host,
+            port=settings.postgres_port,
+            user=settings.postgres_user,
+            password=settings.postgres_password,
+            database=settings.postgres_db,
+        )
+        try:
+            reference = await conn.fetchval(
+                "select two_factor_secret_ref from platform_users where lower(email)=lower($1)",
+                settings.dev_platform_admin_email,
+            )
+        finally:
+            await conn.close()
+        assert reference
+        secret = secret_resolver.resolve(str(reference))
+        code = TwoFactorService.code_at(secret, int(time.time()))
+        verify = await client.post(
+            "/api/v1/auth/platform/2fa/verify",
+            headers=headers,
+            json={"code": code},
+        )
+        assert verify.status_code == 200, verify.text
+    else:
+        setup = await client.post(
+            "/api/v1/auth/platform/2fa/setup",
+            headers=headers,
+            json={},
+        )
+        assert setup.status_code == 200, setup.text
+        secret = setup.json()["data"]["manual_key"]
+        code = TwoFactorService.code_at(secret, int(time.time()))
+        confirm = await client.post(
+            "/api/v1/auth/platform/2fa/confirm",
+            headers=headers,
+            json={"code": code},
+        )
+        assert confirm.status_code == 200, confirm.text
+
+    return data
 
 
 async def test_tenant_browser_telemetry_is_persistent_and_visible_to_control_plane(
@@ -97,15 +161,8 @@ async def test_tenant_browser_telemetry_is_persistent_and_visible_to_control_pla
     finally:
         await tenant.close()
 
-    admin_login = await client.post(
-        "/api/v1/auth/platform/login",
-        json={
-            "email": settings.dev_platform_admin_email,
-            "password": settings.dev_platform_admin_password,
-        },
-    )
-    assert admin_login.status_code == 200, admin_login.text
-    admin_token = admin_login.json()["data"]["access_token"]
+    admin_login = await _platform_login_with_2fa(client)
+    admin_token = admin_login["access_token"]
     diagnostics = await client.get(
         f"/api/v1/platform/tenant-management/{tenant_id}/logs",
         headers={"Authorization": f"Bearer {admin_token}"},
