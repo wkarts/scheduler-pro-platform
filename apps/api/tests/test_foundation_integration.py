@@ -15,7 +15,7 @@ from app.services.two_factor_service import TwoFactorService
 
 pytestmark = pytest.mark.integration
 
-PLATFORM_MIGRATION_HEAD = "platform_0010_admin_2fa"
+PLATFORM_MIGRATION_HEAD = "platform_0011_global_templates"
 TENANT_MIGRATION_HEAD = "tenant_0010_phone_guard"
 
 
