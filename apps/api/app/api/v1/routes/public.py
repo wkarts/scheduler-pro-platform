@@ -22,6 +22,7 @@ from app.services.branding_service import BrandingService
 from app.services.file_service import TenantFileService
 from app.services.landing_service import LandingPageService
 from app.services.public_booking_service import PublicBookingService
+from app.services.template_contract import TemplateContract
 
 router = APIRouter()
 PUBLIC_LANDING_ASSET_PREFIX = "landing/"
@@ -60,6 +61,28 @@ def _safe_booking_html(value: str) -> str:
         protocols={"http", "https", "mailto", "tel"},
         strip=True,
     )
+
+
+def _apply_booking_template_copy(config: dict[str, Any]) -> None:
+    template = config.get("booking_template")
+    if not isinstance(template, dict):
+        return
+    content = template.get("content")
+    if not isinstance(content, dict):
+        return
+    TemplateContract.ensure_content("BOOKING", content, strict=False)
+    copy = content.get("copy")
+    if not isinstance(copy, dict):
+        return
+    title = str(copy.get("title") or "").strip()
+    subtitle = str(copy.get("subtitle") or "").strip()
+    success_message = str(copy.get("success") or "").strip()
+    if title:
+        config["title"] = title
+    if subtitle:
+        config["subtitle"] = subtitle
+    if success_message:
+        config["success_message"] = success_message
 
 
 def _stream(body: Any) -> Iterator[bytes]:
@@ -153,6 +176,7 @@ async def public_booking_catalog(
         timezone=context.timezone,
     )
     catalog = await service.catalog()
+    _apply_booking_template_copy(catalog["config"])
     catalog["config"]["custom_html"] = _safe_booking_html(
         str(catalog["config"].get("custom_html") or "")
     )
