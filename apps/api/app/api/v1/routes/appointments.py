@@ -8,10 +8,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_tenant_context, get_tenant_session
 from app.core.enums import AppointmentStatus
+from app.core.errors import APIError
 from app.core.responses import success
 from app.core.tenant_context import TenantContext
 from app.services.appointment_service import AppointmentService
 from app.services.notification_service import NotificationService
+from app.services.phone_normalization import PhoneNormalizationService
 from app.services.realtime_service import RealtimeEventService
 from app.workers.celery_app import celery_app
 
@@ -20,7 +22,7 @@ router = APIRouter()
 
 class AppointmentCreate(BaseModel):
     customer_id: str
-    service_id: str
+    service_id: str | None = None
     professional_id: str
     starts_at: datetime
     ends_at: datetime
@@ -30,12 +32,12 @@ class AppointmentCreate(BaseModel):
 class AppointmentQuickCreate(BaseModel):
     starts_at: datetime
     customer_id: str | None = None
-    customer_name: str = Field(default="Cliente", min_length=2, max_length=160)
-    customer_phone: str | None = Field(default=None, max_length=40)
+    customer_name: str = Field(min_length=2, max_length=160)
+    customer_phone: str = Field(min_length=8, max_length=80)
     customer_email: EmailStr | None = None
     service_id: str | None = None
-    service_name: str = Field(default="Atendimento", min_length=2, max_length=160)
-    duration_minutes: int = Field(default=30, ge=5, le=720)
+    service_name: str | None = Field(default=None, min_length=2, max_length=160)
+    duration_minutes: int | None = Field(default=None, ge=5, le=720)
     price: float | None = Field(default=None, ge=0)
     professional_id: str | None = None
     professional_name: str = Field(default="Agenda geral", min_length=2, max_length=160)
@@ -133,33 +135,44 @@ async def _quick_customer(
 ) -> str:
     if payload.customer_id:
         return payload.customer_id
-    customer_id: str | None = None
-    if payload.customer_phone:
-        customer_id = await session.scalar(
+    phones = await PhoneNormalizationService.from_session(session)
+    canonical = phones.normalize(payload.customer_phone, required=True)
+    assert canonical is not None
+    await phones.lock_customer_phone(session, canonical)
+    customer_id = await phones.find_customer_id(session, canonical)
+    if customer_id:
+        await session.execute(
             text(
                 """
-                select id::text from customers
-                where phone=:phone
-                order by created_at desc
-                limit 1
+                update customers
+                set name=:name,
+                    phone=:phone,
+                    phone_normalized=:phone,
+                    email=case when :email is null then email else :email end
+                where id=cast(:id as uuid)
                 """
             ),
-            {"phone": payload.customer_phone},
+            {
+                "id": customer_id,
+                "name": payload.customer_name.strip(),
+                "phone": canonical,
+                "email": str(payload.customer_email) if payload.customer_email else None,
+            },
         )
-    if customer_id:
         return str(customer_id)
     return str(
         await session.scalar(
             text(
                 """
-                insert into customers(name, phone, email, notes)
-                values(:name, :phone, :email, 'Criado automaticamente pela agenda rápida')
+                insert into customers(name, phone, phone_normalized, email, notes)
+                values(:name, :phone, :phone, :email,
+                       'Criado automaticamente pela agenda rápida')
                 returning id::text
                 """
             ),
             {
-                "name": payload.customer_name,
-                "phone": payload.customer_phone,
+                "name": payload.customer_name.strip(),
+                "phone": canonical,
                 "email": str(payload.customer_email) if payload.customer_email else None,
             },
         )
@@ -169,7 +182,12 @@ async def _quick_customer(
 async def _quick_service(
     session: AsyncSession,
     payload: AppointmentQuickCreate,
-) -> tuple[str, int]:
+    engine: AppointmentService,
+) -> tuple[str | None, int]:
+    mode = await engine.service_mode()
+    default_duration = await engine.default_duration_minutes()
+    if mode == "DISABLED":
+        return None, default_duration
     if payload.service_id:
         row = (
             await session.execute(
@@ -182,6 +200,16 @@ async def _quick_service(
         ).mappings().first()
         if row:
             return str(row["id"]), int(row["duration_minutes"])
+        raise APIError("SERVICE_NOT_FOUND", "Serviço não encontrado.", 404)
+    if not payload.service_name:
+        if mode == "REQUIRED":
+            raise APIError(
+                "APPOINTMENT_SERVICE_REQUIRED",
+                "Selecione um serviço para continuar.",
+                422,
+            )
+        return None, default_duration
+
     row = (
         await session.execute(
             text(
@@ -198,6 +226,10 @@ async def _quick_service(
     ).mappings().first()
     if row:
         return str(row["id"]), int(row["duration_minutes"])
+
+    # Serviço só é criado quando o operador informou explicitamente um nome;
+    # nunca criamos "Atendimento" artificial para satisfazer a estrutura.
+    duration = payload.duration_minutes or default_duration
     created = (
         await session.execute(
             text(
@@ -209,7 +241,7 @@ async def _quick_service(
             ),
             {
                 "name": payload.service_name,
-                "duration": payload.duration_minutes,
+                "duration": duration,
                 "price": payload.price,
             },
         )
@@ -252,17 +284,17 @@ async def create_quick_appointment(
     context: TenantContext = Depends(get_tenant_context),
     session: AsyncSession = Depends(get_tenant_session),
 ) -> dict[str, Any]:
+    engine = AppointmentService(
+        session,
+        public_base_url=_public_base_url(context),
+    )
     customer_id = await _quick_customer(session, payload)
-    service_id, duration = await _quick_service(session, payload)
+    service_id, duration = await _quick_service(session, payload, engine)
     professional_id = await _quick_professional(session, payload)
-    await session.commit()
 
     starts_at = payload.starts_at
     ends_at = starts_at + timedelta(minutes=duration)
-    appointment = await AppointmentService(
-        session,
-        public_base_url=_public_base_url(context),
-    ).create(
+    appointment = await engine.create(
         {
             "customer_id": customer_id,
             "service_id": service_id,
@@ -414,6 +446,7 @@ async def reschedule_appointment(
         professional_id,
         payload.starts_at,
         payload.ends_at,
+        source="internal",
         ignore_appointment_id=appointment_id,
     )
     await session.execute(
