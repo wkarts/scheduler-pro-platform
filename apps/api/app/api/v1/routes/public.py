@@ -37,10 +37,10 @@ PUBLIC_LANDING_ASSET_TYPES = {
 
 class PublicBookingCreate(BaseModel):
     service_id: str | None = Field(default=None, min_length=10, max_length=80)
-    professional_id: str = Field(min_length=10, max_length=80)
+    professional_id: str | None = Field(default=None, min_length=10, max_length=80)
     starts_at: datetime
     customer_name: str = Field(min_length=2, max_length=160)
-    customer_phone: str = Field(min_length=8, max_length=80)
+    customer_phone: str | None = Field(default=None, max_length=80)
     customer_email: EmailStr | None = None
 
 
@@ -74,11 +74,6 @@ async def public_landing_asset(
     key: str,
     context: TenantContext = Depends(get_tenant_context),
 ) -> StreamingResponse:
-    """Serve somente arquivos publicados pelo editor da Landing Page.
-
-    O bucket continua privado e isolado por tenant; o cliente recebe apenas este
-    proxy same-origin, sem URL, endpoint ou credencial do storage real.
-    """
     normalized = TenantFileService.normalize_key(key)
     if not normalized.startswith(PUBLIC_LANDING_ASSET_PREFIX):
         raise APIError("PUBLIC_ASSET_NOT_FOUND", "Arquivo público não encontrado.", 404)
@@ -107,7 +102,6 @@ async def public_agenda_report(
     token: str,
     context: TenantContext = Depends(get_tenant_context),
 ) -> StreamingResponse:
-    """Expose a generated management report without exposing the tenant bucket."""
     payload = verify_report_token(token, context.tenant_id)
     key = TenantFileService.normalize_key(str(payload.get("key") or ""))
     if not key.startswith("reports/agenda/"):
