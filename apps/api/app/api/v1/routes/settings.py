@@ -2,6 +2,7 @@ import json
 from typing import Any
 
 from fastapi import APIRouter, Body, Depends
+from pydantic import BaseModel, Field
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -12,8 +13,31 @@ from app.api.deps import (
 )
 from app.core.responses import success
 from app.core.tenant_context import TenantContext
+from app.services.booking_parameters_service import BookingParametersService
 
 router = APIRouter()
+
+
+class SimultaneousSettings(BaseModel):
+    public: bool = False
+    internal: bool = False
+    capacity: int = Field(default=1, ge=1, le=100)
+
+
+class PhoneSettings(BaseModel):
+    country: str = Field(default="BR", min_length=2, max_length=3)
+    country_code: str = Field(default="55", min_length=1, max_length=8)
+    area_code: str = Field(default="", max_length=8)
+    add_ninth_digit: bool = True
+
+
+class BookingParametersUpdate(BaseModel):
+    service_mode: str = "REQUIRED"
+    email_mode: str = "OPTIONAL"
+    default_duration_minutes: int = Field(default=60, ge=5, le=720)
+    simultaneous: SimultaneousSettings = Field(default_factory=SimultaneousSettings)
+    minimum_notice_minutes: int = Field(default=1440, ge=0, le=525600)
+    phone: PhoneSettings = Field(default_factory=PhoneSettings)
 
 
 @router.get("/tenant")
@@ -34,6 +58,23 @@ async def tenant_settings(
             "timezone": context.timezone,
             "preferences": {row["key"]: row["value"] for row in rows},
         }
+    )
+
+
+@router.get("/booking")
+async def booking_parameters(
+    session: AsyncSession = Depends(get_tenant_session),
+) -> dict[str, Any]:
+    return success(await BookingParametersService(session).get())
+
+
+@router.put("/booking")
+async def update_booking_parameters(
+    payload: BookingParametersUpdate,
+    session: AsyncSession = Depends(get_tenant_session),
+) -> dict[str, Any]:
+    return success(
+        await BookingParametersService(session).update(payload.model_dump())
     )
 
 

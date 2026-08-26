@@ -1,3 +1,4 @@
+import time
 from uuid import uuid4
 
 import asyncpg
@@ -5,8 +6,29 @@ import httpx
 import pytest
 
 from app.core.config import settings
+from app.core.secrets import secret_resolver
+from app.services.two_factor_service import TwoFactorService
 
 pytestmark = pytest.mark.integration
+
+
+async def _platform_secret(email: str) -> str:
+    conn = await asyncpg.connect(
+        host=settings.postgres_host,
+        port=settings.postgres_port,
+        user=settings.postgres_user,
+        password=settings.postgres_password,
+        database=settings.postgres_db,
+    )
+    try:
+        reference = await conn.fetchval(
+            "select two_factor_secret_ref from platform_users where lower(email)=lower($1)",
+            email,
+        )
+    finally:
+        await conn.close()
+    assert reference
+    return secret_resolver.resolve(str(reference))
 
 
 async def platform_login(
@@ -14,15 +36,51 @@ async def platform_login(
     email: str | None = None,
     password: str | None = None,
 ) -> dict:
+    login_email = email or settings.dev_platform_admin_email
     response = await client.post(
         "/api/v1/auth/platform/login",
         json={
-            "email": email or settings.dev_platform_admin_email,
+            "email": login_email,
             "password": password or settings.dev_platform_admin_password,
         },
     )
     assert response.status_code == 200, response.text
-    return response.json()["data"]
+    data = response.json()["data"]
+    headers = {"authorization": f"Bearer {data['access_token']}"}
+
+    state_response = await client.get(
+        "/api/v1/auth/platform/2fa/state",
+        headers=headers,
+    )
+    assert state_response.status_code == 200, state_response.text
+    state = state_response.json()["data"]
+
+    if state["enabled"]:
+        secret = await _platform_secret(login_email)
+        code = TwoFactorService.code_at(secret, int(time.time()))
+        verified = await client.post(
+            "/api/v1/auth/platform/2fa/verify",
+            headers=headers,
+            json={"code": code},
+        )
+        assert verified.status_code == 200, verified.text
+    else:
+        setup = await client.post(
+            "/api/v1/auth/platform/2fa/setup",
+            headers=headers,
+            json={},
+        )
+        assert setup.status_code == 200, setup.text
+        secret = setup.json()["data"]["manual_key"]
+        code = TwoFactorService.code_at(secret, int(time.time()))
+        confirmed = await client.post(
+            "/api/v1/auth/platform/2fa/confirm",
+            headers=headers,
+            json={"code": code},
+        )
+        assert confirmed.status_code == 200, confirmed.text
+
+    return data
 
 
 async def test_platform_admin_role_permissions_and_tenant_scope(

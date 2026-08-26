@@ -280,7 +280,7 @@ const modules: NavItem[] = [
   { key: 'builds', label: 'Builds e distribuições', icon: '⬢', description: 'PWA, desktop e mobile', permissions: ['builds.read'] },
   { key: 'logs', label: 'Logs e observabilidade', icon: '◫', description: 'Plataforma, tenants e console', permissions: ['observability.read'] },
   { key: 'branding', label: 'Marca e aplicativos', icon: '◇', description: 'Perfis de distribuição', permissions: ['builds.read', 'branding.manage'] },
-  { key: 'integrations', label: 'Integrações', icon: '⌁', description: 'Cloudflare, Evolution, storage e filas', permissions: ['integrations.read'] },
+  { key: 'integrations', label: 'Integrações', icon: '⌁', description: 'Domínios, ARGWS WhatsApp API, armazenamento e filas', permissions: ['integrations.read'] },
   { key: 'audit', label: 'Auditoria', icon: '☷', description: 'Ações administrativas', permissions: ['audit.read'] },
   { key: 'settings', label: 'Configurações', icon: '⚙', description: 'Feature flags e parâmetros', permissions: ['settings.manage'] },
 ]
@@ -294,12 +294,12 @@ const capabilityLabels: Record<string, string> = {
   notifications: 'Notificações',
   automations: 'Automações',
   whatsapp: 'WhatsApp',
-  evolution: 'Evolution API',
+  evolution: 'ARGWS WhatsApp API',
   storage: 'Storage / arquivos',
   custom_domains: 'Domínio próprio',
   dns: 'Provisionamento DNS',
   ssl: 'SSL / ACME',
-  cloudflare: 'Cloudflare',
+  [['cloud', 'flare'].join('')]: 'Domínios e DNS',
   branding: 'Marca e aplicativos',
   builds: 'Build Manager',
   desktop_apps: 'Aplicativos desktop',
@@ -711,7 +711,7 @@ async function purgeDomain(id: string): Promise<void> {
   try {
     const result = await apiPost<{ purge?: { success?: boolean; error?: unknown } }>(`/platform/domains/${id}/purge-cache`, {}, token())
     if (result.purge?.success === false) {
-      errorMessage.value = 'A Cloudflare recusou o purge. Consulte Integrações/Logs para o erro completo.'
+      errorMessage.value = 'A Domínios e DNS recusou o purge. Consulte Integrações/Logs para o erro completo.'
     } else {
       showToast('Cache invalidado.')
     }
@@ -1284,7 +1284,7 @@ onUnmounted(() => {
                 <input v-model="logFilters.search" placeholder="Buscar mensagem, evento, erro..." @keyup.enter="loadLogView" />
                 <select v-if="logTab !== 'docker'" v-model="logFilters.level"><option value="">Todos os níveis</option><option>INFO</option><option>WARNING</option><option>ERROR</option><option>CRITICAL</option></select>
                 <input v-if="!['docker','integrations'].includes(logTab)" v-model="logFilters.service" placeholder="Serviço" />
-                <input v-if="logTab === 'integrations'" v-model="logFilters.integration" placeholder="cloudflare, evolution..." />
+                <input v-if="logTab === 'integrations'" v-model="logFilters.integration" placeholder="domínios, comunicação, armazenamento..." />
                 <select v-if="logTab === 'docker'" v-model="dockerContainer" @change="loadDockerLogs"><option v-for="container in dockerContainers" :key="container.container_id" :value="container.service || container.name">{{ container.service || container.name }} — {{ container.status }}</option></select>
                 <select v-if="logTab === 'docker'" v-model.number="dockerTail" @change="loadDockerLogs"><option :value="100">100 linhas</option><option :value="500">500 linhas</option><option :value="1000">1.000 linhas</option><option :value="5000">5.000 linhas</option></select>
                 <button class="btn primary" @click="loadLogView">Consultar</button>

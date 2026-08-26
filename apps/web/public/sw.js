@@ -1,4 +1,5 @@
-const CACHE = 'scheduler-pro-web-brand-v3.0.0'
+const CACHE_PREFIX = 'scheduler-pro-web-'
+const CACHE = `${CACHE_PREFIX}brand-v4.0.0`
 const STATIC_ASSETS = [
   '/',
   '/index.html',
@@ -17,10 +18,27 @@ self.addEventListener('install', event => {
 self.addEventListener('activate', event => {
   event.waitUntil(
     caches.keys()
-      .then(keys => Promise.all(keys.filter(key => key !== CACHE).map(key => caches.delete(key))))
+      .then(keys => Promise.all(keys.filter(key => key.startsWith(CACHE_PREFIX) && key !== CACHE).map(key => caches.delete(key))))
       .then(() => self.clients.claim()),
   )
 })
+
+function isImmutableAsset(url) {
+  return url.pathname.startsWith('/assets/') && /-[A-Za-z0-9_-]{8,}\.(?:js|css|woff2?|png|jpe?g|webp|svg)$/i.test(url.pathname)
+}
+
+async function networkFirst(request, fallback) {
+  try {
+    const response = await fetch(request, { cache: 'no-store' })
+    if (response && response.ok) {
+      const copy = response.clone()
+      caches.open(CACHE).then(cache => cache.put(request, copy)).catch(() => undefined)
+    }
+    return response
+  } catch {
+    return (await caches.match(request)) || (fallback ? await caches.match(fallback) : undefined) || Response.error()
+  }
+}
 
 self.addEventListener('fetch', event => {
   const request = event.request
@@ -29,31 +47,41 @@ self.addEventListener('fetch', event => {
   const url = new URL(request.url)
   if (url.origin !== self.location.origin) return
 
-  if (url.pathname.startsWith('/api/') || url.pathname.startsWith('/a/') || url.pathname.startsWith('/agendar')) {
-    event.respondWith(fetch(request))
+  // Nunca responder APIs, confirmações públicas ou a agenda atual a partir de cache obsoleto.
+  if (
+    url.pathname.startsWith('/api/') ||
+    url.pathname.startsWith('/a/') ||
+    url.pathname.startsWith('/agendar')
+  ) {
+    event.respondWith(fetch(request, { cache: 'no-store' }))
     return
   }
 
   if (request.mode === 'navigate') {
+    event.respondWith(networkFirst(request, '/offline.html'))
+    return
+  }
+
+  if (isImmutableAsset(url)) {
     event.respondWith(
-      fetch(request, { cache: 'no-store' })
-        .then(response => {
+      caches.match(request).then(cached => cached || fetch(request).then(response => {
+        if (response && response.ok) {
           const copy = response.clone()
           caches.open(CACHE).then(cache => cache.put(request, copy)).catch(() => undefined)
-          return response
-        })
-        .catch(() => caches.match(request).then(cached => cached || caches.match('/offline.html'))),
+        }
+        return response
+      })),
     )
     return
   }
 
-  event.respondWith(
-    caches.match(request).then(cached => cached || fetch(request).then(response => {
-      const copy = response.clone()
-      caches.open(CACHE).then(cache => cache.put(request, copy)).catch(() => undefined)
-      return response
-    })),
-  )
+  // Manifest, favicon e demais arquivos sem hash precisam consultar a rede para
+  // que Safari/iPhone não fiquem presos indefinidamente em uma versão anterior.
+  event.respondWith(networkFirst(request))
+})
+
+self.addEventListener('message', event => {
+  if (event.data && event.data.type === 'SKIP_WAITING') self.skipWaiting()
 })
 
 self.addEventListener('push', event => {

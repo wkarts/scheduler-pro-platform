@@ -1,4 +1,5 @@
 import json
+import re
 from datetime import UTC, datetime, timedelta
 from typing import Any
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -8,18 +9,18 @@ from sqlalchemy.engine import RowMapping
 from sqlalchemy.ext.asyncio import AsyncSession
 
 DEFAULT_TEMPLATES = {
-    "appointment_created": "Olá, {{customer_name}}! Seu atendimento de {{service_name}} com {{professional_name}} foi reservado para {{starts_at_br}}.",
-    "appointment_confirmation_request": "Olá, {{customer_name}}! Seu atendimento de {{service_name}} com {{professional_name}} está reservado para {{starts_at_br}}. Confirme ou cancele pelo link: {{confirmation_url}}",
-    "appointment_rescheduled": "Olá, {{customer_name}}! Seu atendimento de {{service_name}} foi reagendado para {{starts_at_br}}. Confirme ou cancele pelo link: {{confirmation_url}}",
-    "appointment_confirmed": "Olá, {{customer_name}}! Seu agendamento de {{service_name}} com {{professional_name}} foi confirmado para {{starts_at_br}}.",
-    "appointment_cancelled": "Olá, {{customer_name}}. Seu agendamento de {{service_name}} para {{starts_at_br}} foi cancelado. Motivo: {{reason}}",
-    "appointment_completed": "Olá, {{customer_name}}! Obrigado por realizar {{service_name}} com a gente. Até a próxima!",
-    "appointment_no_show": "Olá, {{customer_name}}. Registramos ausência no agendamento de {{service_name}} previsto para {{starts_at_br}}.",
-    "appointment_reminder_24h": "Lembrete: {{customer_name}}, seu atendimento de {{service_name}} com {{professional_name}} é amanhã, {{starts_at_br}}.",
-    "appointment_reminder_2h": "Lembrete: {{customer_name}}, faltam 2 horas para seu atendimento de {{service_name}} com {{professional_name}} às {{starts_at_br}}.",
-    "tenant_confirmation_confirmed": "✅ {{customer_name}} confirmou o agendamento de {{service_name}} para {{starts_at_br}}.",
-    "tenant_confirmation_cancelled": "❌ {{customer_name}} cancelou o agendamento de {{service_name}} para {{starts_at_br}}. O horário foi liberado.",
-    "tenant_confirmation_expired": "⏱️ {{customer_name}} não confirmou o agendamento de {{service_name}} para {{starts_at_br}} dentro do prazo. O horário foi liberado.",
+    "appointment_created": "Olá, {{customer_name}}!\n\nSeu agendamento foi recebido.\n{{#if service_name}}Serviço: {{service_name}}\n{{/if}}Profissional: {{professional_name}}\nData/Horário: {{starts_at_br}}.",
+    "appointment_confirmation_request": "Olá, {{customer_name}}!\n\nSeu agendamento está reservado.\n{{#if service_name}}Serviço: {{service_name}}\n{{/if}}Profissional: {{professional_name}}\nData/Horário: {{starts_at_br}}\n\nConfirme ou cancele pelo link: {{confirmation_url}}",
+    "appointment_rescheduled": "Olá, {{customer_name}}!\n\nSeu agendamento foi reagendado.\n{{#if service_name}}Serviço: {{service_name}}\n{{/if}}Profissional: {{professional_name}}\nData/Horário: {{starts_at_br}}\n\nConfirme ou cancele pelo link: {{confirmation_url}}",
+    "appointment_confirmed": "Olá, {{customer_name}}!\n\nSeu agendamento foi confirmado.\n{{#if service_name}}Serviço: {{service_name}}\n{{/if}}Profissional: {{professional_name}}\nData/Horário: {{starts_at_br}}.",
+    "appointment_cancelled": "Olá, {{customer_name}}.\n\nSeu agendamento de {{starts_at_br}} foi cancelado.\n{{#if service_name}}Serviço: {{service_name}}\n{{/if}}Motivo: {{reason}}",
+    "appointment_completed": "Olá, {{customer_name}}! Obrigado pelo atendimento{{#if service_name}} de {{service_name}}{{/if}}. Até a próxima!",
+    "appointment_no_show": "Olá, {{customer_name}}. Registramos ausência no agendamento previsto para {{starts_at_br}}.{{#if service_name}} Serviço: {{service_name}}.{{/if}}",
+    "appointment_reminder_24h": "Lembrete: {{customer_name}}, seu agendamento com {{professional_name}} é amanhã, {{starts_at_br}}.{{#if service_name}} Serviço: {{service_name}}.{{/if}}",
+    "appointment_reminder_2h": "Lembrete: {{customer_name}}, faltam 2 horas para seu agendamento com {{professional_name}}, às {{starts_at_br}}.{{#if service_name}} Serviço: {{service_name}}.{{/if}}",
+    "tenant_confirmation_confirmed": "✅ {{customer_name}} confirmou o agendamento para {{starts_at_br}}.{{#if service_name}} Serviço: {{service_name}}.{{/if}}",
+    "tenant_confirmation_cancelled": "❌ {{customer_name}} cancelou o agendamento para {{starts_at_br}}. O horário foi liberado.{{#if service_name}} Serviço: {{service_name}}.{{/if}}",
+    "tenant_confirmation_expired": "⏱️ {{customer_name}} não confirmou o agendamento para {{starts_at_br}} dentro do prazo. O horário foi liberado.{{#if service_name}} Serviço: {{service_name}}.{{/if}}",
 }
 
 DEFAULT_EMAIL_TEMPLATES = {
@@ -33,6 +34,8 @@ DEFAULT_EMAIL_TEMPLATES = {
     "appointment_reminder_24h": DEFAULT_TEMPLATES["appointment_reminder_24h"],
     "appointment_reminder_2h": DEFAULT_TEMPLATES["appointment_reminder_2h"],
 }
+
+_CONDITION = re.compile(r"\{\{#if\s+([a-zA-Z0-9_]+)\}\}(.*?)\{\{/if\}\}", re.DOTALL)
 
 
 class NotificationService:
@@ -59,16 +62,40 @@ class NotificationService:
     @staticmethod
     def _render(body: str, variables: dict[str, Any]) -> str:
         rendered = body
+
+        def conditional(match: re.Match[str]) -> str:
+            key = match.group(1)
+            return match.group(2) if variables.get(key) not in {None, "", False} else ""
+
+        # Condições são processadas antes das variáveis. Templates antigos que não
+        # usam {{#if ...}} continuam aceitos.
+        while _CONDITION.search(rendered):
+            rendered = _CONDITION.sub(conditional, rendered)
+
+        if not variables.get("service_name"):
+            # Compatibilidade com templates personalizados antigos. Evita saídas
+            # como "Serviço:", "Serviço: null" ou "atendimento de  com ...".
+            rendered = re.sub(
+                r"(?im)^\s*servi[cç]o\s*:\s*\{\{service_name\}\}\s*$\n?",
+                "",
+                rendered,
+            )
+            rendered = rendered.replace(" de {{service_name}}", "")
+            rendered = rendered.replace("{{service_name}} - ", "")
+            rendered = rendered.replace("{{service_name}} · ", "")
+
         for key, value in variables.items():
             rendered = rendered.replace(
                 "{{" + key + "}}",
                 "" if value is None else str(value),
             )
-        return rendered
+        rendered = re.sub(r"[ \t]+\n", "\n", rendered)
+        rendered = re.sub(r"\n{3,}", "\n\n", rendered)
+        return rendered.strip()
 
     @staticmethod
     def email_subject(template_key: str, payload: dict[str, Any]) -> str:
-        service = str(payload.get("service_name") or "seu atendimento")
+        service = str(payload.get("service_name") or "seu agendamento")
         subjects = {
             "appointment_confirmation_request": "Confirme seu agendamento",
             "appointment_confirmation_request_email": "Confirme seu agendamento",
@@ -99,6 +126,8 @@ class NotificationService:
         return default if value is None else value
 
     async def _email_enabled(self) -> bool:
+        if str(await self._setting("booking_email_mode", "OPTIONAL")).upper() == "DISABLED":
+            return False
         from app.services.tenant_mail_service import TenantMailService
 
         status = await TenantMailService(self.session).status()
@@ -179,7 +208,7 @@ class NotificationService:
                            p.name as professional_name
                     from appointments a
                     join customers c on c.id = a.customer_id
-                    join services s on s.id = a.service_id
+                    left join services s on s.id = a.service_id
                     join professionals p on p.id = a.professional_id
                     where a.id = cast(:appointment_id as uuid)
                     """

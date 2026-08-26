@@ -8,15 +8,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.errors import APIError
 from app.services.appointment_service import AppointmentService
+from app.services.phone_normalization import PhoneNormalizationService
 
 
 class PublicBookingService:
-    """Agenda pública do tenant sem duplicar as regras do motor interno.
-
-    A disponibilidade e a criação passam pelo AppointmentService, portanto
-    expediente, bloqueios, conflitos por profissional, confirmações e
-    notificações continuam obedecendo às mesmas regras da agenda administrativa.
-    """
+    """Agenda pública sem duplicar as regras do motor interno."""
 
     def __init__(
         self,
@@ -45,6 +41,10 @@ class PublicBookingService:
         return bool(await self._setting("public_booking_enabled", False))
 
     async def config(self) -> dict[str, Any]:
+        service_mode = await self.appointments.service_mode()
+        email_mode = str(await self._setting("booking_email_mode", "OPTIONAL")).upper()
+        if email_mode not in {"DISABLED", "OPTIONAL", "REQUIRED"}:
+            email_mode = "OPTIONAL"
         return {
             "enabled": await self.enabled(),
             "title": str(
@@ -53,13 +53,13 @@ class PublicBookingService:
             "subtitle": str(
                 await self._setting(
                     "public_booking_subtitle",
-                    "Escolha o serviço, o profissional e um horário disponível.",
+                    "Escolha o melhor horário e confirme seus dados.",
                 )
             ),
             "success_message": str(
                 await self._setting(
                     "public_booking_success_message",
-                    "Seu horário foi reservado. Confira seu WhatsApp ou e-mail para confirmar o agendamento.",
+                    "Seu horário foi reservado. Confira as informações de confirmação.",
                 )
             ),
             "custom_html": str(
@@ -71,7 +71,7 @@ class PublicBookingService:
             ),
             "minimum_notice_minutes": max(
                 0,
-                int(await self._setting("minimum_notice_minutes", 60)),
+                int(await self._setting("minimum_notice_minutes", 1440)),
             ),
             "max_advance_days": max(
                 1,
@@ -80,12 +80,13 @@ class PublicBookingService:
             "allow_any_professional": bool(
                 await self._setting("public_booking_allow_any_professional", True)
             ),
-            "require_phone": bool(
-                await self._setting("public_booking_require_phone", True)
-            ),
-            "require_email": bool(
-                await self._setting("public_booking_require_email", False)
-            ),
+            # Nome e telefone são invariantes do produto e não são desligáveis.
+            "require_name": True,
+            "require_phone": True,
+            "service_mode": service_mode,
+            "email_mode": email_mode,
+            "default_duration_minutes": await self.appointments.default_duration_minutes(),
+            "simultaneous_capacity": await self.appointments.capacity("public-booking"),
             "public_url": f"{self.public_base_url}/agendar",
         }
 
@@ -96,59 +97,73 @@ class PublicBookingService:
                 "A agenda pública não está disponível para este estabelecimento.",
                 404,
             )
-        services = (
-            await self.session.execute(
-                text(
-                    """
-                    select id::text, name, duration_minutes, price
-                    from services
-                    where lower(coalesce(active, 'false')) in ('true','1','yes','on')
-                    order by name
-                    """
+        config = await self.config()
+        services: list[dict[str, Any]] = []
+        if config["service_mode"] != "DISABLED":
+            rows = (
+                await self.session.execute(
+                    text(
+                        """
+                        select id::text, name, duration_minutes, price
+                        from services
+                        where lower(coalesce(active, 'false')) in ('true','1','yes','on')
+                        order by name
+                        """
+                    )
                 )
-            )
-        ).mappings().all()
+            ).mappings().all()
+            services = [dict(row) for row in rows]
         professionals = (
             await self.session.execute(
-                text(
-                    """
-                    select id::text, name
-                    from professionals
-                    order by name
-                    """
-                )
+                text("select id::text, name from professionals order by name")
             )
         ).mappings().all()
         return {
-            "config": await self.config(),
-            "services": [dict(row) for row in services],
+            "config": config,
+            "services": services,
             "professionals": [dict(row) for row in professionals],
         }
+
+    async def _validated_service(self, service_id: str | None) -> dict[str, Any] | None:
+        mode = await self.appointments.service_mode()
+        if mode == "DISABLED":
+            return None
+        if not service_id:
+            if mode == "REQUIRED":
+                raise APIError(
+                    "PUBLIC_BOOKING_SERVICE_REQUIRED",
+                    "Selecione um serviço para continuar.",
+                    422,
+                )
+            return None
+        row = (
+            await self.session.execute(
+                text(
+                    """
+                    select id::text, name, duration_minutes
+                    from services
+                    where id=cast(:id as uuid)
+                      and lower(coalesce(active, 'false')) in ('true','1','yes','on')
+                    """
+                ),
+                {"id": service_id},
+            )
+        ).mappings().first()
+        if row is None:
+            raise APIError("PUBLIC_BOOKING_SERVICE_INVALID", "Serviço indisponível.", 404)
+        return dict(row)
 
     async def availability(
         self,
         *,
         day: date,
-        service_id: str,
+        service_id: str | None = None,
         professional_id: str | None = None,
     ) -> list[dict[str, Any]]:
         if not await self.enabled():
             raise APIError("PUBLIC_BOOKING_DISABLED", "Agenda pública desativada.", 404)
         config = await self.config()
-        service_exists = await self.session.scalar(
-            text(
-                """
-                select exists(
-                  select 1 from services
-                  where id=cast(:id as uuid)
-                    and lower(coalesce(active, 'false')) in ('true','1','yes','on')
-                )
-                """
-            ),
-            {"id": service_id},
-        )
-        if not service_exists:
-            raise APIError("PUBLIC_BOOKING_SERVICE_INVALID", "Serviço indisponível.", 404)
+        service = await self._validated_service(service_id)
 
         professionals: list[dict[str, Any]]
         if professional_id:
@@ -185,8 +200,9 @@ class PublicBookingService:
             slots = await self.appointments.availability(
                 day=day,
                 professional_id=str(professional["id"]),
-                service_id=service_id,
+                service_id=str(service["id"]) if service else None,
                 slot_minutes=int(config["slot_minutes"]),
+                source="public-booking",
             )
             for slot in slots:
                 if not slot.get("available"):
@@ -207,102 +223,83 @@ class PublicBookingService:
         self,
         *,
         name: str,
-        phone: str | None,
+        phone: str,
         email: str | None,
     ) -> str:
-        customer_id = None
-        if phone:
-            customer_id = await self.session.scalar(
-                text(
-                    """
-                    select id::text from customers
-                    where phone=:phone
-                    order by created_at desc
-                    limit 1
-                    """
-                ),
-                {"phone": phone},
+        clean_name = name.strip()
+        if len(clean_name) < 2:
+            raise APIError(
+                "PUBLIC_BOOKING_NAME_REQUIRED",
+                "Informe seu nome para continuar.",
+                422,
             )
-        if customer_id is None and email:
-            customer_id = await self.session.scalar(
-                text(
-                    """
-                    select id::text from customers
-                    where lower(coalesce(email,''))=lower(:email)
-                    order by created_at desc
-                    limit 1
-                    """
-                ),
-                {"email": email},
-            )
+        phones = await PhoneNormalizationService.from_session(self.session)
+        canonical = phones.normalize(phone, required=True)
+        assert canonical is not None
+        await phones.lock_customer_phone(self.session, canonical)
+        customer_id = await phones.find_customer_id(self.session, canonical)
         if customer_id:
             await self.session.execute(
                 text(
                     """
                     update customers set
-                      name=case when length(trim(:name)) >= 2 then :name else name end,
-                      phone=coalesce(:phone, phone),
-                      email=coalesce(:email, email)
+                      name=:name,
+                      phone=:phone,
+                      phone_normalized=:phone,
+                      email=case when :email is null then email else :email end
                     where id=cast(:id as uuid)
                     """
                 ),
-                {"id": str(customer_id), "name": name, "phone": phone, "email": email},
+                {
+                    "id": customer_id,
+                    "name": clean_name,
+                    "phone": canonical,
+                    "email": email,
+                },
             )
             return str(customer_id)
         return str(
             await self.session.scalar(
                 text(
                     """
-                    insert into customers(name, phone, email, notes)
-                    values(:name, :phone, :email, 'Criado pela agenda pública')
+                    insert into customers(name, phone, phone_normalized, email, notes)
+                    values(:name, :phone, :phone, :email, 'Criado pela agenda pública')
                     returning id::text
                     """
                 ),
-                {"name": name, "phone": phone, "email": email},
+                {
+                    "name": clean_name,
+                    "phone": canonical,
+                    "email": email,
+                },
             )
         )
 
     async def book(
         self,
         *,
-        service_id: str,
+        service_id: str | None,
         professional_id: str,
         starts_at: datetime,
         customer_name: str,
-        customer_phone: str | None,
+        customer_phone: str,
         customer_email: str | None,
     ) -> dict[str, Any]:
         if not await self.enabled():
             raise APIError("PUBLIC_BOOKING_DISABLED", "Agenda pública desativada.", 404)
         config = await self.config()
-        if bool(config["require_phone"]) and not (customer_phone or "").strip():
-            raise APIError(
-                "PUBLIC_BOOKING_PHONE_REQUIRED",
-                "Informe um telefone/WhatsApp para continuar.",
-                422,
-            )
-        if bool(config["require_email"]) and not (customer_email or "").strip():
+        email_mode = str(config["email_mode"])
+        email = (customer_email or "").strip() or None
+        if email_mode == "REQUIRED" and not email:
             raise APIError(
                 "PUBLIC_BOOKING_EMAIL_REQUIRED",
                 "Informe um e-mail para continuar.",
                 422,
             )
+        if email_mode == "DISABLED":
+            email = None
 
-        service = (
-            await self.session.execute(
-                text(
-                    """
-                    select id::text, name, duration_minutes
-                    from services
-                    where id=cast(:id as uuid)
-                      and lower(coalesce(active, 'false')) in ('true','1','yes','on')
-                    """
-                ),
-                {"id": service_id},
-            )
-        ).mappings().first()
-        if service is None:
-            raise APIError("PUBLIC_BOOKING_SERVICE_INVALID", "Serviço indisponível.", 404)
+        service = await self._validated_service(service_id)
         professional = (
             await self.session.execute(
                 text(
@@ -334,16 +331,20 @@ class PublicBookingService:
             )
 
         customer_id = await self._customer(
-            name=customer_name.strip(),
-            phone=(customer_phone or "").strip() or None,
-            email=(customer_email or "").strip() or None,
+            name=customer_name,
+            phone=customer_phone,
+            email=email,
         )
-        await self.session.commit()
-        ends_at = aware_start + timedelta(minutes=int(service["duration_minutes"] or 30))
+        duration = (
+            int(service["duration_minutes"])
+            if service
+            else int(config["default_duration_minutes"])
+        )
+        ends_at = aware_start + timedelta(minutes=duration)
         appointment = await self.appointments.create(
             {
                 "customer_id": customer_id,
-                "service_id": str(service["id"]),
+                "service_id": str(service["id"]) if service else None,
                 "professional_id": str(professional["id"]),
                 "starts_at": aware_start,
                 "ends_at": ends_at,
@@ -355,7 +356,7 @@ class PublicBookingService:
             "status": appointment.status,
             "starts_at": aware_start.isoformat(),
             "ends_at": ends_at.isoformat(),
-            "service_name": service["name"],
+            "service_name": service["name"] if service else None,
             "professional_name": professional["name"],
             "message": config["success_message"],
         }

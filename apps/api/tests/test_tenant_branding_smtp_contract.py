@@ -8,7 +8,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def test_tenant_schema_head_includes_smtp_configuration() -> None:
-    assert TENANT_MIGRATION_HEAD == "tenant_0008_open_booking"
+    assert TENANT_MIGRATION_HEAD == "tenant_0010_phone_guard"
     migration = (
         ROOT
         / "migrations"

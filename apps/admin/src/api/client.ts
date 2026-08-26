@@ -54,6 +54,11 @@ async function parseResponse<T>(response: Response, path: string, method: string
       code: error.code,
       details: error.details,
     })
+    if (error.code === 'AUTH_SECOND_FACTOR_REQUIRED') {
+      window.dispatchEvent(new CustomEvent('scheduler-pro-admin-2fa-required', {
+        detail: { details: error.details || {} },
+      }))
+    }
     throw error
   }
   return payload.data as T

@@ -27,7 +27,7 @@ const modules = [
   {key:'builds',label:'Builds e artefatos',icon:'⬢',description:'PWA, desktop, Android e iOS'},
   {key:'logs',label:'Logs e observabilidade',icon:'◫',description:'Docker, API, tenants e integrações'},
   {key:'branding',label:'Marca e aplicativos',icon:'◇',description:'Perfis de distribuição por cliente'},
-  {key:'integrations',label:'Integrações',icon:'⌁',description:'Cloudflare, Evolution, storage e filas'},
+  {key:'integrations',label:'Integrações',icon:'⌁',description:'Domínios, ARGWS WhatsApp API, armazenamento e filas'},
   {key:'audit',label:'Auditoria',icon:'☰',description:'Sessões, segurança e ações sensíveis'},
   {key:'settings',label:'Configurações',icon:'⚙',description:'Feature flags e parâmetros globais'},
 ] as const

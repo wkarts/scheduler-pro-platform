@@ -6,10 +6,13 @@ import TenantAgendaSmartWorkspace from './TenantAgendaSmartWorkspace.vue'
 import TenantBookingAndMessages from './TenantBookingAndMessages.vue'
 import TenantBrandAssetUploader from './TenantBrandAssetUploader.vue'
 import TenantBrandedLogin from './TenantBrandedLogin.vue'
+import TenantConfigurationCenter from './TenantConfigurationCenter.vue'
 import TenantConsole from './TenantConsole.vue'
 import TenantExtensions from './TenantExtensions.vue'
 import TenantMailModeSelector from './TenantMailModeSelector.vue'
+import TenantPublicPageEditor from './TenantPublicPageEditor.vue'
 import TenantPwaInstallSurface from './TenantPwaInstallSurface.vue'
+import TenantSecondFactorGate from './TenantSecondFactorGate.vue'
 import TenantUniversalDownloads from './TenantUniversalDownloads.vue'
 
 const authenticated = ref(Boolean(localStorage.getItem('scheduler_pro_access_token')))
@@ -37,12 +40,15 @@ onUnmounted(() => {
     <template v-else>
       <TenantConsole />
       <TenantExtensions />
+      <TenantConfigurationCenter />
+      <TenantPublicPageEditor />
       <TenantBookingAndMessages />
       <TenantAgendaOperations />
       <TenantAgendaSmartWorkspace />
       <TenantMailModeSelector />
       <TenantBrandAssetUploader />
       <TenantUniversalDownloads />
+      <TenantSecondFactorGate />
     </template>
     <TenantPwaInstallSurface />
   </template>

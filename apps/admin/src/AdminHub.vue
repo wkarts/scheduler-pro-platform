@@ -29,7 +29,7 @@ const modules: NavItem[] = [
   {key:'builds',label:'Builds e distribuições',icon:'⬢',description:'PWA, desktop, Android e iOS'},
   {key:'logs',label:'Logs e observabilidade',icon:'◫',description:'Aplicação, infraestrutura e tenants'},
   {key:'branding',label:'Marca e aplicativos',icon:'◇',description:'Perfis e identidade por cliente'},
-  {key:'integrations',label:'Integrações',icon:'⌁',description:'Cloudflare, Evolution, storage e filas'},
+  {key:'integrations',label:'Integrações',icon:'⌁',description:'Domínios, ARGWS WhatsApp API, armazenamento e filas'},
   {key:'audit',label:'Auditoria',icon:'☷',description:'Sessões, segurança e ações sensíveis'},
   {key:'settings',label:'Configurações',icon:'⚙',description:'Feature flags e parâmetros globais'},
 ]
