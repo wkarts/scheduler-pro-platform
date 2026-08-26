@@ -21,7 +21,14 @@ router = APIRouter()
 class SimultaneousSettings(BaseModel):
     public: bool = False
     internal: bool = False
-    capacity: int = Field(default=1, ge=1, le=100)
+    capacity: int = Field(default=1, ge=1, le=10000)
+    enforce_public: bool = True
+    enforce_internal: bool = True
+
+
+class BookingRuleSettings(BaseModel):
+    enforce_business_hours: bool = True
+    enforce_blocked_periods: bool = True
 
 
 class PhoneSettings(BaseModel):
@@ -34,8 +41,14 @@ class PhoneSettings(BaseModel):
 class BookingParametersUpdate(BaseModel):
     service_mode: str = "REQUIRED"
     email_mode: str = "OPTIONAL"
+    phone_mode: str = "REQUIRED"
+    duration_mode: str = "REQUIRED"
+    professional_mode: str = "REQUIRED"
     default_duration_minutes: int = Field(default=60, ge=5, le=720)
+    default_professional_name: str = Field(default="Agenda geral", min_length=2, max_length=160)
+    default_customer_mode: str = "NEW"
     simultaneous: SimultaneousSettings = Field(default_factory=SimultaneousSettings)
+    rules: BookingRuleSettings = Field(default_factory=BookingRuleSettings)
     minimum_notice_minutes: int = Field(default=1440, ge=0, le=525600)
     phone: PhoneSettings = Field(default_factory=PhoneSettings)
 
