@@ -17,6 +17,7 @@ from app.api.deps import (
 from app.core.errors import APIError
 from app.core.responses import success
 from app.core.tenant_context import TenantContext
+from app.services.agenda_report_delivery_service import verify_report_token
 from app.services.branding_service import BrandingService
 from app.services.file_service import TenantFileService
 from app.services.landing_service import LandingPageService
@@ -96,6 +97,33 @@ async def public_landing_asset(
         headers={
             "Cache-Control": "public, max-age=300, must-revalidate",
             "ETag": str(result.get("ETag", "")),
+            "X-Content-Type-Options": "nosniff",
+        },
+    )
+
+
+@router.get("/agenda-report/{token}")
+async def public_agenda_report(
+    token: str,
+    context: TenantContext = Depends(get_tenant_context),
+) -> StreamingResponse:
+    """Expose a generated management report without exposing the tenant bucket."""
+    payload = verify_report_token(token, context.tenant_id)
+    key = TenantFileService.normalize_key(str(payload.get("key") or ""))
+    if not key.startswith("reports/agenda/"):
+        raise APIError("AGENDA_REPORT_LINK_INVALID", "Link de relatório inválido.", 404)
+    result = await TenantFileService(context).get_object(key)
+    content_type = str(
+        payload.get("type") or result.get("ContentType") or "application/octet-stream"
+    )
+    filename = key.rsplit("/", 1)[-1]
+    return StreamingResponse(
+        _stream(result["Body"]),
+        media_type=content_type,
+        headers={
+            "Content-Disposition": f'inline; filename="{filename}"',
+            "Cache-Control": "private, no-store, max-age=0",
+            "X-Robots-Tag": "noindex, nofollow, noarchive",
             "X-Content-Type-Options": "nosniff",
         },
     )
