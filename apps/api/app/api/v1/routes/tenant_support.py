@@ -13,6 +13,7 @@ from app.api.deps import (
 )
 from app.core.responses import success
 from app.core.security import AuthPrincipal
+from app.core.tenant_context import TenantContext
 from app.db.session import tenant_session
 from app.services.booking_parameters_service import BookingParametersService
 from app.services.branding_service import BrandingService
@@ -52,7 +53,7 @@ class BookingPageSettingsUpdate(BaseModel):
     values: dict[str, Any]
 
 
-async def _context(session: AsyncSession, tenant_id: str):
+async def _context(session: AsyncSession, tenant_id: str) -> TenantContext:
     return await TenantResolver(session).resolve_by_id(tenant_id, require_active=False)
 
 
