@@ -1,4 +1,5 @@
 import os
+import time
 from uuid import uuid4
 
 import asyncpg
@@ -9,11 +10,13 @@ import pytest
 from app.cli import migrate_tenant
 from app.core.config import settings
 from app.core.security import hash_password
+from app.core.secrets import secret_resolver
+from app.services.two_factor_service import TwoFactorService
 
 pytestmark = pytest.mark.integration
 
-PLATFORM_MIGRATION_HEAD = "platform_0009_public_booking"
-TENANT_MIGRATION_HEAD = "tenant_0008_open_booking"
+PLATFORM_MIGRATION_HEAD = "platform_0010_admin_2fa"
+TENANT_MIGRATION_HEAD = "tenant_0010_phone_guard"
 
 
 async def tenant_login(client: httpx.AsyncClient, host: str = "localhost") -> dict:
@@ -27,6 +30,72 @@ async def tenant_login(client: httpx.AsyncClient, host: str = "localhost") -> di
     )
     assert response.status_code == 200, response.text
     return response.json()["data"]
+
+
+async def _existing_platform_2fa_secret() -> str:
+    conn = await asyncpg.connect(
+        host=settings.postgres_host,
+        port=settings.postgres_port,
+        user=settings.postgres_user,
+        password=settings.postgres_password,
+        database=settings.postgres_db,
+    )
+    try:
+        reference = await conn.fetchval(
+            "select two_factor_secret_ref from platform_users where lower(email)=lower($1)",
+            settings.dev_platform_admin_email,
+        )
+    finally:
+        await conn.close()
+    assert reference
+    return secret_resolver.resolve(str(reference))
+
+
+async def platform_login_with_second_factor(client: httpx.AsyncClient) -> dict:
+    login = await client.post(
+        "/api/v1/auth/platform/login",
+        json={
+            "email": settings.dev_platform_admin_email,
+            "password": settings.dev_platform_admin_password,
+        },
+    )
+    assert login.status_code == 200, login.text
+    data = login.json()["data"]
+    headers = {"authorization": f"Bearer {data['access_token']}"}
+
+    state_response = await client.get(
+        "/api/v1/auth/platform/2fa/state",
+        headers=headers,
+    )
+    assert state_response.status_code == 200, state_response.text
+    state = state_response.json()["data"]
+
+    if state["enabled"]:
+        secret = await _existing_platform_2fa_secret()
+        code = TwoFactorService.code_at(secret, int(time.time()))
+        verified = await client.post(
+            "/api/v1/auth/platform/2fa/verify",
+            headers=headers,
+            json={"code": code},
+        )
+        assert verified.status_code == 200, verified.text
+    else:
+        setup = await client.post(
+            "/api/v1/auth/platform/2fa/setup",
+            headers=headers,
+            json={},
+        )
+        assert setup.status_code == 200, setup.text
+        secret = setup.json()["data"]["manual_key"]
+        code = TwoFactorService.code_at(secret, int(time.time()))
+        confirmed = await client.post(
+            "/api/v1/auth/platform/2fa/confirm",
+            headers=headers,
+            json={"code": code},
+        )
+        assert confirmed.status_code == 200, confirmed.text
+
+    return data
 
 
 async def test_bootstrap_created_platform_tenant_migrations_and_bucket() -> None:
@@ -147,12 +216,20 @@ async def test_private_routes_and_platform_routes_are_protected(client: httpx.As
         },
     )
     assert platform_login.status_code == 200, platform_login.text
-    platform_token = platform_login.json()["data"]["access_token"]
+    unverified_token = platform_login.json()["data"]["access_token"]
+    blocked_dashboard = await client.get(
+        "/api/v1/platform/dashboard",
+        headers={"authorization": f"Bearer {unverified_token}"},
+    )
+    assert blocked_dashboard.status_code == 403
+    assert blocked_dashboard.json()["error"]["code"].startswith("AUTH_SECOND_FACTOR")
+
+    platform = await platform_login_with_second_factor(client)
     dashboard = await client.get(
         "/api/v1/platform/dashboard",
-        headers={"authorization": f"Bearer {platform_token}"},
+        headers={"authorization": f"Bearer {platform['access_token']}"},
     )
-    assert dashboard.status_code == 200
+    assert dashboard.status_code == 200, dashboard.text
 
 
 async def test_rbac_is_loaded_from_database_not_from_jwt(client: httpx.AsyncClient) -> None:
@@ -181,7 +258,9 @@ async def test_rbac_is_loaded_from_database_not_from_jwt(client: httpx.AsyncClie
             """,
             f"readonly-{uuid4().hex}",
         )
-        permission_id = await conn.fetchval("select id::text from permissions where key='customers.read'")
+        permission_id = await conn.fetchval(
+            "select id::text from permissions where key='customers.read'"
+        )
         await conn.execute(
             "insert into user_roles(user_id, role_id) values($1::uuid, $2::uuid)",
             user_id,
@@ -231,7 +310,9 @@ async def _prepare_second_tenant() -> tuple[str, str, str, str]:
     )
     try:
         literal = await admin.fetchval("select quote_literal($1)", db_password)
-        role_exists = await admin.fetchval("select exists(select 1 from pg_roles where rolname=$1)", db_user)
+        role_exists = await admin.fetchval(
+            "select exists(select 1 from pg_roles where rolname=$1)", db_user
+        )
         if role_exists:
             await admin.execute(f'alter role "{db_user}" with login password {literal}')
         else:
@@ -254,7 +335,9 @@ async def _prepare_second_tenant() -> tuple[str, str, str, str]:
         database=settings.postgres_db,
     )
     try:
-        tenant_id = await platform.fetchval("select id::text from tenants where slug='integration-b'")
+        tenant_id = await platform.fetchval(
+            "select id::text from tenants where slug='integration-b'"
+        )
         if tenant_id is None:
             tenant_id = await platform.fetchval(
                 """
@@ -423,7 +506,10 @@ async def test_suspended_tenant_cannot_open_session(client: httpx.AsyncClient) -
         database=settings.postgres_db,
     )
     try:
-        await conn.execute("update tenants set status='SUSPENDED' where slug=$1", settings.dev_tenant_slug)
+        await conn.execute(
+            "update tenants set status='SUSPENDED' where slug=$1",
+            settings.dev_tenant_slug,
+        )
         response = await client.post(
             "/api/v1/auth/login",
             json={
@@ -434,7 +520,10 @@ async def test_suspended_tenant_cannot_open_session(client: httpx.AsyncClient) -
         assert response.status_code == 403
         assert response.json()["error"]["code"] == "TENANT_SUSPENDED"
     finally:
-        await conn.execute("update tenants set status='ACTIVE' where slug=$1", settings.dev_tenant_slug)
+        await conn.execute(
+            "update tenants set status='ACTIVE' where slug=$1",
+            settings.dev_tenant_slug,
+        )
         await conn.close()
 
 
