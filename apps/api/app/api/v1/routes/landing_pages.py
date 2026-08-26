@@ -17,6 +17,7 @@ from app.core.security import AuthPrincipal
 from app.core.tenant_context import TenantContext
 from app.services.global_template_service import GlobalTemplateService
 from app.services.landing_service import LandingPageService
+from app.services.template_contract import TemplateContract
 
 router = APIRouter()
 
@@ -80,6 +81,7 @@ async def save_draft(
     principal: AuthPrincipal = Depends(get_current_user),
     session: AsyncSession = Depends(get_tenant_session),
 ) -> dict[str, Any]:
+    TemplateContract.ensure_content("LANDING", payload, strict=True)
     draft = await LandingPageService(session).save_draft(
         slug,
         payload,
@@ -96,6 +98,7 @@ async def autosave(
     principal: AuthPrincipal = Depends(get_current_user),
     session: AsyncSession = Depends(get_tenant_session),
 ) -> dict[str, Any]:
+    TemplateContract.ensure_content("LANDING", payload, strict=True)
     draft = await LandingPageService(session).save_draft(
         slug,
         payload,
@@ -131,6 +134,11 @@ async def apply_template(
         )
         return success(data)
 
+    TemplateContract.ensure_content(
+        "LANDING",
+        template["version"]["content"],
+        strict=True,
+    )
     draft = await LandingPageService(session).save_draft(
         slug,
         template["version"]["content"],
