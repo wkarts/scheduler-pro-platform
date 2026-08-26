@@ -6,7 +6,22 @@ from app.core.errors import APIError
 from app.services.file_service import TenantFileService
 
 ROOT = Path(__file__).resolve().parents[1]
-REPO = ROOT.parents[1]
+
+
+def _repository_root() -> Path:
+    """Resolve o monorepo no checkout completo sem quebrar coleta no container API.
+
+    A suíte de integração copia apenas `apps/api` para `/app`; testes marcados como
+    não-integração ainda são importados durante a coleta, portanto a descoberta da
+    raiz não pode depender de um número fixo de ancestrais.
+    """
+    for candidate in (ROOT, *ROOT.parents):
+        if (candidate / "apps/api").is_dir() and (candidate / "apps/web").is_dir():
+            return candidate
+    return ROOT
+
+
+REPO = _repository_root()
 WEB = REPO / "apps/web/src"
 
 
