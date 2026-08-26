@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import UTC, date, datetime, time, timedelta
+from typing import Any
 
 from sqlalchemy import text
 
@@ -18,7 +19,7 @@ class FlexibleAppointmentService(AppointmentService):
     Defaults continuam equivalentes ao comportamento histórico.
     """
 
-    async def booking_parameters(self) -> dict[str, object]:
+    async def booking_parameters(self) -> dict[str, Any]:
         return await BookingParametersService(self.session).get()
 
     async def _validate_customer(self, customer_id: str) -> None:
@@ -120,3 +121,110 @@ class FlexibleAppointmentService(AppointmentService):
                 409,
                 {"capacity": capacity, "occupied": occupied},
             )
+
+    async def availability(
+        self,
+        *,
+        day: date,
+        professional_id: str,
+        service_id: str | None = None,
+        slot_minutes: int = 30,
+        source: str = "internal",
+    ) -> list[dict[str, Any]]:
+        params = await self.booking_parameters()
+        duration = slot_minutes
+        if service_id:
+            service_duration = await self.session.scalar(
+                text(
+                    "select duration_minutes from services "
+                    "where id=cast(:id as uuid) and active='true'"
+                ),
+                {"id": service_id},
+            )
+            if service_duration is None:
+                raise APIError("SERVICE_NOT_FOUND", "Serviço indisponível.", 404)
+            duration = int(service_duration)
+        elif str(params.get("duration_mode") or "REQUIRED").upper() == "DISABLED":
+            duration = int(params.get("default_duration_minutes") or 60)
+        elif str(params.get("service_mode") or "REQUIRED").upper() != "REQUIRED":
+            duration = int(params.get("default_duration_minutes") or 60)
+
+        rules = params.get("rules") if isinstance(params.get("rules"), dict) else {}
+        simultaneous = (
+            params.get("simultaneous")
+            if isinstance(params.get("simultaneous"), dict)
+            else {}
+        )
+        public = str(source or "").lower().startswith("public")
+        enforce_capacity = bool(
+            simultaneous.get("enforce_public" if public else "enforce_internal", True)
+        )
+        enforce_business_hours = bool(rules.get("enforce_business_hours", True))
+        enforce_blocked_periods = bool(rules.get("enforce_blocked_periods", True))
+        capacity = await self.capacity(source) if enforce_capacity else 10000
+
+        local_day_start = datetime.combine(day, time(hour=8), tzinfo=self.timezone)
+        local_day_end = datetime.combine(day, time(hour=18), tzinfo=self.timezone)
+        windows: list[tuple[datetime, datetime]] = []
+        if enforce_business_hours:
+            business_rows = (
+                await self.session.execute(
+                    text(
+                        """
+                        select opens_at, closes_at from business_hours
+                        where day_of_week=:dow and is_open=true
+                          and (
+                            professional_id is null
+                            or professional_id=cast(:professional_id as uuid)
+                          )
+                        order by professional_id nulls last
+                        """
+                    ),
+                    {
+                        "dow": int(local_day_start.strftime("%w")),
+                        "professional_id": professional_id,
+                    },
+                )
+            ).mappings().all()
+            for row in business_rows:
+                local_start = datetime.combine(day, row["opens_at"], tzinfo=self.timezone)
+                local_end = datetime.combine(day, row["closes_at"], tzinfo=self.timezone)
+                windows.append((local_start.astimezone(UTC), local_end.astimezone(UTC)))
+        if not windows:
+            windows.append((local_day_start.astimezone(UTC), local_day_end.astimezone(UTC)))
+
+        slots: list[dict[str, Any]] = []
+        step = timedelta(minutes=max(5, slot_minutes))
+        service_delta = timedelta(minutes=max(5, duration))
+        for start, end_limit in windows:
+            cursor = start
+            while cursor + service_delta <= end_limit:
+                end = cursor + service_delta
+                blocked = (
+                    await self._is_blocked(professional_id, cursor, end)
+                    if enforce_blocked_periods
+                    else False
+                )
+                occupied = (
+                    await self._overlap_count(professional_id, cursor, end)
+                    if enforce_capacity
+                    else 0
+                )
+                available = not blocked and (not enforce_capacity or occupied < capacity)
+                slots.append(
+                    {
+                        "starts_at": cursor.isoformat(),
+                        "ends_at": end.isoformat(),
+                        "available": available,
+                        "professional_id": professional_id,
+                        "service_id": service_id,
+                        "capacity": capacity,
+                        "occupied": occupied,
+                        "remaining_capacity": (
+                            max(0, capacity - occupied) if enforce_capacity else None
+                        ),
+                        "unlimited_capacity": not enforce_capacity,
+                    }
+                )
+                cursor += step
+        return slots
