@@ -1,0 +1,159 @@
+<script setup lang="ts">
+import { computed, onMounted, onUnmounted, ref } from 'vue'
+import {
+  BarChart3,
+  CalendarDays,
+  CalendarPlus,
+  ChevronLeft,
+  ChevronRight,
+  Clock3,
+  FileText,
+  RefreshCw,
+  Send,
+  Settings2,
+  TrendingUp,
+  Users,
+} from 'lucide-vue-next'
+import { TENANT_NAVIGATION_EVENT, openAgendaOperator } from './tenantNavigation'
+
+type Period='day'|'week'|'month'|'quarter'|'semester'|'year'
+type Tab='overview'|'calendar'|'reports'|'automation'
+type Appointment={id:string;starts_at:string;ends_at:string;status:string;customer_name:string;customer_phone?:string|null;service_name?:string|null;professional_name:string;price?:number|null}
+type Report={
+  period:Period;anchor:string;range:{starts_at:string;ends_at:string};
+  synthetic:{appointments:number;unique_customers:number;completed:number;cancelled:number;no_show:number;estimated_revenue:number;completion_rate:number;no_show_rate:number};
+  analytical:{curve:Array<{date:string;appointments:number}>;statuses:Array<{status:string;count:number}>;services:Array<{name:string;count:number}>;professionals:Array<{name:string;count:number}>}
+}
+type ReportSchedule={enabled:boolean;period:Period;delivery_channels:Array<'email'|'whatsapp'>;email:string;whatsapp:string;format:'link'|'pdf'|'link_pdf';hour:number}
+type Envelope<T>={data?:T;error?:{message?:string}}
+
+const visible=ref(window.location.hash==='#agenda')
+const tab=ref<Tab>('overview')
+const loading=ref(false)
+const saving=ref(false)
+const error=ref('')
+const message=ref('')
+const appointments=ref<Appointment[]>([])
+const report=ref<Report|null>(null)
+const overviewWeek=ref<Report|null>(null)
+const overviewMonth=ref<Report|null>(null)
+const period=ref<Period>('month')
+const anchor=ref(todayKey())
+const monthCursor=ref(startOfMonth(new Date()))
+const selectedDay=ref(todayKey())
+const schedules=ref<ReportSchedule[]>([])
+const scheduleForm=ref<ReportSchedule>({enabled:false,period:'month',delivery_channels:['email'],email:localStorage.getItem('scheduler_pro_email')||'',whatsapp:'',format:'link',hour:8})
+
+const statusLabels:Record<string,string>={PENDING:'Pendente',AWAITING_CONFIRMATION:'Aguardando confirmação',CONFIRMED:'Confirmado',CHECKED_IN:'Check-in',IN_PROGRESS:'Em atendimento',COMPLETED:'Concluído',CANCELLED:'Cancelado',RESCHEDULED:'Reagendado',NO_SHOW:'Não compareceu'}
+const periodLabels:Record<Period,string>={day:'Diário',week:'Semanal',month:'Mensal',quarter:'Trimestral',semester:'Semestral',year:'Anual'}
+
+const monthTitle=computed(()=>monthCursor.value.toLocaleDateString('pt-BR',{month:'long',year:'numeric'}))
+const selectedAppointments=computed(()=>appointments.value.filter((item)=>dayKey(item.starts_at)===selectedDay.value).sort((a,b)=>+new Date(a.starts_at)-+new Date(b.starts_at)))
+const todayAppointments=computed(()=>appointments.value.filter((item)=>dayKey(item.starts_at)===todayKey()))
+const monthDays=computed(()=>{
+  const first=startOfMonth(monthCursor.value)
+  const gridStart=new Date(first);gridStart.setDate(first.getDate()-first.getDay())
+  return Array.from({length:42},(_,index)=>{
+    const date=new Date(gridStart);date.setDate(gridStart.getDate()+index)
+    const key=localDateKey(date)
+    return{date,key,current:date.getMonth()===monthCursor.value.getMonth(),today:key===todayKey(),count:appointments.value.filter((item)=>dayKey(item.starts_at)===key).length}
+  })
+})
+const maxCurve=computed(()=>Math.max(1,...(report.value?.analytical.curve.map((item)=>item.appointments)||[1])))
+
+function token():string{return localStorage.getItem('scheduler_pro_access_token')||''}
+function localDateKey(value:Date):string{const offset=value.getTimezoneOffset()*60000;return new Date(value.getTime()-offset).toISOString().slice(0,10)}
+function todayKey():string{return localDateKey(new Date())}
+function dayKey(value:string):string{return localDateKey(new Date(value))}
+function startOfMonth(value:Date):Date{return new Date(value.getFullYear(),value.getMonth(),1,12)}
+function money(value:number):string{return new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(Number(value||0))}
+function time(value:string):string{return new Date(value).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})}
+function status(value:string):string{return statusLabels[value]||value}
+function periodLabel(value:Period):string{return periodLabels[value]}
+function flash(value:string):void{message.value=value;window.setTimeout(()=>{if(message.value===value)message.value=''},3500)}
+
+async function api<T>(path:string,init:RequestInit={}):Promise<T>{
+  const response=await fetch(`/api/v1${path}`,{...init,cache:'no-store',headers:{Accept:'application/json',...(init.body?{'content-type':'application/json'}:{}),Authorization:`Bearer ${token()}`,...(init.headers||{})}})
+  const payload=await response.json().catch(()=>({})) as Envelope<T>
+  if(!response.ok)throw new Error(payload.error?.message||`Falha HTTP ${response.status}`)
+  return payload.data as T
+}
+async function fetchReport(target:Period,targetAnchor=anchor.value):Promise<Report>{return api<Report>(`/agenda/reports/summary?period=${target}&anchor=${encodeURIComponent(targetAnchor)}`)}
+async function loadBase():Promise<void>{appointments.value=await api<Appointment[]>('/appointments')}
+async function loadOverview():Promise<void>{const [week,month]=await Promise.all([fetchReport('week',todayKey()),fetchReport('month',todayKey())]);overviewWeek.value=week;overviewMonth.value=month}
+async function loadReport():Promise<void>{report.value=await fetchReport(period.value)}
+async function loadSchedules():Promise<void>{schedules.value=await api<ReportSchedule[]>('/agenda/reports/schedules')}
+async function load():Promise<void>{if(!visible.value)return;loading.value=true;error.value='';try{await Promise.all([loadBase(),loadOverview(),loadReport(),loadSchedules()])}catch(exc){error.value=exc instanceof Error?exc.message:'Não foi possível carregar a Agenda.'}finally{loading.value=false}}
+function setTab(value:Tab):void{tab.value=value;if(value==='reports')void loadReport();if(value==='automation')void loadSchedules()}
+function shiftMonth(delta:number):void{monthCursor.value=new Date(monthCursor.value.getFullYear(),monthCursor.value.getMonth()+delta,1,12)}
+function chooseDay(key:string):void{selectedDay.value=key;const d=new Date(`${key}T12:00:00`);monthCursor.value=startOfMonth(d)}
+function openNew(startsAt?:string):void{openAgendaOperator({tab:'quick',startsAt})}
+function openManage():void{openAgendaOperator({tab:'manage'})}
+function openRecurring():void{openAgendaOperator({tab:'recurring'})}
+function toggleChannel(channel:'email'|'whatsapp'):void{const channels=scheduleForm.value.delivery_channels;const index=channels.indexOf(channel);if(index>=0)channels.splice(index,1);else channels.push(channel)}
+async function saveSchedule():Promise<void>{saving.value=true;error.value='';try{const existing=schedules.value.filter((item)=>item.period!==scheduleForm.value.period);const next=[...existing,{...scheduleForm.value,delivery_channels:[...scheduleForm.value.delivery_channels]}];await api('/agenda/reports/schedules',{method:'PUT',body:JSON.stringify({schedules:next})});schedules.value=next;flash('Automação do relatório salva.')}catch(exc){error.value=exc instanceof Error?exc.message:'Falha ao salvar automação.'}finally{saving.value=false}}
+function editSchedule(item:ReportSchedule):void{scheduleForm.value={...item,email:item.email||'',whatsapp:item.whatsapp||'',delivery_channels:[...(item.delivery_channels||[])]}}
+function syncVisibility():void{visible.value=window.location.hash==='#agenda';document.body.classList.toggle('sp-agenda-center-open',visible.value);if(visible.value)void load()}
+function onNavigation():void{syncVisibility()}
+
+onMounted(()=>{window.addEventListener('hashchange',syncVisibility);window.addEventListener(TENANT_NAVIGATION_EVENT,onNavigation);syncVisibility()})
+onUnmounted(()=>{window.removeEventListener('hashchange',syncVisibility);window.removeEventListener(TENANT_NAVIGATION_EVENT,onNavigation);document.body.classList.remove('sp-agenda-center-open')})
+</script>
+
+<template>
+  <Teleport v-if="visible" to=".tenant-console .main-content">
+    <section class="sp-agenda-center">
+      <header class="sp-agenda-center-head">
+        <div><span>Agenda gerencial</span><h1>Agenda</h1><p>Operação, calendário e visão analítica em uma única área. Use o Operador da Agenda para criar atendimentos de qualquer lugar.</p></div>
+        <div class="sp-agenda-head-actions"><button @click="openRecurring"><Clock3 :size="16"/>Recorrência</button><button @click="openManage"><Settings2 :size="16"/>Operar</button><button class="primary" @click="openNew()"><CalendarPlus :size="16"/>Novo</button></div>
+      </header>
+      <p v-if="message" class="sp-agenda-success">{{message}}</p><p v-if="error" class="sp-agenda-error">{{error}}</p>
+      <nav class="sp-agenda-tabs"><button :class="{active:tab==='overview'}" @click="setTab('overview')"><TrendingUp :size="16"/>Visão gerencial</button><button :class="{active:tab==='calendar'}" @click="setTab('calendar')"><CalendarDays :size="16"/>Calendário</button><button :class="{active:tab==='reports'}" @click="setTab('reports')"><BarChart3 :size="16"/>Relatórios</button><button :class="{active:tab==='automation'}" @click="setTab('automation')"><Send :size="16"/>Automação</button></nav>
+      <div v-if="loading" class="sp-agenda-loading"><RefreshCw class="spin" :size="22"/>Atualizando a agenda...</div>
+
+      <template v-else-if="tab==='overview'">
+        <div class="sp-agenda-metrics">
+          <article><span>Hoje</span><strong>{{todayAppointments.length}}</strong><small>atendimento(s)</small></article>
+          <article><span>Esta semana</span><strong>{{overviewWeek?.synthetic.appointments||0}}</strong><small>{{overviewWeek?.synthetic.unique_customers||0}} cliente(s)</small></article>
+          <article><span>Este mês</span><strong>{{overviewMonth?.synthetic.appointments||0}}</strong><small>{{overviewMonth?.synthetic.completed||0}} concluído(s)</small></article>
+          <article><span>Receita estimada</span><strong>{{money(overviewMonth?.synthetic.estimated_revenue||0)}}</strong><small>mês atual</small></article>
+          <article><span>Conclusão</span><strong>{{overviewMonth?.synthetic.completion_rate||0}}%</strong><small>dos atendimentos válidos</small></article>
+          <article><span>Não compareceu</span><strong>{{overviewMonth?.synthetic.no_show_rate||0}}%</strong><small>taxa mensal</small></article>
+        </div>
+        <div class="sp-agenda-overview-grid">
+          <article class="sp-agenda-card"><header><div><span>Hoje</span><h2>Atendimentos do dia</h2></div><button @click="openNew()"><CalendarPlus :size="15"/>Novo</button></header><div class="sp-day-list"><button v-for="item in todayAppointments.slice(0,12)" :key="item.id" @click="openManage"><time>{{time(item.starts_at)}}</time><div><strong>{{item.customer_name}}</strong><small>{{item.service_name||'Sem serviço'}} · {{item.professional_name}}</small></div><em>{{status(item.status)}}</em></button><div v-if="!todayAppointments.length" class="sp-empty"><CalendarDays :size="34"/><strong>Nenhum atendimento hoje.</strong><span>O botão Novo abre o mesmo Operador global.</span></div></div></article>
+          <article class="sp-agenda-card"><header><div><span>Resumo mensal</span><h2>Distribuição por serviço</h2></div><button @click="setTab('reports')"><FileText :size="15"/>Detalhar</button></header><div class="sp-ranking"><div v-for="item in overviewMonth?.analytical.services.slice(0,8)||[]" :key="item.name"><span>{{item.name}}</span><strong>{{item.count}}</strong></div><div v-if="!overviewMonth?.analytical.services.length" class="sp-empty compact">Sem dados neste mês.</div></div></article>
+        </div>
+      </template>
+
+      <template v-else-if="tab==='calendar'">
+        <div class="sp-calendar-layout">
+          <article class="sp-agenda-card sp-calendar-card"><div class="sp-calendar-head"><button @click="shiftMonth(-1)"><ChevronLeft :size="18"/></button><strong>{{monthTitle}}</strong><button @click="shiftMonth(1)"><ChevronRight :size="18"/></button></div><div class="sp-weekdays"><span v-for="day in ['Dom','Seg','Ter','Qua','Qui','Sex','Sáb']" :key="day">{{day}}</span></div><div class="sp-calendar-grid"><button v-for="cell in monthDays" :key="cell.key" :class="{outside:!cell.current,today:cell.today,selected:selectedDay===cell.key,occupied:cell.count}" @click="chooseDay(cell.key)"><span>{{cell.date.getDate()}}</span><small v-if="cell.count">{{cell.count}}</small><i v-if="cell.count"></i></button></div></article>
+          <article class="sp-agenda-card sp-selected-day"><header><div><span>Dia selecionado</span><h2>{{new Date(selectedDay+'T12:00:00').toLocaleDateString('pt-BR',{dateStyle:'full'})}}</h2></div><button @click="openNew(selectedDay+'T08:00')"><CalendarPlus :size="15"/>Novo</button></header><div class="sp-day-list"><button v-for="item in selectedAppointments" :key="item.id" @click="openManage"><time>{{time(item.starts_at)}}</time><div><strong>{{item.customer_name}}</strong><small>{{item.service_name||'Sem serviço'}} · {{item.professional_name}}</small></div><em>{{status(item.status)}}</em></button><div v-if="!selectedAppointments.length" class="sp-empty"><CalendarDays :size="38"/><strong>Nenhum atendimento neste dia.</strong><span>Escolha outra data ou crie um novo atendimento.</span></div></div></article>
+        </div>
+      </template>
+
+      <template v-else-if="tab==='reports'">
+        <div class="sp-report-toolbar"><label>Período<select v-model="period" @change="loadReport"><option v-for="value in (['day','week','month','quarter','semester','year'] as Period[])" :key="value" :value="value">{{periodLabel(value)}}</option></select></label><label>Data de referência<input v-model="anchor" type="date" @change="loadReport"/></label><button @click="loadReport"><RefreshCw :size="16"/>Atualizar</button></div>
+        <div v-if="report" class="sp-report-content">
+          <div class="sp-agenda-metrics report"><article><span>Agendamentos</span><strong>{{report.synthetic.appointments}}</strong></article><article><span>Clientes únicos</span><strong>{{report.synthetic.unique_customers}}</strong></article><article><span>Concluídos</span><strong>{{report.synthetic.completed}}</strong></article><article><span>Cancelados</span><strong>{{report.synthetic.cancelled}}</strong></article><article><span>Faltas</span><strong>{{report.synthetic.no_show}}</strong></article><article><span>Receita estimada</span><strong>{{money(report.synthetic.estimated_revenue)}}</strong></article></div>
+          <div class="sp-report-grid"><article class="sp-agenda-card"><header><div><span>Visão analítica</span><h2>Curva de atendimentos</h2></div></header><div class="sp-curve"><div v-for="item in report.analytical.curve" :key="item.date"><span>{{new Date(item.date+'T12:00:00').toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit'})}}</span><i><b :style="{width:`${Math.max(3,item.appointments*100/maxCurve)}%`}"></b></i><strong>{{item.appointments}}</strong></div><div v-if="!report.analytical.curve.length" class="sp-empty compact">Sem dados no período.</div></div></article><article class="sp-agenda-card"><header><div><span>Visão sintética</span><h2>Indicadores</h2></div></header><div class="sp-ranking"><div><span>Taxa de conclusão</span><strong>{{report.synthetic.completion_rate}}%</strong></div><div><span>Taxa de não comparecimento</span><strong>{{report.synthetic.no_show_rate}}%</strong></div><div v-for="item in report.analytical.statuses" :key="item.status"><span>{{status(item.status)}}</span><strong>{{item.count}}</strong></div></div></article><article class="sp-agenda-card"><header><div><span>Serviços</span><h2>Atendimentos por serviço</h2></div></header><div class="sp-ranking"><div v-for="item in report.analytical.services" :key="item.name"><span>{{item.name}}</span><strong>{{item.count}}</strong></div></div></article><article class="sp-agenda-card"><header><div><span>Responsáveis</span><h2>Atendimentos por profissional</h2></div></header><div class="sp-ranking"><div v-for="item in report.analytical.professionals" :key="item.name"><span>{{item.name}}</span><strong>{{item.count}}</strong></div></div></article></div>
+        </div>
+      </template>
+
+      <template v-else>
+        <div class="sp-automation-grid">
+          <article class="sp-agenda-card"><header><div><span>Relatórios automáticos</span><h2>Programar envio</h2></div></header><p class="sp-card-copy">Defina o período, o canal e o formato. O destinatário pode receber por e-mail, pelo próprio WhatsApp ou pelos dois canais.</p><div class="sp-automation-form"><label>Período<select v-model="scheduleForm.period"><option v-for="value in (['day','week','month','quarter','semester','year'] as Period[])" :key="value" :value="value">{{periodLabel(value)}}</option></select></label><label>Horário<input v-model.number="scheduleForm.hour" type="number" min="0" max="23"/></label><label>Formato<select v-model="scheduleForm.format"><option value="link">Link online</option><option value="pdf">PDF</option><option value="link_pdf">Link + PDF</option></select></label><label class="sp-toggle"><input v-model="scheduleForm.enabled" type="checkbox"/>Automação ativa</label><div class="sp-channel-picks"><button :class="{active:scheduleForm.delivery_channels.includes('email')}" @click="toggleChannel('email')">E-mail</button><button :class="{active:scheduleForm.delivery_channels.includes('whatsapp')}" @click="toggleChannel('whatsapp')">WhatsApp</button></div><label v-if="scheduleForm.delivery_channels.includes('email')">E-mail<input v-model="scheduleForm.email" type="email"/></label><label v-if="scheduleForm.delivery_channels.includes('whatsapp')">WhatsApp<input v-model="scheduleForm.whatsapp" inputmode="tel"/></label><button class="sp-save-schedule" :disabled="saving" @click="saveSchedule"><Send :size="16"/>{{saving?'Salvando...':'Salvar automação'}}</button></div></article>
+          <article class="sp-agenda-card"><header><div><span>Configurações salvas</span><h2>Rotinas do tenant</h2></div></header><div class="sp-schedules"><button v-for="item in schedules" :key="item.period" @click="editSchedule(item)"><div><strong>{{periodLabel(item.period)}}</strong><small>{{item.enabled?'Ativo':'Desativado'}} · {{item.format==='pdf'?'PDF':item.format==='link_pdf'?'Link + PDF':'Link online'}}</small><small>{{item.delivery_channels.join(' + ')||'Sem canal'}}</small></div><em>{{String(item.hour).padStart(2,'0')}}:00</em></button><div v-if="!schedules.length" class="sp-empty"><Send :size="34"/><strong>Nenhuma automação configurada.</strong><span>Configure a primeira rotina ao lado.</span></div></div></article>
+        </div>
+      </template>
+    </section>
+  </Teleport>
+</template>
+
+<style>
+body.sp-agenda-center-open .tenant-console .main-content>.page-header,body.sp-agenda-center-open .tenant-console .main-content>.success-banner,body.sp-agenda-center-open .tenant-console .main-content>.error-banner,body.sp-agenda-center-open .tenant-console .main-content>.view-stack,body.sp-agenda-center-open .tenant-console .main-content>.sp-agenda-smart-root{display:none!important}.sp-agenda-center{padding:2px 0 86px;color:#10213b}.sp-agenda-center-head{display:flex;justify-content:space-between;gap:24px;align-items:flex-end;margin-bottom:16px}.sp-agenda-center-head>div:first-child{max-width:760px}.sp-agenda-center-head span,.sp-agenda-card header span{color:#2563eb;font-size:10px;font-weight:900;letter-spacing:.11em;text-transform:uppercase}.sp-agenda-center-head h1{margin:5px 0 6px;font-size:34px;letter-spacing:-.04em}.sp-agenda-center-head p,.sp-card-copy{margin:0;color:#52647c;font-size:13px;line-height:1.6}.sp-agenda-head-actions{display:flex;gap:8px;flex-wrap:wrap}.sp-agenda-head-actions button,.sp-report-toolbar button{min-height:42px;border:1px solid #d9e3ef;border-radius:11px;background:#fff;color:#203650;padding:0 13px;display:flex;align-items:center;gap:6px;font:inherit;font-size:11px;font-weight:850;cursor:pointer}.sp-agenda-head-actions button.primary{border-color:#2563eb;background:#2563eb;color:#fff}.sp-agenda-tabs{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:7px;margin-bottom:14px;padding:6px;border:1px solid #dce5ef;border-radius:15px;background:#fff}.sp-agenda-tabs button{min-height:43px;border:0;border-radius:10px;background:transparent;color:#556a83;display:flex;align-items:center;justify-content:center;gap:7px;font:inherit;font-size:11px;font-weight:850;cursor:pointer}.sp-agenda-tabs button.active{background:#eaf2ff;color:#1d4ed8}.sp-agenda-loading{min-height:320px;display:flex;align-items:center;justify-content:center;gap:9px;color:#53657d}.sp-agenda-success,.sp-agenda-error{padding:10px 13px;border-radius:11px;font-size:12px;font-weight:750}.sp-agenda-success{background:#ecfdf5;color:#047857}.sp-agenda-error{background:#fff1f2;color:#be123c}.sp-agenda-metrics{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:10px;margin-bottom:14px}.sp-agenda-metrics article{min-height:112px;padding:17px;border:1px solid #dce5ef;border-radius:16px;background:#fff;display:flex;flex-direction:column;justify-content:center}.sp-agenda-metrics span{color:#5e718a;font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.06em}.sp-agenda-metrics strong{margin:6px 0 2px;color:#0f2748;font-size:24px}.sp-agenda-metrics small{color:#64778f;font-size:10px}.sp-agenda-overview-grid,.sp-report-grid,.sp-automation-grid{display:grid;grid-template-columns:1.2fr .8fr;gap:14px}.sp-report-grid{grid-template-columns:1fr 1fr}.sp-agenda-card{border:1px solid #dce5ef;border-radius:18px;background:#fff;padding:18px;box-shadow:0 10px 28px rgba(15,35,65,.04)}.sp-agenda-card>header{display:flex;justify-content:space-between;gap:14px;align-items:flex-start;padding-bottom:13px;border-bottom:1px solid #edf1f6}.sp-agenda-card h2{margin:4px 0 0;font-size:18px}.sp-agenda-card header button{border:1px solid #dbe5ef;border-radius:9px;background:#fff;color:#1d4ed8;padding:8px 10px;display:flex;align-items:center;gap:5px;font:inherit;font-size:10px;font-weight:850}.sp-day-list{display:grid;gap:7px;margin-top:12px}.sp-day-list>button{display:grid;grid-template-columns:58px minmax(0,1fr) auto;gap:10px;align-items:center;width:100%;padding:11px;border:1px solid #e4eaf2;border-radius:12px;background:#fff;text-align:left;color:#203650}.sp-day-list time{color:#1d4ed8;font-weight:900}.sp-day-list div strong,.sp-day-list div small{display:block}.sp-day-list div small{margin-top:3px;color:#64778f}.sp-day-list em{font-size:9px;font-style:normal;font-weight:800;color:#52647c}.sp-empty{min-height:180px;display:grid;place-items:center;align-content:center;gap:6px;color:#718198;text-align:center}.sp-empty.compact{min-height:90px}.sp-empty span{font-size:11px}.sp-ranking{display:grid;gap:7px;margin-top:12px}.sp-ranking>div{display:flex;justify-content:space-between;gap:12px;padding:9px 10px;border-radius:9px;background:#f7f9fc;color:#40536c;font-size:11px}.sp-ranking strong{color:#102a4d}.sp-calendar-layout{display:grid;grid-template-columns:1.08fr .92fr;gap:14px}.sp-calendar-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}.sp-calendar-head button{width:38px;height:38px;border:1px solid #dce5ef;border-radius:10px;background:#fff}.sp-weekdays,.sp-calendar-grid{display:grid;grid-template-columns:repeat(7,1fr)}.sp-weekdays span{text-align:center;padding:8px;color:#75859a;font-size:9px;font-weight:900;text-transform:uppercase}.sp-calendar-grid button{position:relative;min-height:74px;border:1px solid #edf1f6;background:#fff;color:#233750;text-align:left;padding:10px;font:inherit}.sp-calendar-grid button.outside{color:#bdc7d4;background:#fbfcfd}.sp-calendar-grid button.today span{display:inline-grid;place-items:center;width:25px;height:25px;border-radius:50%;background:#e9f2ff;color:#2563eb;font-weight:900}.sp-calendar-grid button.selected{z-index:1;outline:2px solid #2563eb;outline-offset:-2px;background:#eff6ff}.sp-calendar-grid button small{position:absolute;right:7px;top:7px;padding:3px 5px;border-radius:999px;background:#2563eb;color:#fff;font-size:8px}.sp-calendar-grid button i{position:absolute;left:10px;bottom:8px;width:5px;height:5px;border-radius:50%;background:#2563eb}.sp-report-toolbar{display:flex;gap:10px;align-items:end;margin-bottom:14px;padding:13px;border:1px solid #dce5ef;border-radius:15px;background:#fff}.sp-report-toolbar label,.sp-automation-form label{display:grid;gap:5px;color:#40536c;font-size:10px;font-weight:850;text-transform:uppercase}.sp-report-toolbar select,.sp-report-toolbar input,.sp-automation-form select,.sp-automation-form input{min-height:40px;border:1px solid #cfdbe8;border-radius:9px;background:#fff;padding:0 10px;color:#172d4a;font:inherit;font-size:12px}.sp-report-content{display:grid;gap:14px}.sp-agenda-metrics.report{grid-template-columns:repeat(6,minmax(0,1fr));margin-bottom:0}.sp-curve{display:grid;gap:8px;margin-top:13px}.sp-curve>div{display:grid;grid-template-columns:52px minmax(0,1fr) 32px;gap:9px;align-items:center;font-size:10px;color:#63758d}.sp-curve i{height:8px;border-radius:999px;background:#eef2f7;overflow:hidden}.sp-curve b{display:block;height:100%;border-radius:999px;background:linear-gradient(90deg,#2563eb,#22c1dc)}.sp-curve strong{text-align:right;color:#17345d}.sp-automation-form{display:grid;grid-template-columns:1fr 1fr;gap:11px;margin-top:15px}.sp-toggle{display:flex!important;align-items:center;gap:8px!important;align-self:end;min-height:40px;padding:0 10px;border:1px solid #dce5ef;border-radius:9px;background:#f8fafc;text-transform:none!important}.sp-toggle input{width:auto;min-height:0}.sp-channel-picks{display:grid;grid-template-columns:1fr 1fr;gap:6px;grid-column:1/-1}.sp-channel-picks button{min-height:40px;border:1px solid #d6e1ed;border-radius:9px;background:#fff;color:#51657e;font-weight:850}.sp-channel-picks button.active{border-color:#2563eb;background:#eff6ff;color:#1d4ed8}.sp-save-schedule{grid-column:1/-1;min-height:44px;border:0;border-radius:10px;background:#2563eb;color:#fff;display:flex;align-items:center;justify-content:center;gap:6px;font-weight:900}.sp-schedules{display:grid;gap:8px;margin-top:13px}.sp-schedules>button{display:flex;justify-content:space-between;gap:12px;width:100%;padding:12px;border:1px solid #dfe7f0;border-radius:11px;background:#fff;text-align:left}.sp-schedules strong,.sp-schedules small{display:block}.sp-schedules small{margin-top:3px;color:#687a91}.sp-schedules em{font-style:normal;font-weight:900;color:#2563eb}.spin{animation:sp-agenda-spin .9s linear infinite}@keyframes sp-agenda-spin{to{transform:rotate(360deg)}}
+@media(max-width:1100px){.sp-agenda-metrics,.sp-agenda-metrics.report{grid-template-columns:repeat(3,1fr)}}
+@media(max-width:800px){.sp-agenda-center-head{display:grid}.sp-agenda-head-actions{display:grid;grid-template-columns:1fr 1fr 1fr}.sp-agenda-head-actions button{justify-content:center}.sp-agenda-tabs{grid-template-columns:1fr 1fr}.sp-agenda-overview-grid,.sp-report-grid,.sp-automation-grid,.sp-calendar-layout{grid-template-columns:1fr}.sp-calendar-card{overflow:auto}.sp-calendar-grid,.sp-weekdays{min-width:560px}.sp-report-toolbar{display:grid;grid-template-columns:1fr 1fr}.sp-report-toolbar button{justify-content:center}.sp-agenda-metrics,.sp-agenda-metrics.report{grid-template-columns:1fr 1fr}}
+@media(max-width:520px){.sp-agenda-center{padding-bottom:76px}.sp-agenda-center-head h1{font-size:29px}.sp-agenda-head-actions{grid-template-columns:1fr}.sp-agenda-tabs{grid-template-columns:1fr 1fr}.sp-agenda-tabs button{font-size:10px}.sp-agenda-metrics,.sp-agenda-metrics.report{grid-template-columns:1fr 1fr}.sp-agenda-metrics article{min-height:92px}.sp-day-list>button{grid-template-columns:52px minmax(0,1fr)}.sp-day-list em{grid-column:2}.sp-report-toolbar,.sp-automation-form{grid-template-columns:1fr}.sp-channel-picks,.sp-save-schedule{grid-column:1}.sp-agenda-card{padding:14px}}
+</style>
