@@ -70,20 +70,23 @@ def _token(credentials: HTTPAuthorizationCredentials | None) -> dict[str, Any]:
     return decode_access_token(credentials.credentials)
 
 
-async def get_current_tenant_user(
-    context: TenantContext = Depends(get_tenant_context),
-    session: AsyncSession = Depends(get_tenant_session),
-    credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
-) -> AuthPrincipal:
+async def _tenant_stage(
+    context: TenantContext,
+    session: AsyncSession,
+    credentials: HTTPAuthorizationCredentials | None,
+) -> tuple[AuthPrincipal, dict[str, Any]]:
     payload = _token(credentials)
     if payload.get("user_type") != "tenant":
-        raise APIError("AUTH_SCOPE_INVALID", "Token não pertence ao tenant.", 403)
+        raise APIError("AUTH_SCOPE_INVALID", "Token não pertence à empresa.", 403)
     context.assert_same_tenant(payload.get("tenant_id"))
     row = (
         await session.execute(
             text(
                 """
-                select u.id::text as id, u.email
+                select u.id::text as id, u.email,
+                       u.two_factor_enabled,
+                       (u.two_factor_secret_ref is not null) as two_factor_configured,
+                       s.second_factor_verified
                 from users u
                 join user_sessions s on s.user_id=u.id
                 where u.id=:user_id and s.id=:session_id
@@ -96,6 +99,41 @@ async def get_current_tenant_user(
     ).mappings().first()
     if row is None:
         raise APIError("AUTH_SESSION_INVALID", "Sessão inválida ou expirada.", 401)
+    principal = AuthPrincipal(
+        user_id=row["id"],
+        email=row["email"],
+        user_type="tenant",
+        session_id=payload["sid"],
+        tenant_id=context.tenant_id,
+        permissions=frozenset(),
+        roles=frozenset(),
+        tenant_ids=frozenset({context.tenant_id}),
+    )
+    return principal, dict(row)
+
+
+async def get_tenant_login_stage_user(
+    context: TenantContext = Depends(get_tenant_context),
+    session: AsyncSession = Depends(get_tenant_session),
+    credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
+) -> AuthPrincipal:
+    principal, _ = await _tenant_stage(context, session, credentials)
+    return principal
+
+
+async def get_current_tenant_user(
+    context: TenantContext = Depends(get_tenant_context),
+    session: AsyncSession = Depends(get_tenant_session),
+    credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
+) -> AuthPrincipal:
+    principal, row = await _tenant_stage(context, session, credentials)
+    if bool(row["two_factor_enabled"]) and not bool(row["second_factor_verified"]):
+        raise APIError(
+            "AUTH_SECOND_FACTOR_REQUIRED",
+            "Confirme a verificação em duas etapas para continuar.",
+            403,
+            {"mandatory": False, "setup_required": False},
+        )
     permissions = set(
         (
             await session.execute(
@@ -107,7 +145,7 @@ async def get_current_tenant_user(
                     where ur.user_id=:user_id
                     """
                 ),
-                {"user_id": row["id"]},
+                {"user_id": principal.user_id},
             )
         ).scalars()
     )
@@ -121,15 +159,15 @@ async def get_current_tenant_user(
                     where ur.user_id=:user_id
                     """
                 ),
-                {"user_id": row["id"]},
+                {"user_id": principal.user_id},
             )
         ).scalars()
     )
     return AuthPrincipal(
-        user_id=row["id"],
-        email=row["email"],
+        user_id=principal.user_id,
+        email=principal.email,
         user_type="tenant",
-        session_id=payload["sid"],
+        session_id=principal.session_id,
         tenant_id=context.tenant_id,
         permissions=frozenset(permissions),
         roles=frozenset(roles),
@@ -167,7 +205,7 @@ def require_tenant_capability(
         if enabled is not True:
             raise APIError(
                 "TENANT_CAPABILITY_DISABLED",
-                "Este recurso não está liberado para o tenant.",
+                "Este recurso não está liberado para a empresa.",
                 403,
                 {"capability": capability},
             )
@@ -175,18 +213,25 @@ def require_tenant_capability(
     return dependency
 
 
-async def get_current_platform_user(
-    session: AsyncSession = Depends(get_platform_session),
-    credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
-) -> AuthPrincipal:
+async def _platform_stage(
+    session: AsyncSession,
+    credentials: HTTPAuthorizationCredentials | None,
+) -> tuple[AuthPrincipal, dict[str, Any]]:
     payload = _token(credentials)
     if payload.get("user_type") != "platform":
-        raise APIError("AUTH_SCOPE_INVALID", "Token não pertence ao control plane.", 403)
+        raise APIError(
+            "AUTH_SCOPE_INVALID",
+            "Token não pertence à Administração da Plataforma.",
+            403,
+        )
     row = (
         await session.execute(
             text(
                 """
-                select u.id::text as id, u.email, u.is_super_admin
+                select u.id::text as id, u.email, u.is_super_admin,
+                       u.two_factor_enabled,
+                       (u.two_factor_secret_ref is not null) as two_factor_configured,
+                       s.second_factor_verified
                 from platform_users u
                 join platform_user_sessions s on s.user_id=u.id
                 where u.id=:user_id and s.id=:session_id
@@ -199,8 +244,49 @@ async def get_current_platform_user(
     ).mappings().first()
     if row is None:
         raise APIError("AUTH_SESSION_INVALID", "Sessão inválida ou expirada.", 401)
+    principal = AuthPrincipal(
+        user_id=row["id"],
+        email=row["email"],
+        user_type="platform",
+        session_id=payload["sid"],
+        tenant_id=None,
+        permissions=frozenset(),
+        roles=frozenset({"super-admin"}) if bool(row["is_super_admin"]) else frozenset(),
+        tenant_ids=frozenset(),
+        is_super_admin=bool(row["is_super_admin"]),
+    )
+    return principal, dict(row)
 
-    is_super_admin = bool(row["is_super_admin"])
+
+async def get_platform_login_stage_user(
+    session: AsyncSession = Depends(get_platform_session),
+    credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
+) -> AuthPrincipal:
+    principal, _ = await _platform_stage(session, credentials)
+    return principal
+
+
+async def get_current_platform_user(
+    session: AsyncSession = Depends(get_platform_session),
+    credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
+) -> AuthPrincipal:
+    principal, row = await _platform_stage(session, credentials)
+    if not bool(row["two_factor_enabled"]) or not bool(row["second_factor_verified"]):
+        setup_required = not bool(row["two_factor_enabled"]) or not bool(
+            row["two_factor_configured"]
+        )
+        raise APIError(
+            "AUTH_SECOND_FACTOR_REQUIRED",
+            (
+                "Configure a verificação em duas etapas para continuar."
+                if setup_required
+                else "Informe o código da verificação em duas etapas para continuar."
+            ),
+            403,
+            {"mandatory": True, "setup_required": setup_required},
+        )
+
+    is_super_admin = principal.is_super_admin
     if is_super_admin:
         permissions = set(
             (await session.execute(text("select key from platform_permissions"))).scalars()
@@ -221,7 +307,7 @@ async def get_current_platform_user(
                         where ur.user_id=cast(:user_id as uuid)
                         """
                     ),
-                    {"user_id": row["id"]},
+                    {"user_id": principal.user_id},
                 )
             ).scalars()
         )
@@ -236,7 +322,7 @@ async def get_current_platform_user(
                         where ur.user_id=cast(:user_id as uuid)
                         """
                     ),
-                    {"user_id": row["id"]},
+                    {"user_id": principal.user_id},
                 )
             ).scalars()
         )
@@ -250,16 +336,16 @@ async def get_current_platform_user(
                         where user_id=cast(:user_id as uuid)
                         """
                     ),
-                    {"user_id": row["id"]},
+                    {"user_id": principal.user_id},
                 )
             ).scalars()
         )
 
     return AuthPrincipal(
-        user_id=row["id"],
-        email=row["email"],
+        user_id=principal.user_id,
+        email=principal.email,
         user_type="platform",
-        session_id=payload["sid"],
+        session_id=principal.session_id,
         tenant_id=None,
         permissions=frozenset(permissions),
         roles=frozenset(roles),
@@ -310,7 +396,7 @@ def assert_platform_tenant_access(principal: AuthPrincipal, tenant_id: str) -> N
     if tenant_id not in principal.tenant_ids:
         raise APIError(
             "AUTH_TENANT_SCOPE_DENIED",
-            "Este usuário administrativo não possui acesso ao tenant.",
+            "Este administrador não possui acesso à empresa.",
             403,
             {"tenant_id": tenant_id},
         )
