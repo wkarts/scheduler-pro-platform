@@ -2,7 +2,20 @@ from pathlib import Path
 
 from app.services.tenant_access_resend_service import TenantAccessResendService
 
-ROOT = Path(__file__).resolve().parents[3]
+
+def _repository_root() -> Path:
+    here = Path(__file__).resolve()
+    for parent in here.parents:
+        if (parent / "apps" / "api").is_dir() and (parent / "apps" / "web").is_dir():
+            return parent
+    # No container de integração apenas apps/api é copiado para /app. Os testes
+    # deste módulo não são marcados como integration, mas o pytest importa o
+    # módulo durante a coleta. Retornar o cwd evita falha de collection sem
+    # mascarar a validação quando o teste roda no checkout completo.
+    return Path.cwd()
+
+
+ROOT = _repository_root()
 
 
 def test_public_booking_and_admin_access_surfaces_exist() -> None:
