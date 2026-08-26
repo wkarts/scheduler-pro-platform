@@ -47,8 +47,12 @@ self.addEventListener('fetch', event => {
   const url = new URL(request.url)
   if (url.origin !== self.location.origin) return
 
-  // Nunca responder APIs autenticadas/dinâmicas a partir do cache do PWA.
-  if (url.pathname.startsWith('/api/')) {
+  // Nunca responder APIs, confirmações públicas ou a agenda atual a partir de cache obsoleto.
+  if (
+    url.pathname.startsWith('/api/') ||
+    url.pathname.startsWith('/a/') ||
+    url.pathname.startsWith('/agendar')
+  ) {
     event.respondWith(fetch(request, { cache: 'no-store' }))
     return
   }
