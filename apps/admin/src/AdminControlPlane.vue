@@ -1284,7 +1284,7 @@ onUnmounted(() => {
                 <input v-model="logFilters.search" placeholder="Buscar mensagem, evento, erro..." @keyup.enter="loadLogView" />
                 <select v-if="logTab !== 'docker'" v-model="logFilters.level"><option value="">Todos os níveis</option><option>INFO</option><option>WARNING</option><option>ERROR</option><option>CRITICAL</option></select>
                 <input v-if="!['docker','integrations'].includes(logTab)" v-model="logFilters.service" placeholder="Serviço" />
-                <input v-if="logTab === 'integrations'" v-model="logFilters.integration" placeholder="cloudflare, evolution..." />
+                <input v-if="logTab === 'integrations'" v-model="logFilters.integration" placeholder="domínios, comunicação, armazenamento..." />
                 <select v-if="logTab === 'docker'" v-model="dockerContainer" @change="loadDockerLogs"><option v-for="container in dockerContainers" :key="container.container_id" :value="container.service || container.name">{{ container.service || container.name }} — {{ container.status }}</option></select>
                 <select v-if="logTab === 'docker'" v-model.number="dockerTail" @change="loadDockerLogs"><option :value="100">100 linhas</option><option :value="500">500 linhas</option><option :value="1000">1.000 linhas</option><option :value="5000">5.000 linhas</option></select>
                 <button class="btn primary" @click="loadLogView">Consultar</button>
