@@ -82,15 +82,18 @@ function withCurrentAuthorization(
   init: RequestInit | undefined,
   token: string,
 ): [RequestInfo | URL, RequestInit | undefined] {
-  if (!token) return [input, init]
+  const forceFresh: RequestInit = { ...init, cache: 'no-store' }
+  if (!token) return [input, forceFresh]
   if (input instanceof Request) {
     const headers = new Headers(input.headers)
     headers.set('Authorization', `Bearer ${token}`)
-    return [new Request(input, { headers }), init]
+    headers.set('Cache-Control', 'no-cache')
+    return [new Request(input, { headers, cache: 'no-store' }), forceFresh]
   }
   const headers = new Headers(init?.headers || {})
   headers.set('Authorization', `Bearer ${token}`)
-  return [input, { ...init, headers }]
+  headers.set('Cache-Control', 'no-cache')
+  return [input, { ...forceFresh, headers }]
 }
 
 export function installTenantAuthFetch(): void {
