@@ -37,8 +37,6 @@ class TenantPurgeOrchestrator:
             )
         ).mappings().first()
         if row is None:
-            # Uma repetição depois da conclusão é idempotente desde que exista a
-            # auditoria independente da mesma conta/correlation id.
             raise APIError("TENANT_NOT_FOUND", "Empresa não encontrada.", 404)
         return dict(row)
 
@@ -135,16 +133,14 @@ class TenantPurgeOrchestrator:
             {"resource": "Sessões e acessos", "removed": True},
             {"resource": "Configurações e branding", "removed": True},
             {"resource": "Páginas, versões, builds e artefatos", "removed": True},
-            {"resource": "Provisionamento e associações operacionais", "rows_removed": result.get("tenant_metadata_rows_removed", 0)},
+            {
+                "resource": "Provisionamento e associações operacionais",
+                "rows_removed": result.get("tenant_metadata_rows_removed", 0),
+            },
         ]
 
     async def _finish_operational_deletion(self, tenant_id: str) -> int:
-        """Remove o que mantém a conta operacional e, por último, o tenant.
-
-        As deleções são intencionalmente idempotentes. Se surgir uma FK nova no
-        futuro, a transação falha inteira, o tenant permanece retomável e a
-        auditoria registra PARTIAL em vez de mascarar o problema.
-        """
+        """Remove o que mantém a conta operacional e, por último, o tenant."""
         await self.session.execute(
             text(
                 "delete from tenant_resource_boundaries "
@@ -152,18 +148,21 @@ class TenantPurgeOrchestrator:
             ),
             {"tenant_id": tenant_id},
         )
-        result = await self.session.execute(
-            text("delete from tenants where id=cast(:tenant_id as uuid)"),
+        deleted_tenant_id = await self.session.scalar(
+            text(
+                "delete from tenants where id=cast(:tenant_id as uuid) "
+                "returning id::text"
+            ),
             {"tenant_id": tenant_id},
         )
-        if result.rowcount != 1:
+        if not deleted_tenant_id:
             raise APIError(
                 "TENANT_PURGE_FINALIZE_FAILED",
                 "A empresa não pôde ser removida do cadastro operacional.",
                 409,
             )
         await self.session.commit()
-        return int(result.rowcount or 0)
+        return 1
 
     async def purge_permanently(
         self,
@@ -172,8 +171,6 @@ class TenantPurgeOrchestrator:
         actor_user_id: str,
         correlation_id: str,
     ) -> dict[str, Any]:
-        # Idempotência após sucesso: o registro operacional já não existe, mas o
-        # correlation id devolve a conclusão registrada.
         existing_audit = (
             await self.session.execute(
                 text(
@@ -192,11 +189,18 @@ class TenantPurgeOrchestrator:
         ).mappings().first()
         tenant_exists = bool(
             await self.session.scalar(
-                text("select exists(select 1 from tenants where id=cast(:tenant_id as uuid))"),
+                text(
+                    "select exists(select 1 from tenants "
+                    "where id=cast(:tenant_id as uuid))"
+                ),
                 {"tenant_id": tenant_id},
             )
         )
-        if existing_audit and not tenant_exists and str(existing_audit["status"]) == "SUCCESS":
+        if (
+            existing_audit
+            and not tenant_exists
+            and str(existing_audit["status"]) == "SUCCESS"
+        ):
             return {
                 "tenant_id": tenant_id,
                 "name": existing_audit["original_name"],
@@ -217,11 +221,10 @@ class TenantPurgeOrchestrator:
 
         removed: list[Any] = []
         try:
-            # O nome é passado somente porque este é o contrato histórico do
-            # motor existente. A nova rota valida slug + confirmação de risco.
             result = await self.lifecycle.purge(
                 tenant_id,
-                str(snapshot["name"]),
+                str(snapshot["slug"]),
+                actor_user_id,
                 force=False,
             )
             removed = self._removed_from_result(result)
