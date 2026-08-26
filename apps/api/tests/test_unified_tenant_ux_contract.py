@@ -50,10 +50,14 @@ def test_public_surfaces_are_separated_and_editor_uses_real_renderer() -> None:
 
     assert "PublicSitePage" in app
     assert "TenantPublicPageEditorV2" in app
+    assert "TenantWorkspaceCoordinator" in app
+    assert "from './TenantPublicPageEditor.vue'" not in app
     assert "'/agendar'" in app and "'/pagina'" in app
     assert "landingMode" in site
     assert "PublicLandingRenderer" in editor
     assert ':viewport-override="device"' in editor
+    assert "fake-grid" not in editor
+    assert "fake-cards" not in editor
     assert "viewportOverride" in renderer
     assert 'data-viewport="viewport"' in renderer
     assert 'data-viewport="mobile"' in renderer
