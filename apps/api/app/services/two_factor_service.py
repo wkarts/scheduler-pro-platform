@@ -245,7 +245,7 @@ class TwoFactorService:
             ) from exc
 
     async def _mark_session_verified(self, session_id: str) -> None:
-        updated = await self.session.execute(
+        verified_session_id = await self.session.scalar(
             text(
                 f"""
                 update {self.session_table}
@@ -255,11 +255,12 @@ class TwoFactorService:
                 where id=cast(:session_id as uuid)
                   and revoked_at is null
                   and expires_at > now()
+                returning id::text
                 """
             ),
             {"session_id": session_id},
         )
-        if updated.rowcount != 1:
+        if not verified_session_id:
             raise APIError("AUTH_SESSION_INVALID", "Sessão inválida ou expirada.", 401)
 
     @staticmethod
