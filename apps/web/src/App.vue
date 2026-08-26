@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { onMounted, onUnmounted, ref } from 'vue'
 import PublicSitePage from './PublicSitePage.vue'
-import TenantAgendaOperations from './TenantAgendaOperations.vue'
-import TenantAgendaSmartWorkspace from './TenantAgendaSmartWorkspace.vue'
+import TenantAgendaCenter from './TenantAgendaCenter.vue'
+import TenantAgendaOperator from './TenantAgendaOperator.vue'
 import TenantBookingAndMessages from './TenantBookingAndMessages.vue'
 import TenantBrandAssetUploader from './TenantBrandAssetUploader.vue'
 import TenantBrandedLogin from './TenantBrandedLogin.vue'
@@ -47,12 +47,12 @@ onUnmounted(() => {
     <template v-else>
       <TenantConsole />
       <TenantWorkspaceCoordinator />
+      <TenantAgendaCenter />
+      <TenantAgendaOperator />
       <TenantExtensions />
       <TenantConfigurationCenter />
       <TenantPublicPageEditorV2 />
       <TenantBookingAndMessages />
-      <TenantAgendaOperations />
-      <TenantAgendaSmartWorkspace />
       <TenantMailModeSelector />
       <TenantBrandAssetUploader />
       <TenantUniversalDownloads />
