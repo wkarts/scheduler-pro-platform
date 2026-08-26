@@ -28,10 +28,11 @@ class WhatsAppProvider(ABC):
 
 
 class EvolutionWhatsAppProvider(WhatsAppProvider):
-    """Conector interno preservado por compatibilidade.
+    """Integração interna Evolution API do Scheduler Pro.
 
-    O nome/classe e os contratos deste arquivo são implementação privada. Rotas,
-    respostas e interfaces públicas devem passar por ARGWSWhatsAppService.
+    O funcionamento histórico de QR Code/status/envio é preservado. O método de
+    pareamento apenas estende o mesmo endpoint de conexão já utilizado pelo
+    Scheduler Pro, sem substituir o fluxo existente.
     """
 
     def __init__(self, instance_name: str | None = None) -> None:
@@ -55,11 +56,7 @@ class EvolutionWhatsAppProvider(WhatsAppProvider):
         params: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         if not self.base_url or not self.token:
-            raise APIError(
-                "WHATSAPP_CONNECTOR_NOT_CONFIGURED",
-                "Conector interno de comunicação não configurado.",
-                424,
-            )
+            raise APIError("EVOLUTION_NOT_CONFIGURED", "Evolution API não configurada.", 424)
         async with httpx.AsyncClient(timeout=45) as client:
             response = await client.request(
                 method,
@@ -71,11 +68,11 @@ class EvolutionWhatsAppProvider(WhatsAppProvider):
         try:
             data = response.json()
         except ValueError:
-            data = {"raw": response.text[:4000]}
+            data = {"raw": response.text}
         if response.status_code >= 400:
             raise APIError(
-                "WHATSAPP_CONNECTOR_ERROR",
-                "Falha no conector interno de comunicação.",
+                "EVOLUTION_API_ERROR",
+                "Falha na Evolution API.",
                 424,
                 {
                     "status_code": response.status_code,
@@ -116,10 +113,12 @@ class EvolutionWhatsAppProvider(WhatsAppProvider):
 
     async def connect_pairing(self, phone_number: str) -> dict[str, Any]:
         ensured = await self.ensure_instance()
+        # Mantém o mesmo /instance/connect usado pelo QR e apenas acrescenta o
+        # número canônico para solicitar o código de pareamento.
         connection = await self._request(
             "GET",
             f"/instance/connect/{self.instance}",
-            params={"pairingCode": "true", "phoneNumber": phone_number},
+            params={"number": phone_number},
         )
         return {"instance": self.instance, "ensure": ensured, "connection": connection}
 
