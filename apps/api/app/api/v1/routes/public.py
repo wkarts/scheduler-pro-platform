@@ -22,11 +22,11 @@ router = APIRouter()
 
 
 class PublicBookingCreate(BaseModel):
-    service_id: str = Field(min_length=10, max_length=80)
+    service_id: str | None = Field(default=None, min_length=10, max_length=80)
     professional_id: str = Field(min_length=10, max_length=80)
     starts_at: datetime
     customer_name: str = Field(min_length=2, max_length=160)
-    customer_phone: str | None = Field(default=None, max_length=40)
+    customer_phone: str = Field(min_length=8, max_length=80)
     customer_email: EmailStr | None = None
 
 
@@ -39,22 +39,8 @@ def _safe_booking_html(value: str) -> str:
     return bleach.clean(
         value,
         tags={
-            "section",
-            "div",
-            "p",
-            "span",
-            "h1",
-            "h2",
-            "h3",
-            "h4",
-            "strong",
-            "em",
-            "small",
-            "br",
-            "ul",
-            "ol",
-            "li",
-            "a",
+            "section", "div", "p", "span", "h1", "h2", "h3", "h4",
+            "strong", "em", "small", "br", "ul", "ol", "li", "a",
         },
         attributes={"a": ["href", "target", "rel"], "*": ["class"]},
         protocols={"http", "https", "mailto", "tel"},
@@ -72,13 +58,11 @@ async def landing(
 ) -> dict[str, Any]:
     branding = await BrandingService(platform_session).manifest_for_context(context)
     page = await LandingPageService(tenant_session).get_published(slug)
-    return success(
-        {
-            "tenant": {"id": context.tenant_id, "slug": context.slug},
-            "branding": branding,
-            "landing_page": page,
-        }
-    )
+    return success({
+        "tenant": {"id": context.tenant_id, "slug": context.slug},
+        "branding": branding,
+        "landing_page": page,
+    })
 
 
 @router.get("/booking")
@@ -98,24 +82,22 @@ async def public_booking_catalog(
         str(catalog["config"].get("custom_html") or "")
     )
     branding = await BrandingService(platform_session).manifest_for_context(context)
-    return success(
-        {
-            **catalog,
-            "tenant": {
-                "id": context.tenant_id,
-                "slug": context.slug,
-                "hostname": context.hostname,
-                "timezone": context.timezone,
-            },
-            "branding": branding,
-        }
-    )
+    return success({
+        **catalog,
+        "tenant": {
+            "id": context.tenant_id,
+            "slug": context.slug,
+            "hostname": context.hostname,
+            "timezone": context.timezone,
+        },
+        "branding": branding,
+    })
 
 
 @router.get("/booking/availability")
 async def public_booking_availability(
     day: date = Query(...),
-    service_id: str = Query(...),
+    service_id: str | None = Query(default=None),
     professional_id: str | None = Query(default=None),
     _: None = Depends(require_tenant_capability("public_booking")),
     context: TenantContext = Depends(get_tenant_context),
@@ -126,13 +108,11 @@ async def public_booking_availability(
         public_base_url=_public_base_url(context),
         timezone=context.timezone,
     )
-    return success(
-        await service.availability(
-            day=day,
-            service_id=service_id,
-            professional_id=professional_id,
-        )
-    )
+    return success(await service.availability(
+        day=day,
+        service_id=service_id,
+        professional_id=professional_id,
+    ))
 
 
 @router.post("/booking")
