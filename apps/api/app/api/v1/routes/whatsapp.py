@@ -33,6 +33,75 @@ class TestSendRequest(BaseModel):
     )
 
 
+def _as_image_data_uri(value: object) -> str | None:
+    """Compatibilidade interna para formatos históricos de QR.
+
+    A função não faz parte do contrato público da ARGWS WhatsApp API; existe
+    somente para manter testes e consumidores internos antigos funcionando.
+    """
+    if not isinstance(value, str):
+        return None
+    clean = value.strip()
+    if not clean:
+        return None
+    if clean.startswith("data:image/"):
+        return clean
+    if len(clean) >= 512 and " " not in clean and "\n" not in clean:
+        return f"data:image/png;base64,{clean}"
+    return None
+
+
+def _qr_payload(value: object) -> dict[str, Any] | None:
+    """Normaliza variantes internas sem expor payload técnico ao cliente."""
+    if isinstance(value, dict):
+        base64_value = _as_image_data_uri(value.get("base64"))
+        if base64_value is None:
+            base64_value = _as_image_data_uri(value.get("qrcode"))
+        if base64_value is None:
+            base64_value = _as_image_data_uri(value.get("qr"))
+        if base64_value is None:
+            base64_value = _as_image_data_uri(value.get("code"))
+        pairing_code = value.get("pairingCode") or value.get("pairing_code")
+        raw_code = value.get("code")
+        count = value.get("count")
+        if base64_value or pairing_code or (
+            isinstance(raw_code, str) and len(raw_code.strip()) > 20
+        ):
+            return {
+                "base64": base64_value,
+                "pairing_code": str(pairing_code) if pairing_code else None,
+                "code": str(raw_code) if isinstance(raw_code, str) else None,
+                "count": count if isinstance(count, int) else None,
+            }
+        for key in (
+            "qrcode",
+            "qrCode",
+            "qr",
+            "connection",
+            "connect",
+            "create",
+            "ensure",
+            "provider",
+            "instance",
+            "data",
+            "result",
+        ):
+            if key in value:
+                found = _qr_payload(value[key])
+                if found:
+                    return found
+        for nested in value.values():
+            found = _qr_payload(nested)
+            if found:
+                return found
+    elif isinstance(value, list):
+        for nested in value:
+            found = _qr_payload(nested)
+            if found:
+                return found
+    return None
+
+
 def _service(
     session: AsyncSession,
     context: TenantContext,
@@ -63,9 +132,7 @@ async def connect_pairing(
     session: AsyncSession = Depends(get_tenant_session),
     context: TenantContext = Depends(get_tenant_context),
 ) -> dict[str, Any]:
-    return success(
-        await _service(session, context).connect_pairing(payload.phone)
-    )
+    return success(await _service(session, context).connect_pairing(payload.phone))
 
 
 @router.get("/status")
@@ -98,9 +165,7 @@ async def send_text(
     session: AsyncSession = Depends(get_tenant_session),
     context: TenantContext = Depends(get_tenant_context),
 ) -> dict[str, Any]:
-    return success(
-        await _service(session, context).send_text(payload.to, payload.message)
-    )
+    return success(await _service(session, context).send_text(payload.to, payload.message))
 
 
 @router.post("/test")
