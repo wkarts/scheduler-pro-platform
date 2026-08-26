@@ -23,7 +23,6 @@ type WhatsStatus = {
   qr_code?:{image?:string|null;refresh_available?:boolean}|null
   pairing_code?:string|null
 }
-
 type Capabilities = { enabled:string[] }
 
 const active = ref(false)
@@ -260,7 +259,7 @@ onMounted(async()=>{
               <section><h3>QR Code</h3><p>Abra WhatsApp → Dispositivos conectados → Vincular dispositivo.</p><button class="secondary" :disabled="saving" @click="connectQr">Gerar / atualizar QR Code</button><div v-if="whats?.qr_code?.image" class="whats-qr"><img :src="whats.qr_code.image" alt="QR Code para conexão do WhatsApp"/></div></section>
               <section><h3>Código de pareamento</h3><p>Informe o telefone. A plataforma normaliza o número antes de solicitar o código.</p><label>Telefone<input v-model="pairingPhone" inputmode="tel" placeholder="(75) 98888-1111"/></label><button class="secondary" :disabled="saving || pairingPhone.length < 8" @click="connectPairing">Gerar código</button><div v-if="pairingCode" class="pairing"><span>Código de pareamento</span><strong>{{ pairingCode }}</strong></div></section>
             </div>
-            <div class="actions wrap"><button class="secondary" :disabled="saving" @click="loadWhatsStatus">Verificar conexão</button><button class="secondary" :disabled="saving" @click="reconnectWhats">Reconectar</button><button class="danger" :disabled="saving" @click="disconnectWhats">Desconectar</button></div>
+            <div class="actions wrap"><button class="secondary" :disabled="saving" @click="loadWhatsStatus()">Verificar conexão</button><button class="secondary" :disabled="saving" @click="reconnectWhats">Reconectar</button><button class="danger" :disabled="saving" @click="disconnectWhats">Desconectar</button></div>
             <hr/><h3>Testar envio</h3><div class="fields"><label>Telefone<input v-model="testPhone" inputmode="tel" placeholder="(75) 98888-1111"/></label><label class="wide">Mensagem<input v-model="testMessage"/></label></div><button class="secondary" :disabled="saving || testPhone.length < 8" @click="testWhats">Enviar teste</button>
           </article>
         </div>
