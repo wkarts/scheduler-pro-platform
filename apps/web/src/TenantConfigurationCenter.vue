@@ -15,13 +15,14 @@ type BookingParameters = {
 type TwoFactorState = { enabled:boolean; configured:boolean; mandatory:boolean; second_factor_verified:boolean }
 type Enrollment = { manual_key:string; qr_code:string; otpauth_uri:string }
 type WhatsStatus = {
-  product:string
-  status:{code:string;label:string}
+  product?:string
+  instance_name?:string
+  status:string
   connection_method?:string|null
   phone?:string|null
-  last_activity?:string|null
-  qr_code?:{image?:string|null;refresh_available?:boolean}|null
+  qr?:{base64?:string|null;pairing_code?:string|null;code?:string|null;count?:number|null}|null
   pairing_code?:string|null
+  provider?:Record<string,unknown>
 }
 type Capabilities = { enabled:string[] }
 
@@ -69,6 +70,16 @@ function toast(message:string):void {
 }
 function failure(error:unknown, fallback:string):void {
   errorMessage.value=error instanceof Error ? error.message : fallback
+}
+function whatsStatusLabel(status?:string|null):string {
+  const labels:Record<string,string>={
+    DISCONNECTED:'Desconectado',
+    CONNECTING:'Conectando',
+    CONNECTED:'Conectado',
+    RECONNECTING:'Reconectando',
+    FAILED:'Falha',
+  }
+  return labels[String(status || '').toUpperCase()] || 'Desconhecido'
 }
 
 async function loadBase():Promise<void> {
@@ -140,7 +151,7 @@ async function connectPairing():Promise<void> {
   saving.value=true; errorMessage.value=''
   try {
     const data=await api<WhatsStatus>('/integrations/whatsapp/connect/pairing',{method:'POST',body:JSON.stringify({phone:pairingPhone.value})})
-    whats.value=data; pairingCode.value=String(data.pairing_code || '')
+    whats.value=data; pairingCode.value=String(data.pairing_code || data.qr?.pairing_code || '')
   } catch(error) { failure(error,'Não foi possível gerar o código de pareamento.') }
   finally { saving.value=false }
 }
@@ -184,7 +195,7 @@ onMounted(async()=>{
         <button :class="{active:tab==='agenda'}" @click="tab='agenda'"><CalendarClock :size="17"/> Agenda</button>
         <button :class="{active:tab==='phone'}" @click="tab='phone'"><MapPin :size="17"/> Telefones e Localização</button>
         <button :class="{active:tab==='security'}" @click="tab='security'"><ShieldCheck :size="17"/> Segurança</button>
-        <button v-if="whatsEnabled" :class="{active:tab==='whatsapp'}" @click="tab='whatsapp'"><MessageCircle :size="17"/> ARGWS WhatsApp API</button>
+        <button v-if="whatsEnabled" :class="{active:tab==='whatsapp'}" @click="tab='whatsapp'"><MessageCircle :size="17"/> ARGWS Whatsapp API</button>
       </nav>
 
       <p v-if="errorMessage" class="sp-config-error" role="alert">{{ errorMessage }}</p>
@@ -254,9 +265,9 @@ onMounted(async()=>{
 
         <div v-else-if="tab==='whatsapp'" class="sp-config-grid one">
           <article class="card">
-            <div class="whats-head"><div><h2>ARGWS WhatsApp API</h2><p>Conecte por QR Code ou por código de pareamento.</p></div><span class="status-pill">{{ whats?.status?.label || 'Desconhecido' }}</span></div>
+            <div class="whats-head"><div><h2>ARGWS Whatsapp API</h2><p>Conecte por QR Code ou por código de pareamento.</p></div><span class="status-pill">{{ whatsStatusLabel(whats?.status) }}</span></div>
             <div class="connection-options">
-              <section><h3>QR Code</h3><p>Abra WhatsApp → Dispositivos conectados → Vincular dispositivo.</p><button class="secondary" :disabled="saving" @click="connectQr">Gerar / atualizar QR Code</button><div v-if="whats?.qr_code?.image" class="whats-qr"><img :src="whats.qr_code.image" alt="QR Code para conexão do WhatsApp"/></div></section>
+              <section><h3>QR Code</h3><p>Abra WhatsApp → Dispositivos conectados → Vincular dispositivo.</p><button class="secondary" :disabled="saving" @click="connectQr">Gerar / atualizar QR Code</button><div v-if="whats?.qr?.base64" class="whats-qr"><img :src="whats.qr.base64" alt="QR Code para conexão do WhatsApp"/></div></section>
               <section><h3>Código de pareamento</h3><p>Informe o telefone. A plataforma normaliza o número antes de solicitar o código.</p><label>Telefone<input v-model="pairingPhone" inputmode="tel" placeholder="(75) 98888-1111"/></label><button class="secondary" :disabled="saving || pairingPhone.length < 8" @click="connectPairing">Gerar código</button><div v-if="pairingCode" class="pairing"><span>Código de pareamento</span><strong>{{ pairingCode }}</strong></div></section>
             </div>
             <div class="actions wrap"><button class="secondary" :disabled="saving" @click="loadWhatsStatus()">Verificar conexão</button><button class="secondary" :disabled="saving" @click="reconnectWhats">Reconectar</button><button class="danger" :disabled="saving" @click="disconnectWhats">Desconectar</button></div>

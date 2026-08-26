@@ -74,18 +74,17 @@ def test_product_complete_api_services_exist() -> None:
 
 def test_whatsapp_is_tenant_aware() -> None:
     routes = (ROOT / "app/api/v1/routes/whatsapp.py").read_text(encoding="utf-8")
-    facade = (ROOT / "app/services/argws_whatsapp_service.py").read_text(
-        encoding="utf-8"
-    )
     provider = (ROOT / "app/services/whatsapp_provider.py").read_text(
         encoding="utf-8"
     )
     worker = (ROOT / "app/workers/tasks.py").read_text(encoding="utf-8")
 
-    assert "ARGWSWhatsAppService" in routes
+    assert "WhatsAppProviderFactory" in routes
+    assert "_tenant_provider" in routes
+    assert "whatsapp_integrations" in routes
     assert "get_tenant_context" in routes
     assert "get_tenant_session" in routes
-    assert "whatsapp_integrations" in facade
-    assert "TenantContext" in facade
+    assert "EvolutionWhatsAppProvider" in provider
     assert "instance_name" in provider
+    assert "connect_pairing" in provider
     assert "process_whatsapp_webhook" in worker
