@@ -19,10 +19,12 @@ ROOT = _repository_root()
 
 
 def test_public_booking_and_admin_access_surfaces_exist() -> None:
-    public_booking = (ROOT / "apps/web/src/PublicBookingPage.vue").read_text(encoding="utf-8")
+    public_site = (ROOT / "apps/web/src/PublicSitePage.vue").read_text(encoding="utf-8")
+    public_booking = (ROOT / "apps/web/src/PublicBookingWidget.vue").read_text(encoding="utf-8")
     tenant_drawer = (ROOT / "apps/admin/src/TenantManagementDrawer.vue").read_text(encoding="utf-8")
     admin = (ROOT / "apps/admin/src/AdminControlPlane.vue").read_text(encoding="utf-8")
-    assert "PublicBooking" in public_booking
+    assert "PublicBookingWidget" in public_site
+    assert "public-booking-workspace" in public_booking
     assert "TenantLogInspector" in tenant_drawer
     assert "Usuários e acessos" in admin
 
