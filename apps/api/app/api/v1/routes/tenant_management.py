@@ -23,10 +23,20 @@ router = APIRouter()
 class TenantUpdateRequest(BaseModel):
     name: str | None = Field(default=None, min_length=2, max_length=160)
     timezone: str | None = Field(default=None, min_length=3, max_length=64)
+    storage_quota_mb: int | None = Field(
+        default=None,
+        ge=128,
+        le=1024 * 1024,
+        description="Cota total do bucket do tenant em MiB.",
+    )
 
     @model_validator(mode="after")
     def require_change(self) -> "TenantUpdateRequest":
-        if self.name is None and self.timezone is None:
+        if (
+            self.name is None
+            and self.timezone is None
+            and self.storage_quota_mb is None
+        ):
             raise ValueError("Informe ao menos um campo para atualizar.")
         return self
 
@@ -78,12 +88,7 @@ async def tenant_management_logs(
     principal: AuthPrincipal = Depends(require_platform_permission("observability.read")),
     session: AsyncSession = Depends(get_platform_session),
 ) -> dict[str, Any]:
-    """Return the consolidated operational history for one administered tenant.
-
-    Platform-bound events are always attempted first. Tenant-database events are
-    appended when the isolated database is reachable, so a tenant DB outage does
-    not hide the Control Plane history that is most useful during an incident.
-    """
+    """Return the consolidated operational history for one administered tenant."""
 
     assert_platform_tenant_access(principal, tenant_id)
     platform_rows = await ObservabilityService(session).list_platform_logs(
@@ -95,10 +100,15 @@ async def tenant_management_logs(
         search=search,
         limit=limit,
     )
-    rows: list[dict[str, Any]] = [{**row, "scope": "platform"} for row in platform_rows]
+    rows: list[dict[str, Any]] = [
+        {**row, "scope": "platform"} for row in platform_rows
+    ]
 
     try:
-        context = await TenantResolver(session).resolve_by_id(tenant_id, require_active=False)
+        context = await TenantResolver(session).resolve_by_id(
+            tenant_id,
+            require_active=False,
+        )
         async for tenant_db in tenant_session(context):
             tenant_rows = await ObservabilityService(tenant_db).list_tenant_logs(
                 source=source,
@@ -118,7 +128,10 @@ async def tenant_management_logs(
                 "service": "tenant-management",
                 "level": "WARNING",
                 "event": "tenant_log_source_unavailable",
-                "message": "O banco isolado do tenant não pôde ser consultado; exibindo o histórico disponível no Control Plane.",
+                "message": (
+                    "O banco isolado do tenant não pôde ser consultado; exibindo "
+                    "o histórico disponível no Control Plane."
+                ),
                 "details": {"error_type": type(exc).__name__},
                 "scope": "platform",
                 "created_at": None,
@@ -142,6 +155,7 @@ async def update_tenant_management(
             tenant_id,
             name=payload.name,
             timezone=payload.timezone,
+            storage_quota_mb=payload.storage_quota_mb,
             actor=principal.email,
         )
     )
