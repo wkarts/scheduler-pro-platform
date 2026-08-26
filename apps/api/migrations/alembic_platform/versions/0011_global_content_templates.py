@@ -1,5 +1,6 @@
 import json
 
+import sqlalchemy as sa
 from alembic import op
 
 revision = "platform_0011_global_templates"
@@ -136,10 +137,6 @@ STUDIO_BEATRIZ_BOOKING = {
 }
 
 
-def _sql_json(value: object) -> str:
-    return json.dumps(value, ensure_ascii=False, separators=(",", ":")).replace("'", "''")
-
-
 def upgrade() -> None:
     op.execute(
         """
@@ -207,8 +204,6 @@ def upgrade() -> None:
         "on conflict do nothing"
     )
 
-    landing_json = _sql_json(STUDIO_BEATRIZ_LANDING)
-    booking_json = _sql_json(STUDIO_BEATRIZ_BOOKING)
     op.execute(
         """
         insert into global_content_templates(
@@ -222,12 +217,6 @@ def upgrade() -> None:
         """
     )
     op.execute(
-        "insert into global_content_template_versions(template_id,version_number,content,changelog,published,created_by) "
-        "select id,1,cast('" + landing_json + "' as jsonb),'Versão inicial baseada no layout oficial Studio Beatriz Nails.',true,'system' "
-        "from global_content_templates where surface='LANDING' and key='studio-beatriz-nails' "
-        "on conflict(template_id,version_number) do nothing"
-    )
-    op.execute(
         """
         insert into global_content_templates(
           surface,key,name,description,segment,status,scope,
@@ -239,11 +228,41 @@ def upgrade() -> None:
         ) on conflict(surface,key) do nothing
         """
     )
-    op.execute(
-        "insert into global_content_template_versions(template_id,version_number,content,changelog,published,created_by) "
-        "select id,1,cast('" + booking_json + "' as jsonb),'Versão inicial da página de agendamento.',true,'system' "
-        "from global_content_templates where surface='BOOKING' and key='studio-beatriz-nails' "
-        "on conflict(template_id,version_number) do nothing"
+
+    bind = op.get_bind()
+    bind.execute(
+        sa.text(
+            """
+            insert into global_content_template_versions(
+              template_id,version_number,content,changelog,published,created_by
+            )
+            select id,1,cast(:content as jsonb),:changelog,true,'system'
+            from global_content_templates
+            where surface='LANDING' and key='studio-beatriz-nails'
+            on conflict(template_id,version_number) do nothing
+            """
+        ),
+        {
+            "content": json.dumps(STUDIO_BEATRIZ_LANDING, ensure_ascii=False),
+            "changelog": "Versão inicial baseada no layout oficial Studio Beatriz Nails.",
+        },
+    )
+    bind.execute(
+        sa.text(
+            """
+            insert into global_content_template_versions(
+              template_id,version_number,content,changelog,published,created_by
+            )
+            select id,1,cast(:content as jsonb),:changelog,true,'system'
+            from global_content_templates
+            where surface='BOOKING' and key='studio-beatriz-nails'
+            on conflict(template_id,version_number) do nothing
+            """
+        ),
+        {
+            "content": json.dumps(STUDIO_BEATRIZ_BOOKING, ensure_ascii=False),
+            "changelog": "Versão inicial da página de agendamento.",
+        },
     )
 
 
