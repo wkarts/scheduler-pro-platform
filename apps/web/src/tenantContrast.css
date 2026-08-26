@@ -1,0 +1,37 @@
+.tenant-console .page-header > div > p:not(.eyebrow),
+.tenant-console .sp-extension-header p,
+.tenant-console .sp-config-header p,
+.tenant-console .sp-config-card > p,
+.tenant-console .sp-card > p,
+.tenant-console .section-copy,
+.tenant-console .helper-text,
+.tenant-console .empty-state > span,
+.tenant-console .empty-state > p {
+  color: #52647c !important;
+  opacity: 1 !important;
+}
+
+.tenant-console .page-header .eyebrow,
+.tenant-console .sp-extension-header > div > span,
+.tenant-console .sp-config-header > div > span {
+  opacity: 1 !important;
+}
+
+.tenant-console input::placeholder,
+.tenant-console textarea::placeholder {
+  color: #7b899c !important;
+  opacity: 1 !important;
+}
+
+.tenant-console .main-content small:not(.badge):not(.status-pill),
+.tenant-console .main-content .muted {
+  color: #64748b;
+}
+
+@media (prefers-color-scheme: dark) {
+  .tenant-console[data-theme='dark'] .page-header > div > p:not(.eyebrow),
+  .tenant-console[data-theme='dark'] .sp-extension-header p,
+  .tenant-console[data-theme='dark'] .sp-config-header p {
+    color: #cbd5e1 !important;
+  }
+}
