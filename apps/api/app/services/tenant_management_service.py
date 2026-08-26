@@ -27,11 +27,18 @@ class TenantManagementService:
     @staticmethod
     def _storage_quota_bytes(tenant: Tenant) -> int:
         raw = (tenant.settings or {}).get("storage_quota_bytes")
-        try:
-            value = int(raw or DEFAULT_TENANT_STORAGE_QUOTA_BYTES)
-        except (TypeError, ValueError):
-            value = DEFAULT_TENANT_STORAGE_QUOTA_BYTES
-        return min(max(value, 128 * 1024 * 1024), 1024 * 1024 * 1024 * 1024)
+        value: int = DEFAULT_TENANT_STORAGE_QUOTA_BYTES
+        if raw is not None:
+            try:
+                value = int(str(raw))
+            except (TypeError, ValueError):
+                value = DEFAULT_TENANT_STORAGE_QUOTA_BYTES
+        return int(
+            min(
+                max(value, 128 * 1024 * 1024),
+                1024 * 1024 * 1024 * 1024,
+            )
+        )
 
     async def _primary_hostname(self, tenant_id: str) -> str | None:
         return (
