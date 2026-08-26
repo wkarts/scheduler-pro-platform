@@ -11,6 +11,7 @@ from app.core.enums import AppointmentStatus
 from app.core.errors import APIError
 from app.db.models_tenant import Appointment
 from app.services.notification_service import NotificationService
+from app.services.phone_normalization import PhoneNormalizationService
 
 BUSY_STATUSES = (
     AppointmentStatus.pending.value,
@@ -25,6 +26,8 @@ FINAL_STATUSES = {
     AppointmentStatus.cancelled.value,
     AppointmentStatus.no_show.value,
 }
+
+SERVICE_MODES = {"DISABLED", "OPTIONAL", "REQUIRED"}
 
 
 class AppointmentService:
@@ -51,6 +54,41 @@ class AppointmentService:
     def _aware(value: datetime) -> datetime:
         return value if value.tzinfo is not None else value.replace(tzinfo=UTC)
 
+    @staticmethod
+    def _bool(value: Any, default: bool = False) -> bool:
+        if value is None:
+            return default
+        if isinstance(value, bool):
+            return value
+        return str(value).strip().lower() in {"1", "true", "yes", "sim", "on"}
+
+    async def _setting(self, key: str, default: Any) -> Any:
+        value = await self.session.scalar(
+            text("select value from tenant_settings where key=:key limit 1"),
+            {"key": key},
+        )
+        return default if value is None else value
+
+    async def service_mode(self) -> str:
+        mode = str(await self._setting("booking_service_mode", "REQUIRED")).upper()
+        return mode if mode in SERVICE_MODES else "REQUIRED"
+
+    async def default_duration_minutes(self) -> int:
+        value = int(await self._setting("default_appointment_duration_minutes", 60))
+        return max(5, min(720, value))
+
+    async def capacity(self, source: str = "internal") -> int:
+        public = str(source or "").lower().startswith("public")
+        allow_key = (
+            "allow_simultaneous_public_booking"
+            if public
+            else "allow_simultaneous_internal_booking"
+        )
+        if not self._bool(await self._setting(allow_key, False), False):
+            return 1
+        configured = int(await self._setting("simultaneous_booking_capacity", 1))
+        return max(1, min(100, configured))
+
     async def _require_reference(self, table: str, entity_id: str, code: str) -> None:
         exists = await self.session.scalar(
             text(f"select exists(select 1 from {table} where id=cast(:id as uuid))"),
@@ -58,6 +96,42 @@ class AppointmentService:
         )
         if not exists:
             raise APIError(code, "Registro relacionado não encontrado.", 404)
+
+    async def _validate_customer(self, customer_id: str) -> None:
+        row = (
+            await self.session.execute(
+                text(
+                    """
+                    select id::text, name, phone, phone_normalized
+                    from customers
+                    where id=cast(:id as uuid)
+                    limit 1
+                    """
+                ),
+                {"id": customer_id},
+            )
+        ).mappings().first()
+        if row is None:
+            raise APIError("CUSTOMER_NOT_FOUND", "Cliente não encontrado.", 404)
+        if len(str(row["name"] or "").strip()) < 2:
+            raise APIError(
+                "APPOINTMENT_CUSTOMER_NAME_REQUIRED",
+                "Todo agendamento exige o nome do cliente.",
+                422,
+            )
+        phone = str(row["phone_normalized"] or row["phone"] or "").strip()
+        if not phone:
+            raise APIError(
+                "APPOINTMENT_CUSTOMER_PHONE_REQUIRED",
+                "Todo agendamento exige telefone/WhatsApp.",
+                422,
+            )
+        normalizer = await PhoneNormalizationService.from_session(self.session)
+        await normalizer.normalize_customer_phone(
+            self.session,
+            customer_id=customer_id,
+            value=phone,
+        )
 
     async def _business_hours_configured(self) -> bool:
         total = await self.session.scalar(text("select count(*) from business_hours"))
@@ -129,21 +203,21 @@ class AppointmentService:
         )
         return bool(result)
 
-    async def _has_overlap(
+    async def _overlap_count(
         self,
         professional_id: str,
         starts_at: datetime,
         ends_at: datetime,
         *,
         ignore_appointment_id: str | None = None,
-    ) -> bool:
+    ) -> int:
         base = """
-            select exists(
-              select 1 from appointments
-              where professional_id = cast(:professional_id as uuid)
-                and status = any(:busy_statuses)
-                and tstzrange(starts_at, ends_at, '[)')
-                    && tstzrange(:starts_at, :ends_at, '[)')
+            select count(*)
+            from appointments
+            where professional_id = cast(:professional_id as uuid)
+              and status = any(:busy_statuses)
+              and tstzrange(starts_at, ends_at, '[)')
+                  && tstzrange(:starts_at, :ends_at, '[)')
         """
         params: dict[str, Any] = {
             "professional_id": professional_id,
@@ -154,8 +228,32 @@ class AppointmentService:
         if ignore_appointment_id:
             base += " and id <> cast(:ignore_appointment_id as uuid)"
             params["ignore_appointment_id"] = ignore_appointment_id
-        base += ")"
-        return bool(await self.session.scalar(text(base), params))
+        return int(await self.session.scalar(text(base), params) or 0)
+
+    async def _has_overlap(
+        self,
+        professional_id: str,
+        starts_at: datetime,
+        ends_at: datetime,
+        *,
+        ignore_appointment_id: str | None = None,
+    ) -> bool:
+        return (
+            await self._overlap_count(
+                professional_id,
+                starts_at,
+                ends_at,
+                ignore_appointment_id=ignore_appointment_id,
+            )
+        ) > 0
+
+    async def _lock_professional_capacity(self, professional_id: str) -> None:
+        # Uma única chave por profissional serializa também overlaps parciais
+        # (09:00-10:00 versus 09:30-10:30). Lock por slot exato não seria seguro.
+        await self.session.execute(
+            text("select pg_advisory_xact_lock(hashtext(:lock_key))"),
+            {"lock_key": f"scheduler-pro:appointment-capacity:{professional_id}"},
+        )
 
     async def _ensure_slot_available(
         self,
@@ -163,6 +261,7 @@ class AppointmentService:
         starts_at: datetime,
         ends_at: datetime,
         *,
+        source: str = "internal",
         ignore_appointment_id: str | None = None,
     ) -> None:
         starts_at = self._aware(starts_at)
@@ -181,53 +280,61 @@ class AppointmentService:
             )
         if await self._is_blocked(professional_id, starts_at, ends_at):
             raise APIError("APPOINTMENT_BLOCKED_PERIOD", "Horário bloqueado.", 409)
-        if await self._has_overlap(
+
+        await self._lock_professional_capacity(professional_id)
+        occupied = await self._overlap_count(
             professional_id,
             starts_at,
             ends_at,
             ignore_appointment_id=ignore_appointment_id,
-        ):
-            raise APIError("APPOINTMENT_SLOT_UNAVAILABLE", "Horário não disponível.", 409)
+        )
+        capacity = await self.capacity(source)
+        if occupied >= capacity:
+            raise APIError(
+                "APPOINTMENT_SLOT_UNAVAILABLE",
+                "Horário sem capacidade disponível.",
+                409,
+                {"capacity": capacity, "occupied": occupied},
+            )
 
     async def create(self, payload: dict[str, Any]) -> Appointment:
         payload = dict(payload)
         payload["starts_at"] = self._aware(payload["starts_at"])
         payload["ends_at"] = self._aware(payload["ends_at"])
-        lock_key = f"appointment:{payload['professional_id']}:{payload['starts_at'].isoformat()}:{payload['ends_at'].isoformat()}"
-        appointment = Appointment(
-            **payload,
-            status=AppointmentStatus.awaiting_confirmation.value,
-        )
+        service_mode = await self.service_mode()
+        service_id = payload.get("service_id")
+        if service_mode == "DISABLED":
+            payload["service_id"] = None
+            service_id = None
+        elif not service_id and service_mode == "REQUIRED":
+            raise APIError(
+                "APPOINTMENT_SERVICE_REQUIRED",
+                "Selecione um serviço para continuar.",
+                422,
+            )
+
         try:
-            # FastAPI/RBAC pode ter feito SELECTs usando esta mesma AsyncSession
-            # antes de a rota chegar aqui. SQLAlchemy 2 inicia uma transação
-            # automaticamente nesses SELECTs; abrir session.begin() novamente
-            # causaria InvalidRequestError. Adotamos a transação corrente (ou a
-            # autobegin iniciada pelo primeiro comando abaixo) e a finalizamos
-            # explicitamente ao concluir a operação de domínio.
-            await self._require_reference(
-                "customers",
-                str(payload["customer_id"]),
-                "CUSTOMER_NOT_FOUND",
-            )
-            await self._require_reference(
-                "services",
-                str(payload["service_id"]),
-                "SERVICE_NOT_FOUND",
-            )
+            await self._validate_customer(str(payload["customer_id"]))
+            if service_id:
+                await self._require_reference(
+                    "services",
+                    str(service_id),
+                    "SERVICE_NOT_FOUND",
+                )
             await self._require_reference(
                 "professionals",
                 str(payload["professional_id"]),
                 "PROFESSIONAL_NOT_FOUND",
             )
-            await self.session.execute(
-                text("select pg_advisory_xact_lock(hashtext(:lock_key))"),
-                {"lock_key": lock_key},
-            )
             await self._ensure_slot_available(
                 str(payload["professional_id"]),
                 payload["starts_at"],
                 payload["ends_at"],
+                source=str(payload.get("source") or "internal"),
+            )
+            appointment = Appointment(
+                **payload,
+                status=AppointmentStatus.awaiting_confirmation.value,
             )
             self.session.add(appointment)
             await self.session.flush()
@@ -248,8 +355,8 @@ class AppointmentService:
         except IntegrityError as exc:
             await self.session.rollback()
             raise APIError(
-                "APPOINTMENT_SLOT_UNAVAILABLE",
-                "Horário não disponível.",
+                "APPOINTMENT_CREATE_CONFLICT",
+                "Não foi possível gravar o agendamento devido a um conflito de dados.",
                 409,
             ) from exc
         except Exception:
@@ -316,7 +423,7 @@ class AppointmentService:
                            p.name as professional_name
                     from appointments a
                     join customers c on c.id = a.customer_id
-                    join services s on s.id = a.service_id
+                    left join services s on s.id = a.service_id
                     join professionals p on p.id = a.professional_id
                     where {' and '.join(clauses)}
                     order by a.starts_at asc
@@ -342,7 +449,7 @@ class AppointmentService:
                            p.name as professional_name
                     from appointments a
                     join customers c on c.id = a.customer_id
-                    join services s on s.id = a.service_id
+                    left join services s on s.id = a.service_id
                     join professionals p on p.id = a.professional_id
                     where a.id=cast(:appointment_id as uuid)
                     """
@@ -454,6 +561,7 @@ class AppointmentService:
         professional_id: str,
         service_id: str | None = None,
         slot_minutes: int = 30,
+        source: str = "internal",
     ) -> list[dict[str, Any]]:
         duration = slot_minutes
         if service_id:
@@ -464,7 +572,13 @@ class AppointmentService:
                 ),
                 {"id": service_id},
             )
-            duration = int(service_duration or slot_minutes)
+            if service_duration is None:
+                raise APIError("SERVICE_NOT_FOUND", "Serviço indisponível.", 404)
+            duration = int(service_duration)
+        elif await self.service_mode() != "REQUIRED":
+            duration = await self.default_duration_minutes()
+
+        capacity = await self.capacity(source)
         local_day_start = datetime.combine(day, time(hour=8), tzinfo=self.timezone)
         local_day_end = datetime.combine(day, time(hour=18), tzinfo=self.timezone)
         business_rows = (
@@ -514,14 +628,17 @@ class AppointmentService:
             while cursor + service_delta <= end_limit:
                 end = cursor + service_delta
                 blocked = await self._is_blocked(professional_id, cursor, end)
-                overlap = await self._has_overlap(professional_id, cursor, end)
+                occupied = await self._overlap_count(professional_id, cursor, end)
                 slots.append(
                     {
                         "starts_at": cursor.isoformat(),
                         "ends_at": end.isoformat(),
-                        "available": not blocked and not overlap,
+                        "available": not blocked and occupied < capacity,
                         "professional_id": professional_id,
                         "service_id": service_id,
+                        "capacity": capacity,
+                        "occupied": occupied,
+                        "remaining_capacity": max(0, capacity - occupied),
                     }
                 )
                 cursor += step
