@@ -89,13 +89,9 @@ async def list_files(
     limit: int = Query(default=200, ge=1, le=1000),
     context: TenantContext = Depends(get_tenant_context),
 ) -> dict[str, Any]:
-    service = TenantFileService(context)
-    return success(
-        {
-            "files": await service.list(prefix=prefix, limit=limit),
-            "storage": await service.quota_status(),
-        }
-    )
+    # Compatibilidade: mantém `data` como lista, exatamente como antes desta PR.
+    # A cota fica no endpoint separado `/files/quota`.
+    return success(await TenantFileService(context).list(prefix=prefix, limit=limit))
 
 
 @router.get("/content/{key:path}")
