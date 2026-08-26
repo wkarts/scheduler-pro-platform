@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, type CSSProperties } from 'vue'
 import { CalendarDays, LoaderCircle } from 'lucide-vue-next'
 import { applyBranding, type BrandingManifest } from './branding'
 import PublicBookingWidget from './PublicBookingWidget.vue'
 import PublicLandingRenderer from './PublicLandingRenderer.vue'
 
+type Device='desktop'|'tablet'|'mobile'
 type Service={id:string;name:string;duration_minutes:number;price?:number|null}
 type Professional={id:string;name:string}
 type BookingConfig={
@@ -23,7 +24,24 @@ type BookingConfig={
   public_url:string
 }
 type Catalog={config:BookingConfig;services:Service[];professionals:Professional[];branding:BrandingManifest}
-type PageContent={version:number;global_styles?:Record<string,unknown>;seo?:Record<string,unknown>;blocks?:Array<Record<string,unknown>>}
+type PageBlock={
+  id:string
+  type:string
+  props:Record<string,unknown>
+  style?:CSSProperties
+  responsive?:{
+    desktop?:CSSProperties
+    tablet?:CSSProperties
+    mobile?:CSSProperties
+    hidden?:Partial<Record<Device,boolean>>
+  }
+}
+type PageContent={
+  version:number
+  global_styles?:Record<string,unknown>
+  seo?:Record<string,unknown>
+  blocks?:PageBlock[]
+}
 type LandingPage={status:string;template_key?:string|null;content:PageContent}
 type LandingPayload={branding:BrandingManifest;landing_page:LandingPage}
 type Envelope<T>={data?:T;error?:{message?:string}}
