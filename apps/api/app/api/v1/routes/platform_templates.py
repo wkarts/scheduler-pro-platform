@@ -8,6 +8,8 @@ from app.api.deps import get_platform_session, require_platform_permission
 from app.core.responses import success
 from app.core.security import AuthPrincipal
 from app.services.global_template_service import GlobalTemplateService
+from app.services.template_contract import TemplateContract
+from app.services.template_import_service import TemplateImportService
 
 router = APIRouter()
 
@@ -49,6 +51,19 @@ class TemplateDuplicate(BaseModel):
     name: str = Field(min_length=2, max_length=180)
 
 
+class TemplateBundleValidation(BaseModel):
+    bundle: dict[str, Any]
+
+
+class TemplateBundleImport(BaseModel):
+    bundle: dict[str, Any]
+    scope_override: Literal["GLOBAL", "SELECTED", "EXCLUSIVE", "INTERNAL"] | None = None
+    exclusive_tenant_id: str | None = None
+    selected_tenant_ids: list[str] | None = None
+    publish: bool = False
+    update_existing: bool = True
+
+
 @router.get("")
 async def list_global_templates(
     surface: Literal["LANDING", "BOOKING"] | None = Query(default=None),
@@ -59,6 +74,40 @@ async def list_global_templates(
         await GlobalTemplateService(session).list(
             surface=surface,
             include_internal=True,
+        )
+    )
+
+
+@router.get("/contract")
+async def template_contract(
+    _: AuthPrincipal = Depends(require_platform_permission("templates.manage")),
+) -> dict[str, Any]:
+    return success(TemplateContract.descriptor())
+
+
+@router.post("/import/validate")
+async def validate_template_bundle(
+    payload: TemplateBundleValidation,
+    _: AuthPrincipal = Depends(require_platform_permission("templates.manage")),
+) -> dict[str, Any]:
+    return success(TemplateContract.validate_package(payload.bundle))
+
+
+@router.post("/import")
+async def import_template_bundle(
+    payload: TemplateBundleImport,
+    principal: AuthPrincipal = Depends(require_platform_permission("templates.manage")),
+    session: AsyncSession = Depends(get_platform_session),
+) -> dict[str, Any]:
+    return success(
+        await TemplateImportService(session).import_bundle(
+            payload.bundle,
+            actor=principal.email,
+            scope_override=payload.scope_override,
+            exclusive_tenant_id=payload.exclusive_tenant_id,
+            selected_tenant_ids=payload.selected_tenant_ids,
+            publish=payload.publish,
+            update_existing=payload.update_existing,
         )
     )
 
@@ -84,6 +133,8 @@ async def create_global_template(
     principal: AuthPrincipal = Depends(require_platform_permission("templates.manage")),
     session: AsyncSession = Depends(get_platform_session),
 ) -> dict[str, Any]:
+    if payload.content is not None:
+        TemplateContract.ensure_content(payload.surface, payload.content, strict=True)
     return success(
         await GlobalTemplateService(session).create(
             payload.model_dump(),
@@ -124,6 +175,8 @@ async def create_global_template_version(
     principal: AuthPrincipal = Depends(require_platform_permission("templates.manage")),
     session: AsyncSession = Depends(get_platform_session),
 ) -> dict[str, Any]:
+    template = await GlobalTemplateService(session).get(template_id)
+    TemplateContract.ensure_content(str(template["surface"]), payload.content, strict=True)
     return success(
         await GlobalTemplateService(session).create_version(
             template_id,
@@ -142,6 +195,15 @@ async def publish_global_template_version(
     principal: AuthPrincipal = Depends(require_platform_permission("templates.manage")),
     session: AsyncSession = Depends(get_platform_session),
 ) -> dict[str, Any]:
+    current = await GlobalTemplateService(session).content(
+        template_id=template_id,
+        version_number=version_number,
+    )
+    TemplateContract.ensure_content(
+        str(current["surface"]),
+        current["version"]["content"],
+        strict=True,
+    )
     return success(
         await GlobalTemplateService(session).publish_version(
             template_id,
@@ -158,12 +220,16 @@ async def global_template_version_content(
     _: AuthPrincipal = Depends(require_platform_permission("templates.manage")),
     session: AsyncSession = Depends(get_platform_session),
 ) -> dict[str, Any]:
-    return success(
-        await GlobalTemplateService(session).content(
-            template_id=template_id,
-            version_number=version_number,
-        )
+    data = await GlobalTemplateService(session).content(
+        template_id=template_id,
+        version_number=version_number,
     )
+    TemplateContract.ensure_content(
+        str(data["surface"]),
+        data["version"]["content"],
+        strict=False,
+    )
+    return success(data)
 
 
 @router.post("/{template_id}/duplicate")
