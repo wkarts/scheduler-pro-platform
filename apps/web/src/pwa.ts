@@ -14,9 +14,13 @@ export type PwaInstallState = {
 export type PwaInstallResult = 'accepted' | 'dismissed' | 'installed' | 'manual' | 'unavailable'
 
 export const PWA_INSTALL_STATE_EVENT = 'scheduler:pwa-install-state'
+export const APP_REVALIDATE_EVENT = 'scheduler-pro-revalidate-current-view'
 
 let deferredPrompt: BeforeInstallPromptEvent | null = null
 let reloadingForWorker = false
+let revalidatePromise: Promise<void> | null = null
+let lastRevalidatedAt = 0
+const WORKER_RELOAD_KEY = 'scheduler_pro_worker_reload_at'
 
 function iosDevice(): boolean {
   const ua = navigator.userAgent
@@ -55,6 +59,44 @@ function notifyInstallState(): void {
   window.dispatchEvent(new CustomEvent<PwaInstallState>(PWA_INSTALL_STATE_EVENT, {
     detail: getPwaInstallState(),
   }))
+}
+
+function reloadForNewWorker(): void {
+  if (reloadingForWorker) return
+  const now = Date.now()
+  const previous = Number(sessionStorage.getItem(WORKER_RELOAD_KEY) || 0)
+  if (now - previous < 10_000) return
+  reloadingForWorker = true
+  sessionStorage.setItem(WORKER_RELOAD_KEY, String(now))
+  window.location.reload()
+}
+
+async function validateSession(): Promise<void> {
+  if (!localStorage.getItem('scheduler_pro_access_token')) return
+  await fetch('/api/v1/auth/2fa/state', {
+    method: 'GET',
+    headers: { Accept: 'application/json' },
+    cache: 'no-store',
+  }).catch(() => undefined)
+}
+
+export async function revalidateApplication(reason: string): Promise<void> {
+  if (document.visibilityState === 'hidden') return
+  const now = Date.now()
+  if (revalidatePromise) return revalidatePromise
+  if (now - lastRevalidatedAt < 750 && reason !== 'online') return
+  lastRevalidatedAt = now
+  revalidatePromise = (async () => {
+    if ('serviceWorker' in navigator) {
+      const registration = await navigator.serviceWorker.getRegistration().catch(() => undefined)
+      if (registration) await registration.update().catch(() => undefined)
+    }
+    await validateSession()
+    window.dispatchEvent(new CustomEvent(APP_REVALIDATE_EVENT, {
+      detail: { reason, at: Date.now(), online: navigator.onLine },
+    }))
+  })().finally(() => { revalidatePromise = null })
+  return revalidatePromise
 }
 
 export function pwaInstallInstructions(platform: PwaPlatform = pwaPlatform()): string {
@@ -100,28 +142,28 @@ if (typeof displayMode.addEventListener === 'function') {
 }
 
 if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.addEventListener('controllerchange', () => {
-    if (reloadingForWorker) return
-    reloadingForWorker = true
-    window.location.reload()
-  })
+  navigator.serviceWorker.addEventListener('controllerchange', reloadForNewWorker)
 
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('/sw.js').then((registration) => {
       notifyInstallState()
       void registration.update()
       window.setInterval(() => {
-        if (document.visibilityState === 'visible') void registration.update()
+        if (document.visibilityState === 'visible' && navigator.onLine) {
+          void registration.update()
+        }
       }, 60_000)
     }).catch(() => undefined)
   })
-
-  document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState !== 'visible') return
-    navigator.serviceWorker.getRegistration().then((registration) => {
-      if (registration) void registration.update()
-    }).catch(() => undefined)
-  })
 }
+
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') void revalidateApplication('visibilitychange')
+})
+window.addEventListener('focus', () => { void revalidateApplication('focus') })
+window.addEventListener('online', () => { void revalidateApplication('online') })
+window.addEventListener('pageshow', (event) => {
+  void revalidateApplication((event as PageTransitionEvent).persisted ? 'pageshow-bfcache' : 'pageshow')
+})
 
 window.queueMicrotask(notifyInstallState)
