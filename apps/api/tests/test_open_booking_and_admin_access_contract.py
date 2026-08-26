@@ -19,7 +19,7 @@ def test_admin_access_resend_uses_existing_mail_delivery() -> None:
         ROOT / "apps/api/app/services/tenant_access_resend_service.py"
     ).read_text(encoding="utf-8")
     assert "mail_delivery" in source
-    assert "send_tenant_access" in source
+    assert "send_tenant_welcome" in source
     assert "temporary_password" in source
 
 
