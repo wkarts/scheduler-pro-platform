@@ -7,6 +7,7 @@ from app.api.v1.routes import (
     appointment_operations,
     appointments,
     auth,
+    auth_two_factor,
     availability,
     branding,
     builds,
@@ -35,6 +36,7 @@ api_router = APIRouter()
 api_router.include_router(health.router, tags=["Health"])
 api_router.include_router(public.router, prefix="/public", tags=["Public"])
 api_router.include_router(auth.router, prefix="/auth", tags=["Authentication"])
+api_router.include_router(auth_two_factor.router, prefix="/auth", tags=["Authentication"])
 api_router.include_router(password_reset_pages.router, prefix="/auth", tags=["Authentication"])
 api_router.include_router(
     customers.router,
@@ -112,7 +114,7 @@ api_router.include_router(
 api_router.include_router(
     whatsapp.router,
     prefix="/integrations/whatsapp",
-    tags=["WhatsApp"],
+    tags=["ARGWS WhatsApp API"],
     dependencies=[Depends(require_tenant_capability("whatsapp")), Depends(require_permission("whatsapp.manage"))],
 )
 api_router.include_router(
