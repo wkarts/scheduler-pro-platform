@@ -22,6 +22,7 @@ from app.api.v1.routes import (
     password_reset_pages,
     platform,
     platform_access,
+    platform_templates,
     professionals,
     public,
     realtime,
@@ -29,6 +30,7 @@ from app.api.v1.routes import (
     services,
     settings,
     tenant_management,
+    tenant_support,
     tenant_telemetry,
     whatsapp,
 )
@@ -141,6 +143,8 @@ api_router.include_router(downloads.router, prefix="/downloads", tags=["Universa
 api_router.include_router(branding.router, prefix="/branding", tags=["Branding"])
 api_router.include_router(platform.router, prefix="/platform", tags=["Platform"])
 api_router.include_router(tenant_management.router, prefix="/platform/tenant-management", tags=["Tenant Management"])
+api_router.include_router(tenant_support.router, prefix="/platform/tenant-support", tags=["Tenant Support"])
+api_router.include_router(platform_templates.router, prefix="/platform/templates", tags=["Global Templates"])
 api_router.include_router(platform_access.router, prefix="/platform/access", tags=["Platform IAM"])
 api_router.include_router(observability.router, prefix="/platform/observability", tags=["Platform Observability"])
 api_router.include_router(builds.router, prefix="/platform/builds", tags=["Build Manager"])
