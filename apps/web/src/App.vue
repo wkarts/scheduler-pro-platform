@@ -10,6 +10,7 @@ import TenantConfigurationCenter from './TenantConfigurationCenter.vue'
 import TenantConsole from './TenantConsole.vue'
 import TenantExtensions from './TenantExtensions.vue'
 import TenantMailModeSelector from './TenantMailModeSelector.vue'
+import TenantPublicPageEditor from './TenantPublicPageEditor.vue'
 import TenantPwaInstallSurface from './TenantPwaInstallSurface.vue'
 import TenantSecondFactorGate from './TenantSecondFactorGate.vue'
 import TenantUniversalDownloads from './TenantUniversalDownloads.vue'
@@ -40,6 +41,7 @@ onUnmounted(() => {
       <TenantConsole />
       <TenantExtensions />
       <TenantConfigurationCenter />
+      <TenantPublicPageEditor />
       <TenantBookingAndMessages />
       <TenantAgendaOperations />
       <TenantAgendaSmartWorkspace />
