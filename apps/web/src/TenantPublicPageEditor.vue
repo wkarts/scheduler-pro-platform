@@ -31,384 +31,426 @@ import {
   X,
 } from 'lucide-vue-next'
 
-type Device='desktop'|'tablet'|'mobile'
-type SideTab='elements'|'structure'|'templates'
-type InspectorTab='content'|'style'|'responsive'|'global'|'history'
-type Envelope<T>={data?:T;error?:{message?:string}}
-type Template={key:string;name:string;description:string;segment:string}
-type Version={id:string;version_number:number;label?:string|null;created_at?:string;published:boolean;draft:boolean}
-type ResponsiveStyles={
-  desktop:CSSProperties
-  tablet:CSSProperties
-  mobile:CSSProperties
-  hidden:{desktop:boolean;tablet:boolean;mobile:boolean}
+type Device = 'desktop' | 'tablet' | 'mobile'
+type SideTab = 'elements' | 'structure' | 'templates'
+type InspectorTab = 'content' | 'style' | 'responsive' | 'global' | 'history'
+type Envelope<T> = { data?: T; error?: { message?: string } }
+type Template = { key: string; name: string; description: string; segment: string }
+type Version = {
+  id: string
+  version_number: number
+  label?: string | null
+  created_at?: string
+  published: boolean
+  draft: boolean
 }
-type Block={
-  id:string
-  type:string
-  props:Record<string,unknown>
-  style:CSSProperties
-  responsive:ResponsiveStyles
+type ResponsiveStyles = {
+  desktop: CSSProperties
+  tablet: CSSProperties
+  mobile: CSSProperties
+  hidden: Record<Device, boolean>
 }
-type PageContent={
-  version:number
-  title?:string
-  global_styles:Record<string,unknown>
-  seo:Record<string,unknown>
-  blocks:Block[]
+type Block = {
+  id: string
+  type: string
+  props: Record<string, unknown>
+  style: CSSProperties
+  responsive: ResponsiveStyles
 }
-type EditorState={
-  id?:string
-  slug:string
-  status:string
-  template_key?:string|null
-  current_version_id?:string|null
-  draft_version_id?:string|null
-  version_number?:number|null
-  content:PageContent
-  published_content?:PageContent|null
-  versions:Version[]
+type PageContent = {
+  version: number
+  title?: string
+  global_styles: Record<string, unknown>
+  seo: Record<string, unknown>
+  blocks: Block[]
+}
+type EditorState = {
+  id?: string
+  slug: string
+  status: string
+  template_key?: string | null
+  current_version_id?: string | null
+  draft_version_id?: string | null
+  version_number?: number | null
+  content: PageContent
+  published_content?: PageContent | null
+  versions: Version[]
 }
 
-const ELEMENTS=[
-  ['section','Seção'],['container','Container'],['columns','Colunas'],['grid','Grid'],
-  ['hero','Hero'],['title','Título'],['subtitle','Subtítulo'],['text','Texto'],['logo','Logo'],
-  ['image','Imagem'],['gallery','Galeria'],['video','Vídeo seguro'],['button','Botão'],
-  ['whatsapp_button','Botão WhatsApp'],['social','Redes sociais'],['divider','Divisor'],['spacer','Espaço'],
-  ['card','Card'],['services','Serviços'],['professionals','Profissionais'],['booking','Calendário / Agenda'],
-  ['form','Formulário'],['business_hours','Horário de funcionamento'],['address','Endereço'],['map','Mapa'],
-  ['contact','Contato'],['faq','FAQ'],['testimonials','Depoimentos'],['cta','CTA'],['notices','Avisos'],
-  ['policies','Políticas'],['footer','Rodapé'],
+const ELEMENTS = [
+  ['section', 'Seção'], ['container', 'Container'], ['columns', 'Colunas'], ['grid', 'Grid'],
+  ['hero', 'Hero'], ['title', 'Título'], ['subtitle', 'Subtítulo'], ['text', 'Texto'], ['logo', 'Logo'],
+  ['image', 'Imagem'], ['gallery', 'Galeria'], ['video', 'Vídeo seguro'], ['button', 'Botão'],
+  ['whatsapp_button', 'Botão WhatsApp'], ['social', 'Redes sociais'], ['divider', 'Divisor'], ['spacer', 'Espaço'],
+  ['card', 'Card'], ['services', 'Serviços'], ['professionals', 'Profissionais'], ['booking', 'Calendário / Agenda'],
+  ['form', 'Formulário'], ['business_hours', 'Horário de funcionamento'], ['address', 'Endereço'], ['map', 'Mapa'],
+  ['contact', 'Contato'], ['faq', 'FAQ'], ['testimonials', 'Depoimentos'], ['cta', 'CTA'], ['notices', 'Avisos'],
+  ['policies', 'Políticas'], ['footer', 'Rodapé'],
 ] as const
 
-const pageSlug='home'
-const portalReady=ref(false)
-const active=ref(false)
-const loading=ref(false)
-const saving=ref(false)
-const publishing=ref(false)
-const errorMessage=ref('')
-const successMessage=ref('')
-const templates=ref<Template[]>([])
-const state=ref<EditorState|null>(null)
-const content=ref<PageContent>({version:2,global_styles:{},seo:{},blocks:[]})
-const selectedId=ref('')
-const device=ref<Device>('desktop')
-const sideTab=ref<SideTab>('elements')
-const inspectorTab=ref<InspectorTab>('content')
-const leftOpen=ref(true)
-const rightOpen=ref(true)
-const draggingId=ref('')
-const clipboard=ref<Block|null>(null)
-const dirty=ref(false)
-let autosaveTimer:number|undefined
-let editGeneration=0
-let saveGeneration=0
+const pageSlug = 'home'
+const portalReady = ref(false)
+const active = ref(false)
+const loading = ref(false)
+const saving = ref(false)
+const publishing = ref(false)
+const errorMessage = ref('')
+const successMessage = ref('')
+const templates = ref<Template[]>([])
+const state = ref<EditorState | null>(null)
+const content = ref<PageContent>({ version: 2, global_styles: {}, seo: {}, blocks: [] })
+const selectedId = ref('')
+const device = ref<Device>('desktop')
+const sideTab = ref<SideTab>('elements')
+const inspectorTab = ref<InspectorTab>('content')
+const leftOpen = ref(true)
+const rightOpen = ref(true)
+const draggingId = ref('')
+const clipboard = ref<Block | null>(null)
+const dirty = ref(false)
+let autosaveTimer: number | undefined
+let editGeneration = 0
+let saveGeneration = 0
 
-const selectedBlock=computed(()=>content.value.blocks.find(item=>item.id===selectedId.value)||null)
-const canvasWidth=computed(()=>device.value==='mobile'?'390px':device.value==='tablet'?'820px':'1180px')
-const globalStyles=computed(()=>content.value.global_styles||{})
+const selectedBlock = computed(() => content.value.blocks.find(item => item.id === selectedId.value) || null)
+const canvasWidth = computed(() => device.value === 'mobile' ? '390px' : device.value === 'tablet' ? '820px' : '1180px')
+const globalStyles = computed(() => content.value.global_styles || {})
 
-function uid(type:string):string{
-  return `${type}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2,8)}`
+function uid(type: string): string {
+  return `${type}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
 }
-function clone<T>(value:T):T{return JSON.parse(JSON.stringify(value)) as T}
-function emptyResponsive():ResponsiveStyles{
-  return {desktop:{},tablet:{},mobile:{},hidden:{desktop:false,tablet:false,mobile:false}}
+function clone<T>(value: T): T {
+  return JSON.parse(JSON.stringify(value)) as T
 }
-function defaultBlock(type:string):Block{
-  const defaults:Record<string,Record<string,unknown>>={
-    section:{title:'Nova seção'},container:{title:'Container'},columns:{columns:2},grid:{columns:3},
-    hero:{eyebrow:'Seu estabelecimento',title:'Agende seu horário',text:'Apresente aqui sua proposta de valor.',cta:'Agendar agora',image:''},
-    title:{text:'Novo título'},subtitle:{text:'Novo subtítulo'},text:{text:'Escreva seu conteúdo aqui.'},
-    logo:{image:'',alt:'Logomarca'},image:{image:'',alt:'Imagem'},gallery:{title:'Galeria',layout:'grid',images:[]},
-    video:{title:'Vídeo',url:''},button:{label:'Saiba mais',url:'#'},whatsapp_button:{label:'Falar pelo WhatsApp',phone:''},
-    social:{title:'Redes sociais',instagram:'',facebook:'',tiktok:''},divider:{},spacer:{height:32},
-    card:{title:'Card',text:'Conteúdo do card'},services:{title:'Serviços',subtitle:'Conheça as opções',show_prices:true},
-    professionals:{title:'Profissionais',layout:'cards'},booking:{title:'Agende seu horário',subtitle:'Escolha a melhor data e horário.'},
-    form:{title:'Formulário'},business_hours:{title:'Horário de funcionamento'},address:{title:'Onde estamos',address:'',show_map:true},
-    map:{title:'Localização',address:''},contact:{title:'Contato',phone:'',email:''},faq:{title:'Perguntas frequentes',items:[]},
-    testimonials:{title:'Depoimentos',items:[]},cta:{title:'Pronto para agendar?',text:'Escolha um horário disponível.',button:'Agendar'},
-    notices:{title:'Avisos',text:''},policies:{title:'Políticas',text:''},footer:{text:'Obrigado pela visita.'},
+function emptyResponsive(): ResponsiveStyles {
+  return {
+    desktop: {}, tablet: {}, mobile: {},
+    hidden: { desktop: false, tablet: false, mobile: false },
   }
-  return {id:uid(type),type,props:clone(defaults[type]||{title:'Novo bloco'}),style:{},responsive:emptyResponsive()}
+}
+function defaultBlock(type: string): Block {
+  const defaults: Record<string, Record<string, unknown>> = {
+    section: { title: 'Nova seção' },
+    container: { title: 'Container' },
+    columns: { columns: 2 },
+    grid: { columns: 3 },
+    hero: { eyebrow: 'Seu estabelecimento', title: 'Agende seu horário', text: 'Apresente aqui sua proposta de valor.', cta: 'Agendar agora', image: '' },
+    title: { text: 'Novo título' },
+    subtitle: { text: 'Novo subtítulo' },
+    text: { text: 'Escreva seu conteúdo aqui.' },
+    logo: { image: '', alt: 'Logomarca' },
+    image: { image: '', alt: 'Imagem' },
+    gallery: { title: 'Galeria', layout: 'grid', images: [] },
+    video: { title: 'Vídeo', url: '' },
+    button: { label: 'Saiba mais', url: '#' },
+    whatsapp_button: { label: 'Falar pelo WhatsApp', phone: '' },
+    social: { title: 'Redes sociais', instagram: '', facebook: '', tiktok: '' },
+    divider: {}, spacer: { height: 32 },
+    card: { title: 'Card', text: 'Conteúdo do card' },
+    services: { title: 'Serviços', subtitle: 'Conheça as opções', show_prices: true },
+    professionals: { title: 'Profissionais', layout: 'cards' },
+    booking: { title: 'Agende seu horário', subtitle: 'Escolha a melhor data e horário.' },
+    form: { title: 'Formulário' },
+    business_hours: { title: 'Horário de funcionamento' },
+    address: { title: 'Onde estamos', address: '', show_map: true },
+    map: { title: 'Localização', address: '' },
+    contact: { title: 'Contato', phone: '', email: '' },
+    faq: { title: 'Perguntas frequentes', items: [] },
+    testimonials: { title: 'Depoimentos', items: [] },
+    cta: { title: 'Pronto para agendar?', text: 'Escolha um horário disponível.', button: 'Agendar' },
+    notices: { title: 'Avisos', text: '' },
+    policies: { title: 'Políticas', text: '' },
+    footer: { text: 'Obrigado pela visita.' },
+  }
+  return {
+    id: uid(type), type,
+    props: clone(defaults[type] || { title: 'Novo bloco' }),
+    style: {}, responsive: emptyResponsive(),
+  }
 }
 
-async function api<T>(path:string,init:RequestInit={}):Promise<T>{
-  const response=await fetch(`/api/v1${path}`,{
+async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
+  const response = await fetch(`/api/v1${path}`, {
     ...init,
-    cache:'no-store',
-    headers:{accept:'application/json',...(init.body?{'content-type':'application/json'}:{}),...(init.headers||{})},
+    cache: 'no-store',
+    headers: {
+      accept: 'application/json',
+      ...(init.body ? { 'content-type': 'application/json' } : {}),
+      ...(init.headers || {}),
+    },
   })
-  const body=await response.json().catch(()=>({})) as Envelope<T>
-  if(!response.ok)throw new Error(body.error?.message||`Falha HTTP ${response.status}`)
+  const body = await response.json().catch(() => ({})) as Envelope<T>
+  if (!response.ok) throw new Error(body.error?.message || `Falha HTTP ${response.status}`)
   return body.data as T
 }
-function toast(message:string):void{
-  successMessage.value=message
-  window.setTimeout(()=>{if(successMessage.value===message)successMessage.value=''},3500)
+function toast(message: string): void {
+  successMessage.value = message
+  window.setTimeout(() => { if (successMessage.value === message) successMessage.value = '' }, 3500)
 }
-function fail(error:unknown,fallback:string):void{
-  errorMessage.value=error instanceof Error?error.message:fallback
+function fail(error: unknown, fallback: string): void {
+  errorMessage.value = error instanceof Error ? error.message : fallback
 }
-function normalizeContent(value:PageContent|undefined|null):PageContent{
-  const candidate=clone(value||({version:2,global_styles:{},seo:{},blocks:[]} as PageContent))
-  candidate.version=Number(candidate.version||2)
-  candidate.global_styles=candidate.global_styles||{}
-  candidate.seo=candidate.seo||{}
-  candidate.blocks=Array.isArray(candidate.blocks)?candidate.blocks:[]
-  candidate.blocks=candidate.blocks.map(item=>({
+function normalizeContent(value: PageContent | undefined | null): PageContent {
+  const candidate = clone(value || ({ version: 2, global_styles: {}, seo: {}, blocks: [] } as PageContent))
+  candidate.version = Number(candidate.version || 2)
+  candidate.global_styles = candidate.global_styles || {}
+  candidate.seo = candidate.seo || {}
+  candidate.blocks = Array.isArray(candidate.blocks) ? candidate.blocks : []
+  candidate.blocks = candidate.blocks.map(item => ({
     ...item,
-    id:item.id||uid(item.type||'block'),
-    type:item.type||'text',
-    props:item.props||{},
-    style:(item.style||{}) as CSSProperties,
-    responsive:{
-      ...emptyResponsive(),
-      ...(item.responsive||{}),
-      desktop:{...(item.responsive?.desktop||{})},
-      tablet:{...(item.responsive?.tablet||{})},
-      mobile:{...(item.responsive?.mobile||{})},
-      hidden:{...emptyResponsive().hidden,...(item.responsive?.hidden||{})},
+    id: item.id || uid(item.type || 'block'),
+    type: item.type || 'text',
+    props: item.props || {},
+    style: (item.style || {}) as CSSProperties,
+    responsive: {
+      desktop: { ...(item.responsive?.desktop || {}) },
+      tablet: { ...(item.responsive?.tablet || {}) },
+      mobile: { ...(item.responsive?.mobile || {}) },
+      hidden: {
+        ...emptyResponsive().hidden,
+        ...(item.responsive?.hidden || {}),
+      },
     },
   }))
   return candidate
 }
 
-async function load():Promise<void>{
-  loading.value=true
-  errorMessage.value=''
-  try{
-    const [available,current]=await Promise.all([
+async function load(): Promise<void> {
+  loading.value = true
+  errorMessage.value = ''
+  try {
+    const [available, current] = await Promise.all([
       api<Template[]>('/landing-pages/templates'),
       api<EditorState>(`/landing-pages/${pageSlug}`),
     ])
-    templates.value=available
-    state.value=current
-    content.value=normalizeContent(current.content)
-    selectedId.value=content.value.blocks[0]?.id||''
-    dirty.value=false
-  }catch(error){fail(error,'Não foi possível abrir o editor.')}
-  finally{loading.value=false}
+    templates.value = available
+    state.value = current
+    content.value = normalizeContent(current.content)
+    selectedId.value = content.value.blocks[0]?.id || ''
+    dirty.value = false
+  } catch (error) {
+    fail(error, 'Não foi possível abrir o editor.')
+  } finally {
+    loading.value = false
+  }
 }
-async function open():Promise<void>{active.value=true;await load()}
-function close():void{if(dirty.value)void saveNow('Autosave ao fechar');active.value=false}
-function markDirty():void{
-  dirty.value=true
-  editGeneration+=1
-  if(autosaveTimer!==undefined)window.clearTimeout(autosaveTimer)
-  autosaveTimer=window.setTimeout(()=>void autosave(),900)
+async function open(): Promise<void> { active.value = true; await load() }
+function close(): void {
+  if (dirty.value) void saveNow('Autosave ao fechar')
+  active.value = false
 }
-function selectBlock(block:Block):void{
-  selectedId.value=block.id
-  if(window.innerWidth<760)rightOpen.value=true
+function markDirty(): void {
+  dirty.value = true
+  editGeneration += 1
+  if (autosaveTimer !== undefined) window.clearTimeout(autosaveTimer)
+  autosaveTimer = window.setTimeout(() => void autosave(), 900)
 }
-function addBlock(type:string,index?:number):void{
-  const block=defaultBlock(type)
-  const at=index===undefined?content.value.blocks.length:index
-  content.value.blocks.splice(at,0,block)
-  selectedId.value=block.id
+function selectBlock(block: Block): void {
+  selectedId.value = block.id
+  if (window.innerWidth < 760) rightOpen.value = true
+}
+function addBlock(type: string, index?: number): void {
+  const block = defaultBlock(type)
+  const at = index === undefined ? content.value.blocks.length : index
+  content.value.blocks.splice(at, 0, block)
+  selectedId.value = block.id
   markDirty()
 }
-function removeBlock(block:Block):void{
-  const index=content.value.blocks.findIndex(item=>item.id===block.id)
-  if(index<0)return
-  content.value.blocks.splice(index,1)
-  selectedId.value=content.value.blocks[Math.min(index,content.value.blocks.length-1)]?.id||''
+function removeBlock(block: Block): void {
+  const index = content.value.blocks.findIndex(item => item.id === block.id)
+  if (index < 0) return
+  content.value.blocks.splice(index, 1)
+  selectedId.value = content.value.blocks[Math.min(index, content.value.blocks.length - 1)]?.id || ''
   markDirty()
 }
-function duplicateBlock(block:Block):void{
-  const index=content.value.blocks.findIndex(item=>item.id===block.id)
-  const copy=clone(block)
-  copy.id=uid(block.type)
-  content.value.blocks.splice(index+1,0,copy)
-  selectedId.value=copy.id
+function duplicateBlock(block: Block): void {
+  const index = content.value.blocks.findIndex(item => item.id === block.id)
+  const copy = clone(block)
+  copy.id = uid(block.type)
+  content.value.blocks.splice(index + 1, 0, copy)
+  selectedId.value = copy.id
   markDirty()
 }
-function copyBlock(block:Block):void{clipboard.value=clone(block);toast('Bloco copiado.')}
-function pasteBlock():void{
-  if(!clipboard.value)return
-  const copy=clone(clipboard.value)
-  copy.id=uid(copy.type)
-  const current=content.value.blocks.findIndex(item=>item.id===selectedId.value)
-  const index=current<0?content.value.blocks.length:current+1
-  content.value.blocks.splice(index,0,copy)
-  selectedId.value=copy.id
+function copyBlock(block: Block): void { clipboard.value = clone(block); toast('Bloco copiado.') }
+function pasteBlock(): void {
+  if (!clipboard.value) return
+  const copy = clone(clipboard.value)
+  copy.id = uid(copy.type)
+  const current = content.value.blocks.findIndex(item => item.id === selectedId.value)
+  content.value.blocks.splice(current < 0 ? content.value.blocks.length : current + 1, 0, copy)
+  selectedId.value = copy.id
   markDirty()
 }
-function moveBlock(block:Block,delta:number):void{
-  const index=content.value.blocks.findIndex(item=>item.id===block.id)
-  const target=index+delta
-  if(index<0||target<0||target>=content.value.blocks.length)return
-  const [item]=content.value.blocks.splice(index,1)
-  if(!item)return
-  content.value.blocks.splice(target,0,item)
+function moveBlock(block: Block, delta: number): void {
+  const index = content.value.blocks.findIndex(item => item.id === block.id)
+  const target = index + delta
+  if (index < 0 || target < 0 || target >= content.value.blocks.length) return
+  const [item] = content.value.blocks.splice(index, 1)
+  if (!item) return
+  content.value.blocks.splice(target, 0, item)
   markDirty()
 }
-function dragStart(block:Block,event:DragEvent):void{
-  draggingId.value=block.id
-  event.dataTransfer?.setData('text/plain',block.id)
-  if(event.dataTransfer)event.dataTransfer.effectAllowed='move'
+function dragStart(block: Block, event: DragEvent): void {
+  draggingId.value = block.id
+  event.dataTransfer?.setData('text/plain', block.id)
+  if (event.dataTransfer) event.dataTransfer.effectAllowed = 'move'
 }
-function dropOn(target:Block,event:DragEvent):void{
+function dropOn(target: Block, event: DragEvent): void {
   event.preventDefault()
-  const sourceId=event.dataTransfer?.getData('text/plain')||draggingId.value
-  if(!sourceId||sourceId===target.id)return
-  const from=content.value.blocks.findIndex(item=>item.id===sourceId)
-  const to=content.value.blocks.findIndex(item=>item.id===target.id)
-  if(from<0||to<0)return
-  const [item]=content.value.blocks.splice(from,1)
-  if(!item)return
-  content.value.blocks.splice(to,0,item)
-  draggingId.value=''
+  const sourceId = event.dataTransfer?.getData('text/plain') || draggingId.value
+  if (!sourceId || sourceId === target.id) return
+  const from = content.value.blocks.findIndex(item => item.id === sourceId)
+  const to = content.value.blocks.findIndex(item => item.id === target.id)
+  if (from < 0 || to < 0) return
+  const [item] = content.value.blocks.splice(from, 1)
+  if (!item) return
+  content.value.blocks.splice(to, 0, item)
+  draggingId.value = ''
   markDirty()
 }
-function updateProp(key:string,value:unknown):void{
-  if(!selectedBlock.value)return
-  selectedBlock.value.props[key]=value
+function updateProp(key: string, value: unknown): void {
+  if (!selectedBlock.value) return
+  selectedBlock.value.props[key] = value
   markDirty()
 }
-function updateStyle(key:string,value:string|number):void{
-  if(!selectedBlock.value)return
-  Object.assign(selectedBlock.value.style,{[key]:value})
+function updateStyle(key: string, value: string | number): void {
+  if (!selectedBlock.value) return
+  Object.assign(selectedBlock.value.style, { [key]: value })
   markDirty()
 }
-function updateResponsive(key:string,value:string|number):void{
-  if(!selectedBlock.value)return
-  Object.assign(selectedBlock.value.responsive[device.value],{[key]:value})
+function updateResponsive(key: string, value: string | number): void {
+  if (!selectedBlock.value) return
+  Object.assign(selectedBlock.value.responsive[device.value], { [key]: value })
   markDirty()
 }
-function toggleHidden(target:Device):void{
-  if(!selectedBlock.value)return
-  selectedBlock.value.responsive.hidden[target]=!selectedBlock.value.responsive.hidden[target]
+function toggleHidden(target: Device): void {
+  if (!selectedBlock.value) return
+  selectedBlock.value.responsive.hidden[target] = !selectedBlock.value.responsive.hidden[target]
   markDirty()
 }
-function updateGlobal(key:string,value:unknown):void{content.value.global_styles[key]=value;markDirty()}
-function updateSeo(key:string,value:unknown):void{content.value.seo[key]=value;markDirty()}
-function previewStyle(block:Block):CSSProperties{
-  return {...block.style,...block.responsive[device.value]}
+function updateGlobal(key: string, value: unknown): void { content.value.global_styles[key] = value; markDirty() }
+function updateSeo(key: string, value: unknown): void { content.value.seo[key] = value; markDirty() }
+function previewStyle(block: Block): CSSProperties {
+  return { ...block.style, ...block.responsive[device.value] }
 }
 
-async function saveNow(label='Rascunho manual'):Promise<void>{
-  const generation=editGeneration
-  const requestGeneration=++saveGeneration
-  saving.value=true
-  errorMessage.value=''
-  try{
-    const result=await api<{version_id:string;version_number:number}>(
-      `/landing-pages/${pageSlug}/draft`,
-      {method:'POST',body:JSON.stringify(content.value)},
+async function persistDraft(path: 'draft' | 'autosave', label?: string): Promise<void> {
+  const generation = editGeneration
+  const requestGeneration = ++saveGeneration
+  saving.value = true
+  try {
+    const result = await api<{ version_id: string; version_number: number }>(
+      `/landing-pages/${pageSlug}/${path}`,
+      { method: 'POST', body: JSON.stringify(content.value) },
     )
-    if(requestGeneration===saveGeneration&&generation===editGeneration){
-      dirty.value=false
-      if(state.value){
-        state.value.draft_version_id=result.version_id
-        state.value.version_number=result.version_number
+    if (requestGeneration === saveGeneration && generation === editGeneration) {
+      dirty.value = false
+      if (state.value) {
+        state.value.draft_version_id = result.version_id
+        state.value.version_number = result.version_number
       }
-      toast(label==='Rascunho manual'?'Rascunho salvo.':'Alterações salvas.')
+      if (label) toast(label)
     }
-  }catch(error){if(requestGeneration===saveGeneration)fail(error,'Não foi possível salvar o rascunho.')}
-  finally{if(requestGeneration===saveGeneration)saving.value=false}
+  } catch (error) {
+    if (requestGeneration === saveGeneration) fail(error, path === 'autosave' ? 'Autosave falhou; suas alterações continuam nesta tela.' : 'Não foi possível salvar o rascunho.')
+  } finally {
+    if (requestGeneration === saveGeneration) saving.value = false
+  }
 }
-async function autosave():Promise<void>{
-  if(!dirty.value||saving.value||publishing.value)return
-  const generation=editGeneration
-  const requestGeneration=++saveGeneration
-  saving.value=true
-  try{
-    const result=await api<{version_id:string;version_number:number}>(
-      `/landing-pages/${pageSlug}/autosave`,
-      {method:'POST',body:JSON.stringify(content.value)},
-    )
-    if(requestGeneration===saveGeneration&&generation===editGeneration){
-      dirty.value=false
-      if(state.value){
-        state.value.draft_version_id=result.version_id
-        state.value.version_number=result.version_number
-      }
-    }
-  }catch(error){if(requestGeneration===saveGeneration)fail(error,'Autosave falhou; suas alterações continuam nesta tela.')}
-  finally{if(requestGeneration===saveGeneration)saving.value=false}
+async function saveNow(label = 'Rascunho salvo.'): Promise<void> { await persistDraft('draft', label) }
+async function autosave(): Promise<void> {
+  if (!dirty.value || saving.value || publishing.value) return
+  await persistDraft('autosave')
 }
-async function publish():Promise<void>{
-  publishing.value=true
-  errorMessage.value=''
-  try{
-    if(dirty.value)await saveNow('Preparação da publicação')
-    await api(`/landing-pages/${pageSlug}/publish`,{
-      method:'POST',body:JSON.stringify({version_id:state.value?.draft_version_id||null}),
+async function publish(): Promise<void> {
+  publishing.value = true
+  errorMessage.value = ''
+  try {
+    if (dirty.value) await saveNow('Alterações salvas.')
+    await api(`/landing-pages/${pageSlug}/publish`, {
+      method: 'POST',
+      body: JSON.stringify({ version_id: state.value?.draft_version_id || null }),
     })
-    state.value=await api<EditorState>(`/landing-pages/${pageSlug}`)
-    content.value=normalizeContent(state.value.content)
+    state.value = await api<EditorState>(`/landing-pages/${pageSlug}`)
+    content.value = normalizeContent(state.value.content)
     toast('Nova versão publicada.')
-  }catch(error){fail(error,'Não foi possível publicar.')}
-  finally{publishing.value=false}
+  } catch (error) {
+    fail(error, 'Não foi possível publicar.')
+  } finally {
+    publishing.value = false
+  }
 }
-async function applyTemplate(template:Template):Promise<void>{
-  if(!window.confirm(`Criar um novo rascunho usando o modelo “${template.name}”? A versão publicada não será alterada.`))return
-  loading.value=true
-  errorMessage.value=''
-  try{
-    await api(`/landing-pages/${pageSlug}/templates/${template.key}`,{method:'POST',body:'{}'})
+async function applyTemplate(template: Template): Promise<void> {
+  if (!window.confirm(`Criar um novo rascunho usando o modelo “${template.name}”? A versão publicada não será alterada.`)) return
+  loading.value = true
+  try {
+    await api(`/landing-pages/${pageSlug}/templates/${template.key}`, { method: 'POST', body: '{}' })
     await load()
-    sideTab.value='structure'
+    sideTab.value = 'structure'
     toast(`Modelo ${template.name} aplicado ao rascunho.`)
-  }catch(error){fail(error,'Não foi possível aplicar o modelo.')}
-  finally{loading.value=false}
+  } catch (error) {
+    fail(error, 'Não foi possível aplicar o modelo.')
+  } finally {
+    loading.value = false
+  }
 }
-async function restoreVersion(version:Version):Promise<void>{
-  if(!window.confirm(`Restaurar a versão ${version.version_number} como um novo rascunho?`))return
-  loading.value=true
-  try{
-    await api(`/landing-pages/${pageSlug}/versions/${version.id}/restore`,{method:'POST',body:'{}'})
+async function restoreVersion(version: Version): Promise<void> {
+  if (!window.confirm(`Restaurar a versão ${version.version_number} como um novo rascunho?`)) return
+  loading.value = true
+  try {
+    await api(`/landing-pages/${pageSlug}/versions/${version.id}/restore`, { method: 'POST', body: '{}' })
     await load()
     toast(`Versão ${version.version_number} restaurada em novo rascunho.`)
-  }catch(error){fail(error,'Não foi possível restaurar a versão.')}
-  finally{loading.value=false}
+  } catch (error) {
+    fail(error, 'Não foi possível restaurar a versão.')
+  } finally {
+    loading.value = false
+  }
 }
-async function refreshHistory():Promise<void>{
-  if(!state.value)return
-  state.value.versions=await api<Version[]>(`/landing-pages/${pageSlug}/versions`)
+async function refreshHistory(): Promise<void> {
+  if (state.value) state.value.versions = await api<Version[]>(`/landing-pages/${pageSlug}/versions`)
 }
 
-const cardTitle=(block:Block)=>String(block.props.title||block.props.text||block.props.label||block.type)
-const displayType=(type:string)=>ELEMENTS.find(item=>item[0]===type)?.[1]||type
-
-watch(inspectorTab,value=>{if(value==='history')void refreshHistory()})
-watch(active,value=>document.body.classList.toggle('sp-public-editor-open',value))
-function beforeUnload(event:BeforeUnloadEvent):void{
-  if(!dirty.value)return
+function cardTitle(block: Block): string {
+  return String(block.props.title || block.props.text || block.props.label || block.type)
+}
+function displayType(type: string): string {
+  return ELEMENTS.find(item => item[0] === type)?.[1] || type
+}
+function beforeUnload(event: BeforeUnloadEvent): void {
+  if (!dirty.value) return
   event.preventDefault()
-  event.returnValue=''
+  event.returnValue = ''
 }
-onMounted(async()=>{
+
+watch(inspectorTab, value => { if (value === 'history') void refreshHistory() })
+watch(active, value => document.body.classList.toggle('sp-public-editor-open', value))
+onMounted(async () => {
   await nextTick()
-  window.requestAnimationFrame(()=>{
-    portalReady.value=Boolean(
-      document.querySelector('.tenant-console .nav-list')&&
+  window.requestAnimationFrame(() => {
+    portalReady.value = Boolean(
+      document.querySelector('.tenant-console .nav-list') &&
       document.querySelector('.tenant-console .main-content'),
     )
   })
-  window.addEventListener('beforeunload',beforeUnload)
+  window.addEventListener('beforeunload', beforeUnload)
 })
-onUnmounted(()=>{
+onUnmounted(() => {
   document.body.classList.remove('sp-public-editor-open')
-  window.removeEventListener('beforeunload',beforeUnload)
-  if(autosaveTimer!==undefined)window.clearTimeout(autosaveTimer)
+  window.removeEventListener('beforeunload', beforeUnload)
+  if (autosaveTimer !== undefined) window.clearTimeout(autosaveTimer)
 })
 </script>
 
 <template>
   <Teleport v-if="portalReady" to=".tenant-console .nav-list">
-    <button class="nav-item sp-page-editor-nav" @click="open">
-      <LayoutTemplate :size="19"/><span>Página Pública</span>
-    </button>
+    <button class="nav-item sp-page-editor-nav" @click="open"><LayoutTemplate :size="19"/><span>Página Pública</span></button>
   </Teleport>
 
   <Teleport v-if="portalReady && active" to="body">
     <section class="page-editor" role="dialog" aria-modal="true" aria-label="Editor visual da página pública">
       <header class="editor-topbar">
-        <div class="editor-brand"><LayoutTemplate :size="20"/><div><strong>Página Pública</strong><small>{{ dirty?'Alterações pendentes':saving?'Salvando…':'Rascunho sincronizado' }}</small></div></div>
+        <div class="editor-brand"><LayoutTemplate :size="20"/><div><strong>Página Pública</strong><small>{{ dirty ? 'Alterações pendentes' : saving ? 'Salvando…' : 'Rascunho sincronizado' }}</small></div></div>
         <div class="device-switcher">
           <button :class="{active:device==='desktop'}" title="Desktop" @click="device='desktop'"><Monitor :size="18"/></button>
           <button :class="{active:device==='tablet'}" title="Tablet" @click="device='tablet'"><Tablet :size="18"/></button>
@@ -433,6 +475,7 @@ onUnmounted(()=>{
             <button :class="{active:sideTab==='structure'}" @click="sideTab='structure'"><GripVertical :size="16"/> Estrutura</button>
             <button :class="{active:sideTab==='templates'}" @click="sideTab='templates'"><LayoutTemplate :size="16"/> Modelos</button>
           </div>
+
           <div v-if="sideTab==='elements'" class="element-list">
             <button v-for="item in ELEMENTS" :key="item[0]" @click="addBlock(item[0])"><Plus :size="15"/><span>{{ item[1] }}</span></button>
           </div>
@@ -589,7 +632,7 @@ onUnmounted(()=>{
                 <label>Opacidade<input type="number" min="0" max="1" step="0.05" :value="Number(selectedBlock.style.opacity??1)" @input="updateStyle('opacity',Number(($event.target as HTMLInputElement).value))"/></label>
               </template>
 
-              <template v-else-if="inspectorTab==='responsive'">
+              <template v-else>
                 <div class="responsive-summary"><strong>{{ device==='desktop'?'Desktop':device==='tablet'?'Tablet':'Mobile' }}</strong><span>Valores específicos substituem o estilo global do bloco.</span></div>
                 <label>Tamanho do título/texto<input type="number" min="8" max="120" :value="Number(String(selectedBlock.responsive[device].fontSize||'0').replace('px',''))" @input="updateResponsive('fontSize',`${($event.target as HTMLInputElement).value}px`)"/></label>
                 <label>Padding<input :value="String(selectedBlock.responsive[device].padding||'')" placeholder="Ex.: 20px" @input="updateResponsive('padding',($event.target as HTMLInputElement).value)"/></label>
@@ -602,7 +645,7 @@ onUnmounted(()=>{
               </template>
             </template>
 
-            <div v-else-if="inspectorTab!=='global'&&inspectorTab!=='history'" class="empty-side">Selecione um bloco no canvas ou na estrutura.</div>
+            <div v-else class="empty-side">Selecione um bloco no canvas ou na estrutura.</div>
           </div>
         </aside>
       </div>
