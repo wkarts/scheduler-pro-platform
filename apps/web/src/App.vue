@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { onMounted, onUnmounted, ref } from 'vue'
-import PublicBookingPage from './PublicBookingPage.vue'
+import PublicSitePage from './PublicSitePage.vue'
 import TenantAgendaOperations from './TenantAgendaOperations.vue'
 import TenantAgendaSmartWorkspace from './TenantAgendaSmartWorkspace.vue'
 import TenantBookingAndMessages from './TenantBookingAndMessages.vue'
@@ -10,38 +10,46 @@ import TenantConfigurationCenter from './TenantConfigurationCenter.vue'
 import TenantConsole from './TenantConsole.vue'
 import TenantExtensions from './TenantExtensions.vue'
 import TenantMailModeSelector from './TenantMailModeSelector.vue'
-import TenantPublicPageEditor from './TenantPublicPageEditor.vue'
+import TenantPublicPageEditorV2 from './TenantPublicPageEditorV2.vue'
 import TenantPwaInstallSurface from './TenantPwaInstallSurface.vue'
 import TenantSecondFactorGate from './TenantSecondFactorGate.vue'
 import TenantUniversalDownloads from './TenantUniversalDownloads.vue'
+import TenantWorkspaceCoordinator from './TenantWorkspaceCoordinator.vue'
 
 const authenticated = ref(Boolean(localStorage.getItem('scheduler_pro_access_token')))
-const publicBooking = ref(window.location.pathname.replace(/\/+$/, '') === '/agendar')
-let authPoll: number | undefined
+const normalizedPath = window.location.pathname.replace(/\/+$/, '') || '/'
+const publicSurface = ref(['/agendar', '/pagina'].includes(normalizedPath))
 
 function refreshAuthState(): void {
   authenticated.value = Boolean(localStorage.getItem('scheduler_pro_access_token'))
 }
 
+function onStorage(event: StorageEvent): void {
+  if (event.key === 'scheduler_pro_access_token') refreshAuthState()
+}
+
 onMounted(() => {
   refreshAuthState()
-  authPoll = window.setInterval(refreshAuthState, 500)
+  window.addEventListener('storage', onStorage)
+  window.addEventListener('scheduler-pro-auth-changed', refreshAuthState)
 })
 
 onUnmounted(() => {
-  if (authPoll !== undefined) window.clearInterval(authPoll)
+  window.removeEventListener('storage', onStorage)
+  window.removeEventListener('scheduler-pro-auth-changed', refreshAuthState)
 })
 </script>
 
 <template>
-  <PublicBookingPage v-if="publicBooking" />
+  <PublicSitePage v-if="publicSurface" />
   <template v-else>
     <TenantBrandedLogin v-if="!authenticated" @authenticated="refreshAuthState" />
     <template v-else>
       <TenantConsole />
+      <TenantWorkspaceCoordinator />
       <TenantExtensions />
       <TenantConfigurationCenter />
-      <TenantPublicPageEditor />
+      <TenantPublicPageEditorV2 />
       <TenantBookingAndMessages />
       <TenantAgendaOperations />
       <TenantAgendaSmartWorkspace />
