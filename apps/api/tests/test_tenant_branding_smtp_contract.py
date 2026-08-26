@@ -39,18 +39,37 @@ def test_smtp_config_requires_connection_and_sender() -> None:
         password_ref="secret://sealed/example",
         from_email="agenda@example.com",
         from_name="Agenda",
-        reply_to="agenda@example.com",
+        reply_to="",
         use_tls=True,
         use_ssl=False,
         timeout_seconds=15,
     )
-    assert config.is_configured is True
+    assert config.configured is True
 
 
-def test_notification_service_keeps_email_templates_and_subjects() -> None:
-    assert "appointment_confirmation_request" in DEFAULT_TEMPLATES
-    assert "appointment_confirmed" in DEFAULT_TEMPLATES
-    assert NotificationService.email_subject(
-        "appointment_confirmed",
-        {"service_name": "Corte"},
-    ).startswith("Agendamento confirmado")
+def test_reschedule_template_keeps_confirmation_link_for_whatsapp_and_email() -> None:
+    template = DEFAULT_TEMPLATES["appointment_rescheduled"]
+    assert "{{confirmation_url}}" in template
+    subject = NotificationService.email_subject(
+        "appointment_rescheduled_email",
+        {"service_name": "Consulta"},
+    )
+    assert "reagendado" in subject.lower()
+    assert "Consulta" in subject
+
+
+def test_branding_upload_is_limited_and_publicly_renderable() -> None:
+    route = (ROOT / "app" / "api" / "v1" / "routes" / "branding.py").read_text(
+        encoding="utf-8"
+    )
+    assert "BRAND_ASSET_MAX_BYTES = 4 * 1024 * 1024" in route
+    assert '@router.post("/assets/{kind}")' in route
+    assert '@router.get("/assets/{kind}")' in route
+
+
+def test_runtime_images_receive_release_and_build_metadata() -> None:
+    api_dockerfile = (
+        ROOT.parents[1] / "infrastructure" / "docker" / "api" / "Dockerfile"
+    ).read_text(encoding="utf-8")
+    assert "ARG APP_RELEASE_TAG=" in api_dockerfile
+    assert "ARG APP_BUILD_SHA=" in api_dockerfile
