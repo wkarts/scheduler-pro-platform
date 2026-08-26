@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import UTC, date, datetime, time, timedelta
-from typing import Any
+from typing import Any, cast
 
 from sqlalchemy import text
 
@@ -9,6 +9,10 @@ from app.core.errors import APIError
 from app.services.appointment_service import AppointmentService
 from app.services.booking_parameters_service import BookingParametersService
 from app.services.phone_normalization import PhoneNormalizationService
+
+
+def _mapping(value: Any) -> dict[str, Any]:
+    return cast(dict[str, Any], value) if isinstance(value, dict) else {}
 
 
 class FlexibleAppointmentService(AppointmentService):
@@ -82,7 +86,7 @@ class FlexibleAppointmentService(AppointmentService):
             )
 
         params = await self.booking_parameters()
-        rules = params.get("rules") if isinstance(params.get("rules"), dict) else {}
+        rules = _mapping(params.get("rules"))
         if bool(rules.get("enforce_business_hours", True)):
             if not await self._is_inside_business_hours(professional_id, starts_at, ends_at):
                 raise APIError(
@@ -94,11 +98,7 @@ class FlexibleAppointmentService(AppointmentService):
             if await self._is_blocked(professional_id, starts_at, ends_at):
                 raise APIError("APPOINTMENT_BLOCKED_PERIOD", "Horário bloqueado.", 409)
 
-        simultaneous = (
-            params.get("simultaneous")
-            if isinstance(params.get("simultaneous"), dict)
-            else {}
-        )
+        simultaneous = _mapping(params.get("simultaneous"))
         public = str(source or "").lower().startswith("public")
         enforce_capacity = bool(
             simultaneous.get("enforce_public" if public else "enforce_internal", True)
@@ -149,12 +149,8 @@ class FlexibleAppointmentService(AppointmentService):
         elif str(params.get("service_mode") or "REQUIRED").upper() != "REQUIRED":
             duration = int(params.get("default_duration_minutes") or 60)
 
-        rules = params.get("rules") if isinstance(params.get("rules"), dict) else {}
-        simultaneous = (
-            params.get("simultaneous")
-            if isinstance(params.get("simultaneous"), dict)
-            else {}
-        )
+        rules = _mapping(params.get("rules"))
+        simultaneous = _mapping(params.get("simultaneous"))
         public = str(source or "").lower().startswith("public")
         enforce_capacity = bool(
             simultaneous.get("enforce_public" if public else "enforce_internal", True)
