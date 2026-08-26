@@ -27,6 +27,7 @@ def test_recurring_weekly_schedule_respects_weekday_sundays_and_skip_dates() -> 
     payload = RecurringAppointmentCreate(
         starts_at=datetime(2026, 8, 18, 19, 0, tzinfo=timezone),
         customer_name="Cliente Teste",
+        customer_phone="5575988881111",
         service_name="Atendimento",
         professional_name="Agenda geral",
         duration_minutes=30,
@@ -50,6 +51,7 @@ def test_recurring_default_uses_first_appointment_weekday() -> None:
     payload = RecurringAppointmentCreate(
         starts_at=datetime(2026, 8, 19, 8, 30, tzinfo=timezone),
         customer_name="Cliente Teste",
+        customer_phone="5575988881111",
         service_name="Atendimento",
         professional_name="Agenda geral",
         duration_minutes=30,
