@@ -6,6 +6,7 @@ import { installTenantExtensionNavigationBridge } from './tenant-extension-bridg
 import { installTenantFrontendTelemetry } from './tenant-frontend-telemetry'
 import { installTenantMobileEnhancements } from './tenant-mobile-enhancements'
 import { installTenantNavigationRuntime } from './tenant-navigation-runtime'
+import { installWhatsAppCompatibilityRuntime } from './whatsapp-compat-runtime'
 import './styles.css'
 import './operational.css'
 import './tenant-console.css'
@@ -19,6 +20,7 @@ import './tenant-shell-contract.css'
 import './pwa'
 
 installTenantAuthFetch()
+installWhatsAppCompatibilityRuntime()
 installTenantExtensionNavigationBridge()
 installTenantMobileEnhancements()
 installTenantNavigationRuntime()
