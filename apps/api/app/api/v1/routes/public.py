@@ -1,3 +1,4 @@
+from collections.abc import Iterator
 from datetime import date, datetime
 from typing import Any
 
@@ -5,6 +6,7 @@ import bleach
 from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy.ext.asyncio import AsyncSession
+from starlette.responses import StreamingResponse
 
 from app.api.deps import (
     get_platform_session,
@@ -12,13 +14,24 @@ from app.api.deps import (
     get_tenant_session,
     require_tenant_capability,
 )
+from app.core.errors import APIError
 from app.core.responses import success
 from app.core.tenant_context import TenantContext
 from app.services.branding_service import BrandingService
+from app.services.file_service import TenantFileService
 from app.services.landing_service import LandingPageService
 from app.services.public_booking_service import PublicBookingService
 
 router = APIRouter()
+PUBLIC_LANDING_ASSET_PREFIX = "landing/"
+PUBLIC_LANDING_ASSET_TYPES = {
+    "image/png",
+    "image/jpeg",
+    "image/webp",
+    "image/gif",
+    "image/avif",
+    "image/svg+xml",
+}
 
 
 class PublicBookingCreate(BaseModel):
@@ -45,6 +58,46 @@ def _safe_booking_html(value: str) -> str:
         attributes={"a": ["href", "target", "rel"], "*": ["class"]},
         protocols={"http", "https", "mailto", "tel"},
         strip=True,
+    )
+
+
+def _stream(body: Any) -> Iterator[bytes]:
+    try:
+        yield from body.iter_chunks(chunk_size=64 * 1024)
+    finally:
+        body.close()
+
+
+@router.get("/assets/{key:path}")
+async def public_landing_asset(
+    key: str,
+    context: TenantContext = Depends(get_tenant_context),
+) -> StreamingResponse:
+    """Serve somente arquivos publicados pelo editor da Landing Page.
+
+    O bucket continua privado e isolado por tenant; o cliente recebe apenas este
+    proxy same-origin, sem URL, endpoint ou credencial do storage real.
+    """
+    normalized = TenantFileService.normalize_key(key)
+    if not normalized.startswith(PUBLIC_LANDING_ASSET_PREFIX):
+        raise APIError("PUBLIC_ASSET_NOT_FOUND", "Arquivo público não encontrado.", 404)
+
+    result = await TenantFileService(context).get_object(normalized)
+    content_type = str(result.get("ContentType") or "application/octet-stream").lower()
+    if content_type not in PUBLIC_LANDING_ASSET_TYPES:
+        try:
+            result["Body"].close()
+        finally:
+            raise APIError("PUBLIC_ASSET_NOT_FOUND", "Arquivo público não encontrado.", 404)
+
+    return StreamingResponse(
+        _stream(result["Body"]),
+        media_type=content_type,
+        headers={
+            "Cache-Control": "public, max-age=300, must-revalidate",
+            "ETag": str(result.get("ETag", "")),
+            "X-Content-Type-Options": "nosniff",
+        },
     )
 
 

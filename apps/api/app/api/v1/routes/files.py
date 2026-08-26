@@ -26,6 +26,20 @@ def _stream(body: Any) -> Iterator[bytes]:
         body.close()
 
 
+def _public_url(key: str) -> str | None:
+    normalized = TenantFileService.normalize_key(key)
+    if normalized.startswith("landing/"):
+        return f"/api/v1/public/assets/{quote(normalized, safe='/')}"
+    return None
+
+
+@router.get("/quota")
+async def storage_quota(
+    context: TenantContext = Depends(get_tenant_context),
+) -> dict[str, Any]:
+    return success(await TenantFileService(context).quota_status())
+
+
 @router.post("/signed-url")
 async def signed_url(
     payload: FileAccessRequest,
@@ -41,6 +55,7 @@ async def signed_url(
                 "url": "/api/v1/files/upload",
                 "fields": {"key": key},
                 "bucket": context.storage_bucket,
+                "quota": await service.quota_status(),
             }
         )
     return success(
@@ -48,6 +63,7 @@ async def signed_url(
             "mode": "api-proxy",
             "method": "GET",
             "url": f"/api/v1/files/content/{quote(key, safe='/')}",
+            "public_url": _public_url(key),
             "bucket": context.storage_bucket,
         }
     )
@@ -61,6 +77,7 @@ async def upload_file(
 ) -> dict[str, Any]:
     try:
         result = await TenantFileService(context).upload(key, file.file, file.content_type)
+        result["public_url"] = _public_url(result["key"])
         return success(result)
     finally:
         await file.close()
@@ -72,6 +89,8 @@ async def list_files(
     limit: int = Query(default=200, ge=1, le=1000),
     context: TenantContext = Depends(get_tenant_context),
 ) -> dict[str, Any]:
+    # Compatibilidade: mantém `data` como lista, exatamente como antes desta PR.
+    # A cota fica no endpoint separado `/files/quota`.
     return success(await TenantFileService(context).list(prefix=prefix, limit=limit))
 
 
@@ -97,4 +116,7 @@ async def delete_file(
     key: str,
     context: TenantContext = Depends(get_tenant_context),
 ) -> dict[str, Any]:
-    return success(await TenantFileService(context).delete(key))
+    service = TenantFileService(context)
+    result = await service.delete(key)
+    result["storage"] = await service.quota_status()
+    return success(result)

@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.errors import APIError
 from app.core.security import hash_password
 from app.core.secrets import seal_secret
+from app.core.tenant_context import DEFAULT_TENANT_STORAGE_QUOTA_BYTES
 from app.db.models_platform import Tenant
 from app.db.session import get_tenant_engine
 from app.services.observability_service import ObservabilityService
@@ -22,6 +23,22 @@ class TenantManagementService:
         if tenant is None:
             raise APIError("TENANT_NOT_FOUND", "Tenant não encontrado.", 404)
         return tenant
+
+    @staticmethod
+    def _storage_quota_bytes(tenant: Tenant) -> int:
+        raw = (tenant.settings or {}).get("storage_quota_bytes")
+        value: int = DEFAULT_TENANT_STORAGE_QUOTA_BYTES
+        if raw is not None:
+            try:
+                value = int(str(raw))
+            except (TypeError, ValueError):
+                value = DEFAULT_TENANT_STORAGE_QUOTA_BYTES
+        return int(
+            min(
+                max(value, 128 * 1024 * 1024),
+                1024 * 1024 * 1024 * 1024,
+            )
+        )
 
     async def _primary_hostname(self, tenant_id: str) -> str | None:
         return (
@@ -96,6 +113,11 @@ class TenantManagementService:
                 "type": exc.__class__.__name__,
                 "message": str(exc),
             }
+        quota_bytes = self._storage_quota_bytes(tenant)
+        context = await TenantResolver(self.session).resolve_by_id(
+            str(tenant.id),
+            require_active=False,
+        )
         return {
             "tenant": {
                 "id": str(tenant.id),
@@ -105,6 +127,12 @@ class TenantManagementService:
                 "timezone": tenant.timezone,
                 "primary_hostname": await self._primary_hostname(str(tenant.id)),
                 "created_at": tenant.created_at,
+            },
+            "storage": {
+                "bucket": context.storage_bucket,
+                "quota_bytes": quota_bytes,
+                "quota_mb": quota_bytes // (1024 * 1024),
+                "default_quota_mb": DEFAULT_TENANT_STORAGE_QUOTA_BYTES // (1024 * 1024),
             },
             "principal_admin": principal_admin,
             "principal_admin_error": admin_error,
@@ -121,25 +149,37 @@ class TenantManagementService:
         *,
         name: str | None = None,
         timezone: str | None = None,
+        storage_quota_mb: int | None = None,
         actor: str | None = None,
     ) -> dict[str, Any]:
         tenant = await self._tenant(tenant_id)
-        before = {"name": tenant.name, "timezone": tenant.timezone}
+        before_quota = self._storage_quota_bytes(tenant)
+        before = {
+            "name": tenant.name,
+            "timezone": tenant.timezone,
+            "storage_quota_bytes": before_quota,
+        }
         if name is not None:
             tenant.name = name.strip()
         if timezone is not None:
             tenant.timezone = timezone.strip()
+        if storage_quota_mb is not None:
+            settings_value = dict(tenant.settings or {})
+            settings_value["storage_quota_bytes"] = storage_quota_mb * 1024 * 1024
+            tenant.settings = settings_value
+        after = {
+            "name": tenant.name,
+            "timezone": tenant.timezone,
+            "storage_quota_bytes": self._storage_quota_bytes(tenant),
+        }
         await self.logs.record_platform_log(
             tenant_id=str(tenant.id),
             source="admin",
             service="control-plane",
             event="tenant_updated",
-            message="Dados cadastrais do tenant atualizados pelo Control Plane.",
+            message="Dados cadastrais e limites do tenant atualizados pelo Control Plane.",
             actor=actor,
-            details={
-                "before": before,
-                "after": {"name": tenant.name, "timezone": tenant.timezone},
-            },
+            details={"before": before, "after": after},
         )
         await self.session.commit()
         return await self.snapshot(tenant_id)
