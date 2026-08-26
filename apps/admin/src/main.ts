@@ -2,6 +2,7 @@ import { createApp } from 'vue'
 import { createPinia } from 'pinia'
 import App from './AdminControlPlane.vue'
 import AdminSecondFactorGate from './AdminSecondFactorGate.vue'
+import AdminTemplateImportCenter from './AdminTemplateImportCenter.vue'
 import AdminTemplateSupportCenter from './AdminTemplateSupportCenter.vue'
 import TenantManagementDrawer from './TenantManagementDrawer.vue'
 import { installDiagnosticsDownload } from './diagnostics-download'
@@ -29,6 +30,11 @@ const templateSupportHost = document.createElement('div')
 templateSupportHost.id = 'scheduler-pro-template-support'
 document.body.appendChild(templateSupportHost)
 createApp(AdminTemplateSupportCenter).mount(templateSupportHost)
+
+const templateImportHost = document.createElement('div')
+templateImportHost.id = 'scheduler-pro-template-import'
+document.body.appendChild(templateImportHost)
+createApp(AdminTemplateImportCenter).mount(templateImportHost)
 
 const secondFactorHost = document.createElement('div')
 secondFactorHost.id = 'scheduler-pro-admin-second-factor'
