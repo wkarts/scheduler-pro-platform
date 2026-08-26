@@ -1,0 +1,59 @@
+name: Normalize white-label UI
+
+on:
+  push:
+    branches:
+      - feat/incremental-security-booking-whatsapp-20260826
+
+permissions:
+  contents: write
+
+jobs:
+  normalize:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/incremental-security-booking-whatsapp-20260826
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Normalize presentation labels
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          files = [
+              Path('apps/web/src/TenantConsole.vue'),
+              Path('apps/web/src/TenantExtensions.vue'),
+              Path('apps/admin/src/AdminControlPlane.vue'),
+              Path('apps/admin/src/AdminHub.vue'),
+              Path('apps/admin/src/App.vue'),
+          ]
+          replacements = [
+              ('Cloudflare, Evolution, storage e filas', 'Domínios, ARGWS WhatsApp API, armazenamento e filas'),
+              ('Evolution API', 'ARGWS WhatsApp API'),
+              ('Cloudflare', 'Domínios e DNS'),
+              ('MinIO', 'Armazenamento'),
+          ]
+          for path in files:
+              if not path.exists():
+                  continue
+              text = path.read_text(encoding='utf-8')
+              original = text
+              for old, new in replacements:
+                  text = text.replace(old, new)
+              if text != original:
+                  path.write_text(text, encoding='utf-8')
+          PY
+      - name: Commit normalized labels
+        run: |
+          if git diff --quiet; then
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add apps/web/src/TenantConsole.vue apps/web/src/TenantExtensions.vue apps/admin/src/AdminControlPlane.vue apps/admin/src/AdminHub.vue apps/admin/src/App.vue
+          git commit -m 'fix: aplica white-label nas superfícies visuais'
+          git push origin HEAD:feat/incremental-security-booking-whatsapp-20260826
