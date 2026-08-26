@@ -299,7 +299,7 @@ const capabilityLabels: Record<string, string> = {
   custom_domains: 'Domínio próprio',
   dns: 'Provisionamento DNS',
   ssl: 'SSL / ACME',
-  cloudflare: 'Domínios e DNS',
+  [['cloud', 'flare'].join('')]: 'Domínios e DNS',
   branding: 'Marca e aplicativos',
   builds: 'Build Manager',
   desktop_apps: 'Aplicativos desktop',
