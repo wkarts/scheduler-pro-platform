@@ -177,8 +177,8 @@ class TemplateContract:
                 errors.append(_issue(f"{path}.responsive", "LANDING_BLOCK_RESPONSIVE_INVALID", "responsive deve ser um objeto."))
                 continue
             for device in ("desktop", "tablet", "mobile"):
-                value = responsive.get(device, {})
-                if not isinstance(value, dict):
+                device_style = responsive.get(device, {})
+                if not isinstance(device_style, dict):
                     errors.append(_issue(f"{path}.responsive.{device}", "LANDING_RESPONSIVE_DEVICE_INVALID", f"responsive.{device} deve ser um objeto."))
             hidden = responsive.get("hidden", {})
             if not isinstance(hidden, dict):
@@ -217,9 +217,9 @@ class TemplateContract:
             for key, allowed in BOOKING_LAYOUT_VALUES.items():
                 if key not in layout:
                     continue
-                value = str(layout[key])
-                if value not in allowed:
-                    errors.append(_issue(f"content.layout.{key}", "BOOKING_LAYOUT_VALUE_UNSUPPORTED", f"Valor não suportado: {value}."))
+                layout_value = str(layout[key])
+                if layout_value not in allowed:
+                    errors.append(_issue(f"content.layout.{key}", "BOOKING_LAYOUT_VALUE_UNSUPPORTED", f"Valor não suportado: {layout_value}."))
             if "mobile_sticky_action" in layout and not isinstance(layout["mobile_sticky_action"], bool):
                 errors.append(_issue("content.layout.mobile_sticky_action", "BOOKING_LAYOUT_BOOLEAN_REQUIRED", "mobile_sticky_action deve ser booleano."))
 
@@ -228,8 +228,8 @@ class TemplateContract:
             errors.append(_issue("content.copy", "BOOKING_COPY_REQUIRED", "Defina o objeto copy com os textos da experiência de agendamento."))
         else:
             for key in ("title", "subtitle", "success"):
-                value = copy.get(key)
-                if strict and (not isinstance(value, str) or not value.strip()):
+                copy_value = copy.get(key)
+                if strict and (not isinstance(copy_value, str) or not copy_value.strip()):
                     errors.append(_issue(f"content.copy.{key}", "BOOKING_COPY_VALUE_REQUIRED", f"Informe copy.{key}."))
         if isinstance(global_styles, dict) and "muted" not in global_styles:
             warnings.append(_issue("content.global_styles.muted", "BOOKING_MUTED_COLOR_RECOMMENDED", "Defina a cor muted para manter os subtítulos legíveis."))
