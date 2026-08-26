@@ -17,10 +17,12 @@ from app.api.deps import (
 from app.core.errors import APIError
 from app.core.responses import success
 from app.core.tenant_context import TenantContext
+from app.services.agenda_report_delivery_service import verify_report_token
 from app.services.branding_service import BrandingService
 from app.services.file_service import TenantFileService
 from app.services.landing_service import LandingPageService
 from app.services.public_booking_service import PublicBookingService
+from app.services.template_contract import TemplateContract
 
 router = APIRouter()
 PUBLIC_LANDING_ASSET_PREFIX = "landing/"
@@ -36,10 +38,10 @@ PUBLIC_LANDING_ASSET_TYPES = {
 
 class PublicBookingCreate(BaseModel):
     service_id: str | None = Field(default=None, min_length=10, max_length=80)
-    professional_id: str = Field(min_length=10, max_length=80)
+    professional_id: str | None = Field(default=None, min_length=10, max_length=80)
     starts_at: datetime
     customer_name: str = Field(min_length=2, max_length=160)
-    customer_phone: str = Field(min_length=8, max_length=80)
+    customer_phone: str | None = Field(default=None, max_length=80)
     customer_email: EmailStr | None = None
 
 
@@ -61,6 +63,28 @@ def _safe_booking_html(value: str) -> str:
     )
 
 
+def _apply_booking_template_copy(config: dict[str, Any]) -> None:
+    template = config.get("booking_template")
+    if not isinstance(template, dict):
+        return
+    content = template.get("content")
+    if not isinstance(content, dict):
+        return
+    TemplateContract.ensure_content("BOOKING", content, strict=False)
+    copy = content.get("copy")
+    if not isinstance(copy, dict):
+        return
+    title = str(copy.get("title") or "").strip()
+    subtitle = str(copy.get("subtitle") or "").strip()
+    success_message = str(copy.get("success") or "").strip()
+    if title:
+        config["title"] = title
+    if subtitle:
+        config["subtitle"] = subtitle
+    if success_message:
+        config["success_message"] = success_message
+
+
 def _stream(body: Any) -> Iterator[bytes]:
     try:
         yield from body.iter_chunks(chunk_size=64 * 1024)
@@ -73,11 +97,6 @@ async def public_landing_asset(
     key: str,
     context: TenantContext = Depends(get_tenant_context),
 ) -> StreamingResponse:
-    """Serve somente arquivos publicados pelo editor da Landing Page.
-
-    O bucket continua privado e isolado por tenant; o cliente recebe apenas este
-    proxy same-origin, sem URL, endpoint ou credencial do storage real.
-    """
     normalized = TenantFileService.normalize_key(key)
     if not normalized.startswith(PUBLIC_LANDING_ASSET_PREFIX):
         raise APIError("PUBLIC_ASSET_NOT_FOUND", "Arquivo público não encontrado.", 404)
@@ -96,6 +115,32 @@ async def public_landing_asset(
         headers={
             "Cache-Control": "public, max-age=300, must-revalidate",
             "ETag": str(result.get("ETag", "")),
+            "X-Content-Type-Options": "nosniff",
+        },
+    )
+
+
+@router.get("/agenda-report/{token}")
+async def public_agenda_report(
+    token: str,
+    context: TenantContext = Depends(get_tenant_context),
+) -> StreamingResponse:
+    payload = verify_report_token(token, context.tenant_id)
+    key = TenantFileService.normalize_key(str(payload.get("key") or ""))
+    if not key.startswith("reports/agenda/"):
+        raise APIError("AGENDA_REPORT_LINK_INVALID", "Link de relatório inválido.", 404)
+    result = await TenantFileService(context).get_object(key)
+    content_type = str(
+        payload.get("type") or result.get("ContentType") or "application/octet-stream"
+    )
+    filename = key.rsplit("/", 1)[-1]
+    return StreamingResponse(
+        _stream(result["Body"]),
+        media_type=content_type,
+        headers={
+            "Content-Disposition": f'inline; filename="{filename}"',
+            "Cache-Control": "private, no-store, max-age=0",
+            "X-Robots-Tag": "noindex, nofollow, noarchive",
             "X-Content-Type-Options": "nosniff",
         },
     )
@@ -131,6 +176,7 @@ async def public_booking_catalog(
         timezone=context.timezone,
     )
     catalog = await service.catalog()
+    _apply_booking_template_copy(catalog["config"])
     catalog["config"]["custom_html"] = _safe_booking_html(
         str(catalog["config"].get("custom_html") or "")
     )

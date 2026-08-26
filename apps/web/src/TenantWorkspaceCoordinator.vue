@@ -1,14 +1,17 @@
 <script setup lang="ts">
 import { onMounted, onUnmounted } from 'vue'
+import { announceTenantNavigation } from './tenantNavigation'
 
 const LEGACY_LABELS = new Set([
   'Landing page',
   'WhatsApp API',
   'Marca e aplicativo',
 ])
+const EXTENSION_LABELS_REPLACED_BY_AGENDA = new Set(['Calendário'])
 
 let observer: MutationObserver | undefined
 let raf = 0
+let navigationRaf = 0
 
 function buttonLabel(button: Element): string {
   return (button.textContent || '').replace(/\s+/g, ' ').trim()
@@ -36,7 +39,8 @@ function reconcileNavigation(): void {
         buttonLabel(candidate) === 'Configurações',
     )
     const duplicateLanding = legacy && LEGACY_LABELS.has(label)
-    ;(button as HTMLElement).hidden = duplicateSettings || duplicateLanding
+    const replacedAgendaExtension = EXTENSION_LABELS_REPLACED_BY_AGENDA.has(label)
+    ;(button as HTMLElement).hidden = duplicateSettings || duplicateLanding || replacedAgendaExtension
   }
 }
 
@@ -51,6 +55,7 @@ function visibleWorkspaceRoots(): HTMLElement[] {
     '.tenant-console .main-content > .sp-config-root',
     '.tenant-console .main-content > .sp-agenda-operations-root',
     '.tenant-console .main-content > .sp-agenda-smart-root',
+    '.tenant-console .main-content > .sp-agenda-center',
     'body > .page-editor',
     'body > .page-editor-v2',
   ]
@@ -59,6 +64,7 @@ function visibleWorkspaceRoots(): HTMLElement[] {
 }
 
 function closeWorkspace(root: HTMLElement): void {
+  if (root.classList.contains('sp-agenda-center')) return
   const close = root.querySelector<HTMLButtonElement>(
     'button[aria-label="Fechar"], .sp-icon-button, .editor-topbar .icon, .editor-topbar button[title="Fechar"]',
   )
@@ -70,10 +76,15 @@ function onNavigationClick(event: Event): void {
   const button = target?.closest('.tenant-console .nav-list > .nav-item')
   if (!button) return
   for (const root of visibleWorkspaceRoots()) closeWorkspace(root)
+
+  // TenantConsole usa history.replaceState; isso não dispara hashchange.
+  // O anúncio é feito no frame seguinte, quando o hash já foi atualizado.
+  cancelAnimationFrame(navigationRaf)
+  navigationRaf = requestAnimationFrame(() => announceTenantNavigation(window.location.hash))
 }
 
 function syncWorkspaceState(): void {
-  const open = visibleWorkspaceRoots().length > 0
+  const open = visibleWorkspaceRoots().some((root) => !root.classList.contains('sp-agenda-center'))
   document.body.classList.toggle('sp-workspace-active', open)
   scheduleReconcile()
 }
@@ -89,6 +100,7 @@ onUnmounted(() => {
   document.removeEventListener('click', onNavigationClick, true)
   observer?.disconnect()
   cancelAnimationFrame(raf)
+  cancelAnimationFrame(navigationRaf)
   document.body.classList.remove('sp-workspace-active')
 })
 </script>

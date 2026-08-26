@@ -1,13 +1,14 @@
 <script setup lang="ts">
 import { onMounted, onUnmounted, ref } from 'vue'
 import PublicSitePage from './PublicSitePage.vue'
-import TenantAgendaOperations from './TenantAgendaOperations.vue'
-import TenantAgendaSmartWorkspace from './TenantAgendaSmartWorkspace.vue'
+import TenantAgendaCenter from './TenantAgendaCenter.vue'
+import TenantAgendaOperator from './TenantAgendaOperator.vue'
 import TenantBookingAndMessages from './TenantBookingAndMessages.vue'
 import TenantBrandAssetUploader from './TenantBrandAssetUploader.vue'
 import TenantBrandedLogin from './TenantBrandedLogin.vue'
 import TenantConfigurationCenter from './TenantConfigurationCenter.vue'
 import TenantConsole from './TenantConsole.vue'
+import TenantDashboardInsights from './TenantDashboardInsights.vue'
 import TenantExtensions from './TenantExtensions.vue'
 import TenantMailModeSelector from './TenantMailModeSelector.vue'
 import TenantPublicPageEditorV2 from './TenantPublicPageEditorV2.vue'
@@ -15,6 +16,7 @@ import TenantPwaInstallSurface from './TenantPwaInstallSurface.vue'
 import TenantSecondFactorGate from './TenantSecondFactorGate.vue'
 import TenantUniversalDownloads from './TenantUniversalDownloads.vue'
 import TenantWorkspaceCoordinator from './TenantWorkspaceCoordinator.vue'
+import './tenantContrast.css'
 
 const authenticated = ref(Boolean(localStorage.getItem('scheduler_pro_access_token')))
 const normalizedPath = window.location.pathname.replace(/\/+$/, '') || '/'
@@ -47,12 +49,13 @@ onUnmounted(() => {
     <template v-else>
       <TenantConsole />
       <TenantWorkspaceCoordinator />
+      <TenantDashboardInsights />
+      <TenantAgendaCenter />
+      <TenantAgendaOperator />
       <TenantExtensions />
       <TenantConfigurationCenter />
       <TenantPublicPageEditorV2 />
       <TenantBookingAndMessages />
-      <TenantAgendaOperations />
-      <TenantAgendaSmartWorkspace />
       <TenantMailModeSelector />
       <TenantBrandAssetUploader />
       <TenantUniversalDownloads />

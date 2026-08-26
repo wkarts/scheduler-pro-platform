@@ -1,0 +1,153 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://scheduler-pro.local/schemas/scheduler-pro-template-package-v1.json",
+  "title": "Scheduler Pro Template Package v1",
+  "type": "object",
+  "required": ["schema", "package"],
+  "additionalProperties": false,
+  "properties": {
+    "schema": {
+      "const": "scheduler-pro-template-package/v1"
+    },
+    "package": {
+      "type": "object",
+      "required": ["key", "name", "surfaces"],
+      "additionalProperties": true,
+      "properties": {
+        "key": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 120,
+          "pattern": "^[a-z0-9][a-z0-9-]*[a-z0-9]$"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 180
+        },
+        "description": {
+          "type": "string"
+        },
+        "segment": {
+          "type": "string",
+          "maxLength": 80
+        },
+        "scope": {
+          "enum": ["GLOBAL", "SELECTED", "EXCLUSIVE", "INTERNAL"]
+        },
+        "default_for_new_tenants": {
+          "type": "boolean"
+        },
+        "exclusive_tenant_id": {
+          "type": ["string", "null"]
+        },
+        "selected_tenant_ids": {
+          "type": "array",
+          "items": {"type": "string"},
+          "uniqueItems": true
+        },
+        "changelog": {
+          "type": "string"
+        },
+        "surfaces": {
+          "type": "object",
+          "minProperties": 1,
+          "additionalProperties": false,
+          "properties": {
+            "landing": {"$ref": "#/$defs/landing"},
+            "booking": {"$ref": "#/$defs/booking"}
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "responsive": {
+      "type": "object",
+      "properties": {
+        "desktop": {"type": "object"},
+        "tablet": {"type": "object"},
+        "mobile": {"type": "object"},
+        "hidden": {
+          "type": "object",
+          "properties": {
+            "desktop": {"type": "boolean"},
+            "tablet": {"type": "boolean"},
+            "mobile": {"type": "boolean"}
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": true
+    },
+    "block": {
+      "type": "object",
+      "required": ["id", "type", "props", "style", "responsive"],
+      "additionalProperties": true,
+      "properties": {
+        "id": {"type": "string", "minLength": 1},
+        "type": {
+          "enum": [
+            "section", "container", "columns", "grid", "hero", "title", "subtitle", "text",
+            "logo", "image", "gallery", "video", "button", "whatsapp_button", "social", "divider",
+            "spacer", "card", "cards", "services", "professionals", "booking", "calendar", "form",
+            "business_hours", "address", "map", "contact", "faq", "testimonials", "cta", "notices",
+            "policies", "footer"
+          ]
+        },
+        "props": {"type": "object"},
+        "style": {"type": "object"},
+        "responsive": {"$ref": "#/$defs/responsive"}
+      }
+    },
+    "landing": {
+      "type": "object",
+      "required": ["version", "global_styles", "seo", "blocks"],
+      "additionalProperties": true,
+      "properties": {
+        "version": {"type": "integer", "minimum": 2},
+        "title": {"type": "string"},
+        "global_styles": {"type": "object"},
+        "seo": {"type": "object"},
+        "blocks": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"$ref": "#/$defs/block"}
+        }
+      }
+    },
+    "booking": {
+      "type": "object",
+      "required": ["version", "surface", "global_styles", "layout", "copy"],
+      "additionalProperties": true,
+      "properties": {
+        "version": {"type": "integer", "minimum": 1},
+        "surface": {"const": "BOOKING"},
+        "global_styles": {"type": "object"},
+        "layout": {
+          "type": "object",
+          "additionalProperties": true,
+          "properties": {
+            "service_selector": {"enum": ["cards", "select", "compact"]},
+            "professional_selector": {"enum": ["cards", "select", "compact"]},
+            "calendar": {"enum": ["month_days", "week_days", "date_input"]},
+            "time_selector": {"enum": ["chips", "grid", "select"]},
+            "customer_form": {"enum": ["compact", "stacked", "cards"]},
+            "mobile_sticky_action": {"type": "boolean"}
+          }
+        },
+        "copy": {
+          "type": "object",
+          "required": ["title", "subtitle", "success"],
+          "additionalProperties": true,
+          "properties": {
+            "eyebrow": {"type": "string"},
+            "title": {"type": "string", "minLength": 1},
+            "subtitle": {"type": "string", "minLength": 1},
+            "success": {"type": "string", "minLength": 1}
+          }
+        }
+      }
+    }
+  }
+}

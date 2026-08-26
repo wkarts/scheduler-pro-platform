@@ -27,7 +27,7 @@ celery_app = Celery(
     "scheduler_pro",
     broker=settings.celery_broker_url,
     backend=settings.celery_result_backend,
-    include=["app.workers.tasks"],
+    include=["app.workers.tasks", "app.workers.agenda_report_tasks"],
 )
 celery_app.conf.update(
     broker_connection_retry_on_startup=True,
@@ -73,6 +73,10 @@ celery_app.conf.update(
             "queue": "builds",
             "routing_key": "builds",
         },
+        "app.workers.agenda_report_tasks.process_all_agenda_reports": {
+            "queue": "notifications",
+            "routing_key": "notifications",
+        },
     },
     beat_schedule={
         "notification-sweep-every-minute": {
@@ -86,6 +90,10 @@ celery_app.conf.update(
         "managed-domain-reconcile-every-ten-minutes": {
             "task": "app.workers.tasks.reconcile_managed_domains",
             "schedule": crontab(minute="*/10"),
+        },
+        "agenda-management-report-sweep-hourly": {
+            "task": "app.workers.agenda_report_tasks.process_all_agenda_reports",
+            "schedule": crontab(minute=10),
         },
     },
     timezone="America/Bahia",

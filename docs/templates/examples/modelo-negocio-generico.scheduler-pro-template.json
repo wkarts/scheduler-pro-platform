@@ -1,0 +1,118 @@
+{
+  "schema": "scheduler-pro-template-package/v1",
+  "package": {
+    "key": "modelo-negocio-generico",
+    "name": "Modelo de Negócio Genérico",
+    "description": "Família de exemplo compatível com Landing Page e Página de Agendamento.",
+    "segment": "generico",
+    "scope": "INTERNAL",
+    "default_for_new_tenants": false,
+    "surfaces": {
+      "landing": {
+        "version": 2,
+        "title": "Seu negócio",
+        "global_styles": {
+          "primary": "#2563eb",
+          "secondary": "#0f172a",
+          "accent": "#7c3aed",
+          "background": "#ffffff",
+          "text": "#17233a",
+          "radius": 20
+        },
+        "seo": {
+          "title": "Seu negócio",
+          "description": "Agende online."
+        },
+        "blocks": [
+          {
+            "id": "hero-1",
+            "type": "hero",
+            "props": {
+              "eyebrow": "Atendimento",
+              "title": "Seu negócio",
+              "text": "Apresente sua proposta de valor.",
+              "cta": "Agendar agora",
+              "image": ""
+            },
+            "style": {},
+            "responsive": {
+              "desktop": {},
+              "tablet": {},
+              "mobile": {},
+              "hidden": {
+                "desktop": false,
+                "tablet": false,
+                "mobile": false
+              }
+            }
+          },
+          {
+            "id": "booking-1",
+            "type": "booking",
+            "props": {
+              "title": "Escolha seu horário",
+              "subtitle": "Agende em poucos passos."
+            },
+            "style": {},
+            "responsive": {
+              "desktop": {},
+              "tablet": {},
+              "mobile": {},
+              "hidden": {
+                "desktop": false,
+                "tablet": false,
+                "mobile": false
+              }
+            }
+          },
+          {
+            "id": "footer-1",
+            "type": "footer",
+            "props": {
+              "text": "Atendimento com Scheduler Pro."
+            },
+            "style": {},
+            "responsive": {
+              "desktop": {},
+              "tablet": {},
+              "mobile": {},
+              "hidden": {
+                "desktop": false,
+                "tablet": false,
+                "mobile": false
+              }
+            }
+          }
+        ]
+      },
+      "booking": {
+        "version": 1,
+        "surface": "BOOKING",
+        "global_styles": {
+          "primary": "#2563eb",
+          "secondary": "#0f172a",
+          "accent": "#7c3aed",
+          "background": "#f5f7fb",
+          "surface": "#ffffff",
+          "text": "#17233a",
+          "muted": "#64748b",
+          "radius": 20
+        },
+        "layout": {
+          "service_selector": "cards",
+          "professional_selector": "cards",
+          "calendar": "month_days",
+          "time_selector": "chips",
+          "customer_form": "compact",
+          "mobile_sticky_action": true
+        },
+        "copy": {
+          "eyebrow": "Agendamento online",
+          "title": "Escolha seu horário",
+          "subtitle": "Selecione o atendimento e a melhor disponibilidade.",
+          "success": "Seu horário foi reservado."
+        }
+      }
+    }
+  }
+}

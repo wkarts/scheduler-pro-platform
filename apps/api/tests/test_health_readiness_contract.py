@@ -25,7 +25,7 @@ def test_development_seeded_local_domains_require_tenant_probe(monkeypatch) -> N
 
 
 def test_readiness_tracks_current_platform_migration_head() -> None:
-    assert PLATFORM_MIGRATION_HEAD == "platform_0010_admin_2fa"
+    assert PLATFORM_MIGRATION_HEAD == "platform_0011_global_templates"
 
 
 def test_foundation_integration_tracks_same_platform_migration_head() -> None:
