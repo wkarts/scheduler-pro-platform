@@ -1,6 +1,9 @@
 from dataclasses import dataclass
 
 
+DEFAULT_TENANT_STORAGE_QUOTA_BYTES = 2 * 1024 * 1024 * 1024
+
+
 @dataclass(frozen=True, slots=True)
 class TenantContext:
     tenant_id: str
@@ -12,6 +15,7 @@ class TenantContext:
     hostname: str
     timezone: str = "America/Bahia"
     database_credential_version: int = 1
+    storage_quota_bytes: int = DEFAULT_TENANT_STORAGE_QUOTA_BYTES
 
     def assert_same_tenant(self, authenticated_tenant_id: str | None) -> None:
         if authenticated_tenant_id and authenticated_tenant_id != self.tenant_id:
