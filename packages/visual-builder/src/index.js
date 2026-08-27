@@ -1,12 +1,12 @@
-import '../releases/2.0.1/styles/builder.css'
-import * as runtime from '../releases/2.0.1/src/index.js'
-export * from '../releases/2.0.1/src/index.js'
+import '../runtime/package/styles/builder.css'
+import * as runtime from '../runtime/package/src/index.js'
+export * from '../runtime/package/src/index.js'
 
-export const ARGWS_VISUAL_BUILDER_VERSION='2.0.1'
-export const ARGWS_VISUAL_BUILDER_DEFAULT_VERSION='2.0.1'
-export const ARGWS_VISUAL_BUILDER_SUPPORTED_VERSIONS=Object.freeze(['2.0.1'])
+export const ARGWS_VISUAL_BUILDER_VERSION='2.1.0'
+export const ARGWS_VISUAL_BUILDER_DEFAULT_VERSION='2.1.0'
+export const ARGWS_VISUAL_BUILDER_SUPPORTED_VERSIONS=Object.freeze(['2.1.0'])
 export const ARGWS_VISUAL_BUILDER_RELEASES=Object.freeze([
-  Object.freeze({version:'2.0.1',label:'ARGWS Visual Builder 2.0.1',schema:'argws-visual-builder/v3',channel:'current',recommended:true,description:'Release atual do editor visual universal do Scheduler Pro.'}),
+  Object.freeze({version:'2.1.0',label:'ARGWS Visual Builder 2.1.0',schema:'argws-visual-builder/v3',channel:'canonical',recommended:true,description:'Release canônica New-Only do editor visual responsivo do Scheduler Pro.'}),
 ])
 
 export function normalizeVisualBuilderVersion(){return ARGWS_VISUAL_BUILDER_VERSION}
