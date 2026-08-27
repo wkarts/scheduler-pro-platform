@@ -1,0 +1,48 @@
+name: Materialize Visual Builder Release
+
+on:
+  push:
+    branches:
+      - feat/argws-visual-builder-versions-20260827
+    paths:
+      - .github/workflows/materialize-visual-builder-release.yml
+
+permissions:
+  contents: write
+
+jobs:
+  materialize:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/argws-visual-builder-versions-20260827
+          fetch-depth: 0
+      - name: Materialize ARGWS Visual Builder 2.0.1 source snapshot
+        shell: bash
+        run: |
+          set -euo pipefail
+          encoded_dir="packages/visual-builder/release-b64/2.0.1"
+          test -d "$encoded_dir"
+          cat "$encoded_dir"/part-*.b64 | tr -d '\r\n\t ' | base64 --decode > /tmp/argws-visual-builder-2.0.1.tgz
+          echo "ee850cf3672261f6c390e53d0c853947c2381a9dd298e46df1c01546ca76cdfe  /tmp/argws-visual-builder-2.0.1.tgz" | sha256sum -c -
+          rm -rf /tmp/vb201
+          mkdir -p /tmp/vb201
+          tar -xzf /tmp/argws-visual-builder-2.0.1.tgz -C /tmp/vb201
+          test "$(node -p "require('/tmp/vb201/package/package.json').version")" = "2.0.1"
+          rm -rf packages/visual-builder/releases/2.0.1
+          mkdir -p packages/visual-builder/releases/2.0.1
+          cp -a /tmp/vb201/package/. packages/visual-builder/releases/2.0.1/
+          rm -rf packages/visual-builder/release-b64 packages/visual-builder/runtime
+          rm -f packages/visual-builder/scripts/materialize-releases.mjs
+          rmdir packages/visual-builder/scripts 2>/dev/null || true
+          git rm -- .github/workflows/materialize-visual-builder-release.yml
+      - name: Commit source snapshot
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A packages/visual-builder .github/workflows
+          git commit -m "build(builder): substituir Base64 por source snapshot 2.0.1"
+          git push origin HEAD:feat/argws-visual-builder-versions-20260827
