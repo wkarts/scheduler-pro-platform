@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 from pathlib import Path
 from typing import Any
 
@@ -12,14 +13,21 @@ from app.services.html_template_package_service import HtmlTemplatePackageServic
 RESOURCE_DIR = Path(__file__).resolve().parents[2] / "resources" / "template-packages"
 
 BUILTIN_TEMPLATE_PACKAGES: tuple[str, ...] = (
-    "barber-shop-neo-generico.zip",
-    "clinica-medica-generico.zip",
-    "clinica-odontologica-generico.zip",
-    "clinica-veterinaria-generico.zip",
-    "martelinho-de-ouro-generico.zip",
-    "studio-unhas-generico.zip",
-    "tecnologia-generico-simples.zip",
+    "barber-shop-neo-generico.zip.b64",
+    "clinica-medica-generico.zip.b64",
+    "clinica-odontologica-generico.zip.b64",
+    "clinica-veterinaria-generico.zip.b64",
+    "martelinho-de-ouro-generico.zip.b64",
+    "studio-unhas-generico.zip.b64",
+    "tecnologia-generico-simples.zip.b64",
 )
+
+
+def package_archive(path: Path) -> bytes:
+    try:
+        return base64.b64decode(path.read_text(encoding="ascii"), validate=True)
+    except (OSError, UnicodeError, ValueError) as exc:
+        raise RuntimeError(f"Pacote oficial Base64 inválido: {path}") from exc
 
 
 async def _existing_surfaces(session: AsyncSession, key: str) -> set[str]:
@@ -35,6 +43,10 @@ async def _existing_surfaces(session: AsyncSession, key: str) -> set[str]:
 async def sync_builtin_template_packages(session: AsyncSession) -> list[dict[str, Any]]:
     """Instala uma vez os pacotes HTML oficiais enviados para esta release.
 
+    Os ZIPs são guardados no repositório como Base64 ASCII para que a fonte
+    permaneça transportável por todos os pipelines sem alterar os bytes do
+    arquivo reconstruído. A validação continua sendo feita sobre o ZIP real.
+
     Depois da primeira instalação, o Control Plane passa a ser a autoridade de
     escopo, publicação e versionamento. Deploys futuros não sobrescrevem uma
     família que já exista, nem mesmo quando ela tiver sido personalizada pelo
@@ -47,7 +59,7 @@ async def sync_builtin_template_packages(session: AsyncSession) -> list[dict[str
         path = RESOURCE_DIR / filename
         if not path.is_file():
             raise RuntimeError(f"Pacote oficial ausente: {path}")
-        parsed = HtmlTemplatePackageService.ensure(path.read_bytes())
+        parsed = HtmlTemplatePackageService.ensure(package_archive(path))
         metadata = parsed["package"]
         documents: dict[str, str] = parsed["documents"]
         key = str(metadata["key"])
