@@ -75,14 +75,7 @@ class VisualBuilderVersionService:
     async def platform_policy(self) -> dict[str, Any]:
         row = (
             await self.platform_session.execute(
-                text(
-                    """
-                    select enabled, rules
-                    from feature_flags
-                    where key=:key
-                    limit 1
-                    """
-                ),
+                text("select enabled, rules from feature_flags where key=:key limit 1"),
                 {"key": POLICY_FLAG_KEY},
             )
         ).mappings().first()
@@ -102,29 +95,30 @@ class VisualBuilderVersionService:
         await self.platform_session.execute(
             text(
                 """
-                insert into feature_flags(key, enabled, rules, created_at, updated_at)
-                values(:key, true, cast(:rules as jsonb), now(), now())
-                on conflict(key) do update
-                set enabled=true, rules=excluded.rules, updated_at=now()
+                insert into feature_flags(key, enabled, rules)
+                values(:key, true, cast(:rules as jsonb))
+                on conflict(key) do update set enabled=true, rules=excluded.rules
                 """
             ),
-            {
-                "key": POLICY_FLAG_KEY,
-                "rules": json.dumps({"default_version": normalized}),
-            },
+            {"key": POLICY_FLAG_KEY, "rules": json.dumps({"default_version": normalized})},
         )
         await self.platform_session.commit()
         return await self.platform_policy()
 
     async def tenant_policy(self, tenant_id: str) -> dict[str, Any]:
-        settings = await self.platform_session.scalar(
-            text("select settings from tenants where id=cast(:tenant_id as uuid) limit 1"),
-            {"tenant_id": tenant_id},
-        )
-        if settings is None:
+        row = (
+            await self.platform_session.execute(
+                text(
+                    "select id::text, coalesce(settings, '{}'::jsonb) as settings "
+                    "from tenants where id=cast(:tenant_id as uuid) limit 1"
+                ),
+                {"tenant_id": tenant_id},
+            )
+        ).mappings().first()
+        if row is None:
             raise APIError("TENANT_NOT_FOUND", "Empresa não encontrada.", 404)
         platform = await self.platform_policy()
-        tenant_settings = dict(settings or {})
+        tenant_settings = dict(row["settings"] or {})
         raw = tenant_settings.get(TENANT_POLICY_KEY)
         explicit = isinstance(raw, dict)
         policy = dict(raw) if explicit else {}
@@ -170,10 +164,7 @@ class VisualBuilderVersionService:
         )
         if not exists:
             raise APIError("TENANT_NOT_FOUND", "Empresa não encontrada.", 404)
-        payload = {
-            "allowed_versions": allowed,
-            "default_version": tenant_default,
-        }
+        payload = {"allowed_versions": allowed, "default_version": tenant_default}
         await self.platform_session.execute(
             text(
                 """
@@ -183,7 +174,7 @@ class VisualBuilderVersionService:
                     '{argws_visual_builder}',
                     cast(:policy as jsonb),
                     true
-                ), updated_at=now()
+                )
                 where id=cast(:tenant_id as uuid)
                 """
             ),
@@ -243,10 +234,7 @@ class VisualBuilderVersionService:
                 "VISUAL_BUILDER_VERSION_NOT_RELEASED",
                 "Esta versão do ARGWS Visual Builder não foi liberada para a empresa.",
                 403,
-                {
-                    "version": normalized,
-                    "allowed_versions": policy["allowed_versions"],
-                },
+                {"version": normalized, "allowed_versions": policy["allowed_versions"]},
             )
         await tenant_session.execute(
             text(
