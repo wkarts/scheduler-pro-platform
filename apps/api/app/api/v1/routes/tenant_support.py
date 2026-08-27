@@ -18,6 +18,7 @@ from app.db.session import tenant_session
 from app.services.booking_parameters_service import BookingParametersService
 from app.services.branding_service import BrandingService
 from app.services.global_template_service import GlobalTemplateService
+from app.services.html_template_contract import HtmlTemplateContract
 from app.services.landing_service import LandingPageService
 from app.services.template_contract import TemplateContract
 from app.services.tenant_resolver import TenantResolver
@@ -56,6 +57,13 @@ class BookingPageSettingsUpdate(BaseModel):
 
 async def _context(session: AsyncSession, tenant_id: str) -> TenantContext:
     return await TenantResolver(session).resolve_by_id(tenant_id, require_active=False)
+
+
+def _validate_template_content(surface: str, content: dict[str, Any]) -> None:
+    if HtmlTemplateContract.is_html_content(content):
+        HtmlTemplateContract.ensure_wrapper(content, expected_surface=surface)
+        return
+    TemplateContract.ensure_content(surface, content, strict=True)
 
 
 @router.get("/{tenant_id}/booking-parameters")
@@ -124,7 +132,7 @@ async def save_tenant_landing_support(
     platform: AsyncSession = Depends(get_platform_session),
 ) -> dict[str, Any]:
     assert_platform_tenant_access(principal, tenant_id)
-    TemplateContract.ensure_content("LANDING", payload, strict=True)
+    _validate_template_content("LANDING", payload)
     context = await _context(platform, tenant_id)
     async for database in tenant_session(context):
         result = await LandingPageService(database).save_draft(
@@ -175,17 +183,14 @@ async def apply_global_landing_template_support(
         from app.core.errors import APIError
 
         raise APIError("GLOBAL_TEMPLATE_SURFACE_MISMATCH", "Este modelo não é de Landing Page.", 422)
-    TemplateContract.ensure_content(
-        "LANDING",
-        template["version"]["content"],
-        strict=True,
-    )
+    template_content = template["version"]["content"]
+    _validate_template_content("LANDING", template_content)
     context = await _context(platform, tenant_id)
     async for database in tenant_session(context):
         service = LandingPageService(database)
         draft = await service.save_draft(
             slug,
-            template["version"]["content"],
+            template_content,
             created_by=None,
             label=f"Modelo global: {template['name']} v{template['version']['version_number']}",
         )
@@ -274,17 +279,14 @@ async def apply_global_booking_template_support(
         from app.core.errors import APIError
 
         raise APIError("GLOBAL_TEMPLATE_SURFACE_MISMATCH", "Este modelo não é de Página de Agendamento.", 422)
-    TemplateContract.ensure_content(
-        "BOOKING",
-        template["version"]["content"],
-        strict=True,
-    )
+    template_content = template["version"]["content"]
+    _validate_template_content("BOOKING", template_content)
     context = await _context(platform, tenant_id)
     async for database in tenant_session(context):
         values = {
             "booking_page_template_key": template["key"],
             "booking_page_template_version": int(template["version"]["version_number"]),
-            "booking_page_template_content": template["version"]["content"],
+            "booking_page_template_content": template_content,
         }
         for key, value in values.items():
             await database.execute(
