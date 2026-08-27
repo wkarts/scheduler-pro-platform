@@ -69,3 +69,13 @@ async def update_tenant_visual_builder_policy(
             default_version=payload.default_version,
         )
     )
+
+
+@router.delete("/tenants/{tenant_id}")
+async def reset_tenant_visual_builder_policy(
+    tenant_id: str,
+    principal: AuthPrincipal = Depends(require_platform_permission("templates.manage")),
+    session: AsyncSession = Depends(get_platform_session),
+) -> dict[str, Any]:
+    assert_platform_tenant_access(principal, tenant_id)
+    return success(await VisualBuilderVersionService(session).reset_tenant_policy(tenant_id))
