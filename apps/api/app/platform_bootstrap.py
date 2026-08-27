@@ -6,6 +6,7 @@ from app.cli import migrate_all_tenants
 from app.core.config import settings
 from app.core.security import hash_password
 from app.db.session import PlatformSession
+from app.services.official_template_catalog_service import replace_official_template_catalog
 
 
 async def bootstrap_platform_admin() -> None:
@@ -77,6 +78,16 @@ async def bootstrap_platform() -> None:
     # contra tenant databases sem o Alembic head esperado pela imagem nova.
     await migrate_all_tenants()
     await bootstrap_platform_admin()
+
+    # O catálogo oficial é tratado como conteúdo de distribuição da plataforma,
+    # não como seed do banco de cada cliente. Uma revisão nova substitui o catálogo
+    # global uma vez; boots seguintes apenas reparam superfícies ausentes.
+    async with PlatformSession() as session:
+        catalog = await replace_official_template_catalog(session)
+    print(
+        "Scheduler Pro official template catalog ready: "
+        f"revision={catalog['revision']} replaced={catalog['replaced']}"
+    )
 
 
 if __name__ == "__main__":
