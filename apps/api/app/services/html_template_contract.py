@@ -89,12 +89,7 @@ class _HtmlInspection(HTMLParser):
 
 
 class HtmlTemplateContract:
-    """Contrato de autoria HTML para Landing Page e Página de Agendamento.
-
-    HTML é o artefato visual de primeira classe. O JSON usado internamente para
-    persistência funciona apenas como envelope e nunca como formato obrigatório
-    para quem constrói o layout.
-    """
+    """Contrato de autoria HTML para Landing Page e Página de Agendamento."""
 
     @staticmethod
     def is_html_content(content: Any) -> bool:
@@ -150,9 +145,16 @@ class HtmlTemplateContract:
             return {
                 "valid": False,
                 "schema": HTML_CONTRACT_SCHEMA,
-                "errors": [_issue("html", "HTML_STRING_REQUIRED", "Envie um documento HTML completo.")],
+                "errors": [
+                    _issue(
+                        "html",
+                        "HTML_STRING_REQUIRED",
+                        "Envie um documento HTML completo.",
+                    )
+                ],
                 "warnings": [],
             }
+
         size = len(html_document.encode("utf-8"))
         if not html_document.strip():
             errors.append(_issue("html", "HTML_EMPTY", "O documento HTML está vazio."))
@@ -170,16 +172,34 @@ class HtmlTemplateContract:
             parser.feed(html_document)
             parser.close()
         except Exception as exc:
-            errors.append(_issue("html", "HTML_PARSE_FAILED", f"Não foi possível analisar o HTML: {exc.__class__.__name__}."))
+            errors.append(
+                _issue(
+                    "html",
+                    "HTML_PARSE_FAILED",
+                    f"Não foi possível analisar o HTML: {exc.__class__.__name__}.",
+                )
+            )
 
         if not parser.has_doctype:
             errors.append(_issue("doctype", "HTML_DOCTYPE_REQUIRED", "Use <!doctype html>."))
         if not parser.has_html or not parser.has_head or not parser.has_body:
-            errors.append(_issue("document", "HTML_DOCUMENT_STRUCTURE_REQUIRED", "O arquivo precisa conter html, head e body."))
+            errors.append(
+                _issue(
+                    "document",
+                    "HTML_DOCUMENT_STRUCTURE_REQUIRED",
+                    "O arquivo precisa conter html, head e body.",
+                )
+            )
 
         viewport = parser.meta.get("viewport", "")
         if "width=device-width" not in viewport.replace(" ", "").lower():
-            errors.append(_issue("meta.viewport", "HTML_VIEWPORT_REQUIRED", "Defina viewport responsivo com width=device-width."))
+            errors.append(
+                _issue(
+                    "meta.viewport",
+                    "HTML_VIEWPORT_REQUIRED",
+                    "Defina viewport responsivo com width=device-width.",
+                )
+            )
 
         key = parser.meta.get("scheduler-pro-template", "").strip().lower()
         if len(key) < 2 or not TEMPLATE_KEY_RE.fullmatch(key):
@@ -226,7 +246,13 @@ class HtmlTemplateContract:
             )
 
         for tag in sorted(set(parser.forbidden_tags)):
-            errors.append(_issue(f"tag.{tag}", "HTML_TAG_FORBIDDEN", f"A tag <{tag}> não é permitida em modelos HTML."))
+            errors.append(
+                _issue(
+                    f"tag.{tag}",
+                    "HTML_TAG_FORBIDDEN",
+                    f"A tag <{tag}> não é permitida em modelos HTML.",
+                )
+            )
         for src in parser.external_scripts:
             errors.append(
                 _issue(
@@ -263,7 +289,18 @@ class HtmlTemplateContract:
                 )
 
         lowered = html_document.lower()
-        if surface == "BOOKING" and "/api/v1/public/booking" not in lowered and "data-scheduler-pro-booking" not in lowered:
+        has_direct_booking_api = "/api/v1/public/booking" in lowered
+        has_declared_booking_bridge = "data-scheduler-pro-booking" in lowered
+        has_composed_booking_api = (
+            "/api/v1/public" in lowered
+            and re.search(r"[\"'`]\/booking(?:\/availability)?(?:\?|[\"'`])", lowered)
+            is not None
+        )
+        if surface == "BOOKING" and not (
+            has_direct_booking_api
+            or has_declared_booking_bridge
+            or has_composed_booking_api
+        ):
             errors.append(
                 _issue(
                     "html",
@@ -334,11 +371,15 @@ class HtmlTemplateContract:
         expected_surface: str | None = None,
     ) -> dict[str, Any]:
         if not cls.is_html_content(content):
-            raise APIError("HTML_TEMPLATE_WRAPPER_INVALID", "Conteúdo HTML inválido.", 422)
+            raise APIError(
+                "HTML_TEMPLATE_WRAPPER_INVALID",
+                "Conteúdo HTML inválido.",
+                422,
+            )
         html_document = str(content["html_document"])
         normalized = cls.wrapper(html_document, expected_surface=expected_surface)
         for key, value in deepcopy(content).items():
-            if key not in normalized and key not in {"html_document"}:
+            if key not in normalized and key != "html_document":
                 normalized[key] = value
         return normalized
 
@@ -353,17 +394,33 @@ class HtmlTemplateContract:
         warnings: list[dict[str, str]] = []
         reports: dict[str, dict[str, Any]] = {}
         if not landing_html and not booking_html:
-            errors.append(_issue("files", "HTML_TEMPLATE_FILE_REQUIRED", "Envie a Landing Page, a Página de Agendamento ou as duas."))
+            errors.append(
+                _issue(
+                    "files",
+                    "HTML_TEMPLATE_FILE_REQUIRED",
+                    "Envie a Landing Page, a Página de Agendamento ou as duas.",
+                )
+            )
         if landing_html:
-            reports["landing"] = cls.validate_html(landing_html, expected_surface="LANDING")
+            reports["landing"] = cls.validate_html(
+                landing_html,
+                expected_surface="LANDING",
+            )
         if booking_html:
-            reports["booking"] = cls.validate_html(booking_html, expected_surface="BOOKING")
+            reports["booking"] = cls.validate_html(
+                booking_html,
+                expected_surface="BOOKING",
+            )
         for name, report in reports.items():
-            for issue in report["errors"]:
-                errors.append({**issue, "path": f"{name}.{issue['path']}"})
-            for issue in report["warnings"]:
-                warnings.append({**issue, "path": f"{name}.{issue['path']}"})
-        keys = {str(report.get("template_key") or "") for report in reports.values() if report.get("template_key")}
+            for item in report["errors"]:
+                errors.append({**item, "path": f"{name}.{item['path']}"})
+            for item in report["warnings"]:
+                warnings.append({**item, "path": f"{name}.{item['path']}"})
+        keys = {
+            str(report.get("template_key") or "")
+            for report in reports.values()
+            if report.get("template_key")
+        }
         if len(keys) > 1:
             errors.append(
                 _issue(
@@ -388,7 +445,10 @@ class HtmlTemplateContract:
         landing_html: str | None = None,
         booking_html: str | None = None,
     ) -> dict[str, Any]:
-        report = cls.validate_pair(landing_html=landing_html, booking_html=booking_html)
+        report = cls.validate_pair(
+            landing_html=landing_html,
+            booking_html=booking_html,
+        )
         if not report["valid"]:
             raise APIError(
                 "HTML_TEMPLATE_PAIR_INVALID",
