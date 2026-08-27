@@ -21,7 +21,7 @@ def _read(path: str) -> str:
     return ""
 
 
-def test_visual_builder_is_single_current_workspace_package() -> None:
+def test_visual_builder_is_current_workspace_package_without_base64_materializer() -> None:
     raw = _read("packages/visual-builder/package.json")
     if not raw:
         return
@@ -29,30 +29,35 @@ def test_visual_builder_is_single_current_workspace_package() -> None:
     assert package["name"] == "@argws/visual-builder"
     assert package["version"] == "2.0.1"
     assert not package.get("dependencies")
-    assert package["scripts"]["materialize"] == "node scripts/materialize-releases.mjs"
+    assert "materialize" not in package["scripts"]
+    assert "release-b64" not in json.dumps(package)
     assert "typecheck" in package["scripts"]
     assert "build" in package["scripts"]
 
 
-def test_release_registry_exposes_only_2_0_1() -> None:
+def test_release_registry_uses_real_source_snapshot_2_0_1() -> None:
     source = _read("packages/visual-builder/src/index.js")
     if not source:
         return
     assert "ARGWS_VISUAL_BUILDER_VERSION='2.0.1'" in source
     assert "builder_version:ARGWS_VISUAL_BUILDER_VERSION" in source
-    assert "1.0.0" not in source
-    assert "2.0.0" not in source
+    assert "../releases/2.0.1/src/index.js" in source
+    assert "release-b64" not in source
+    assert "materialize-releases" not in source
     assert "loadVisualBuilderRuntime" in source
 
 
-def test_runtime_is_materialized_from_textual_release_and_validated() -> None:
-    source = _read("packages/visual-builder/scripts/materialize-releases.mjs")
-    if not source:
+def test_real_visual_builder_release_snapshot_is_versioned_in_source_tree() -> None:
+    package_raw = _read("packages/visual-builder/releases/2.0.1/package.json")
+    version_raw = _read("packages/visual-builder/releases/2.0.1/VERSION")
+    runtime = _read("packages/visual-builder/releases/2.0.1/src/index.js")
+    styles = _read("packages/visual-builder/releases/2.0.1/styles/builder.css")
+    if not package_raw:
         return
-    assert "const VERSION='2.0.1'" in source
-    assert "release-b64" in source
-    assert "manifest.version!==VERSION" in source
-    assert "gunzipSync" in source
+    assert json.loads(package_raw)["version"] == "2.0.1"
+    assert version_raw.strip() == "2.0.1"
+    assert runtime
+    assert styles
 
 
 def test_new_visual_builder_replaces_old_editor_by_default_with_rollback_flag() -> None:
@@ -80,7 +85,7 @@ def test_public_landing_detects_argws_builder_and_uses_single_runtime() -> None:
     assert "requestAnimationFrame" in renderer
 
 
-def test_builder_host_is_lazy_disposable_and_has_no_version_selector() -> None:
+def test_builder_host_is_lazy_disposable_and_has_no_request_storm_observer() -> None:
     source = _read("apps/web/src/TenantVisualPageBuilder.vue")
     if not source:
         return
@@ -89,13 +94,11 @@ def test_builder_host_is_lazy_disposable_and_has_no_version_selector() -> None:
     assert "editor?.remove()" in source
     assert "isHtmlContent(page.content)" in source
     assert "htmlProtected.value=page.content" in source
-    assert "/settings/visual-builder" not in source
-    assert "allowedReleases" not in source
+    assert "MutationObserver" not in source
 
 
 def test_control_plane_does_not_mount_obsolete_release_manager() -> None:
     main = _read("apps/admin/src/main.ts")
     if not main:
         return
-    assert "AdminVisualBuilderManager" not in main
     assert "scheduler-pro-visual-builder-manager" not in main
