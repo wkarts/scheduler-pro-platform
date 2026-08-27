@@ -29,7 +29,6 @@ LEGACY_SYSTEM_TEMPLATE_KEYS: tuple[str, ...] = (
     "saude-clinica",
 )
 
-
 def builtin_template_archive(key: str) -> bytes:
     if key not in OFFICIAL_TEMPLATE_KEYS:
         raise KeyError(key)
@@ -46,11 +45,7 @@ def builtin_template_archive(key: str) -> bytes:
         raise RuntimeError(f"Pacote oficial ZIP inválido: {key}")
     return payload
 
-
 async def _remove_legacy_system_templates(session: AsyncSession) -> int:
-    # Remove somente modelos legados de plataforma. Modelos criados pelo cliente
-    # ou pelo administrador continuam intactos, e páginas já aplicadas ao tenant
-    # não são alteradas por esta limpeza do catálogo global.
     result = await session.execute(
         text(
             """
@@ -69,7 +64,6 @@ async def _remove_legacy_system_templates(session: AsyncSession) -> int:
     await session.commit()
     return removed
 
-
 async def _existing_surfaces(session: AsyncSession, key: str) -> set[str]:
     rows = (
         await session.execute(
@@ -79,15 +73,7 @@ async def _existing_surfaces(session: AsyncSession, key: str) -> set[str]:
     ).scalars().all()
     return {str(value) for value in rows}
 
-
 async def sync_builtin_template_packages(session: AsyncSession) -> dict[str, Any]:
-    """Instala a biblioteca oficial HTML do Scheduler Pro de forma idempotente.
-
-    O deploy nunca sobrescreve uma família já existente: depois da primeira
-    instalação, o Control Plane é a autoridade de versionamento, escopo e
-    publicação. Isso evita alterar silenciosamente páginas em produção.
-    """
-
     removed_legacy = await _remove_legacy_system_templates(session)
     importer = HtmlTemplateImportService(session)
     installed: list[dict[str, Any]] = []
