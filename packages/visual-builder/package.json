@@ -1,23 +1,24 @@
 {
   "name": "@argws/visual-builder",
-  "version": "2.0.1",
-  "description": "Registry oficial de versões do ARGWS Visual Builder Editor para o Scheduler Pro.",
+  "version": "2.1.0",
+  "description": "ARGWS Visual Builder Editor canônico 2.1.0 para o Scheduler Pro.",
   "type": "module",
   "main": "./src/index.js",
   "module": "./src/index.js",
   "types": "./src/index.d.ts",
   "exports": {
     ".": { "types": "./src/index.d.ts", "import": "./src/index.js" },
-    "./styles.css": "./releases/2.0.1/styles/builder.css"
+    "./styles.css": "./runtime/package/styles/builder.css"
   },
-  "files": ["src", "releases", "LICENSE", "README.md"],
+  "files": ["src", "release-b64", "runtime", "scripts", "LICENSE", "README.md"],
   "scripts": {
-    "test": "node --test tests/*.test.js",
-    "check": "node --check src/index.js",
+    "materialize": "node scripts/materialize-release.mjs",
+    "test": "npm run check",
+    "check": "npm run materialize && node --check src/index.js && node --check runtime/package/src/index.js && node --check runtime/package/src/template-packages.js",
     "typecheck": "npm run check",
     "build": "npm run check"
   },
-  "keywords": ["page-builder", "landing-page", "visual-editor", "scheduler-pro", "argws"],
+  "keywords": ["page-builder", "landing-page", "visual-editor", "responsive", "scheduler-pro", "argws"],
   "license": "MIT",
   "engines": { "node": ">=20" },
   "private": true
