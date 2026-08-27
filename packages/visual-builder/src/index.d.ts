@@ -1,6 +1,6 @@
-export * from '../releases/2.0.1/src/index.js'
+export * from '../runtime/package/src/index.js'
 
-export type VisualBuilderVersion='2.0.1'
+export type VisualBuilderVersion='2.1.0'
 export interface VisualBuilderRelease{version:VisualBuilderVersion;label:string;schema:string;channel:string;recommended:boolean;description:string}
 export const ARGWS_VISUAL_BUILDER_VERSION:VisualBuilderVersion
 export const ARGWS_VISUAL_BUILDER_RELEASES:readonly VisualBuilderRelease[]
