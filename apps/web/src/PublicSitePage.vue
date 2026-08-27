@@ -19,6 +19,8 @@ type BookingConfig={
   default_duration_minutes:number;default_professional_name:string;simultaneous_capacity?:number|null;unlimited_capacity?:boolean;public_url:string;booking_template?:BookingTemplate|null
 }
 type Catalog={config:BookingConfig;services:Service[];professionals:Professional[];branding:BrandingManifest}
+type WidgetBookingTemplate={key:string;version:number;content:BookingDesignContent}
+type WidgetCatalog={config:Omit<BookingConfig,'booking_template'>&{booking_template?:WidgetBookingTemplate|null};services:Service[];professionals:Professional[]}
 type PageBlock={id:string;type:string;props:Record<string,unknown>;style?:CSSProperties;responsive?:{desktop?:CSSProperties;tablet?:CSSProperties;mobile?:CSSProperties;hidden?:Partial<Record<Device,boolean>>}}
 type BlockPageContent={version:number;global_styles?:Record<string,unknown>;seo?:Record<string,unknown>;blocks?:PageBlock[]}
 type PageContent=BlockPageContent|HtmlContent
@@ -36,9 +38,22 @@ const error=ref('')
 
 function isHtmlContent(value:unknown):value is HtmlContent{return Boolean(value&&typeof value==='object'&&(value as HtmlContent).render_mode==='HTML'&&typeof (value as HtmlContent).html_document==='string')}
 function blockContent(value:PageContent):BlockPageContent{return value as BlockPageContent}
+function widgetTemplate(template:BookingTemplate|null|undefined):WidgetBookingTemplate|null{
+  if(!template||isHtmlContent(template.content))return null
+  return{key:template.key,version:template.version,content:template.content}
+}
 const landingHtml=computed(()=>landing.value&&isHtmlContent(landing.value.content)?landing.value.content.html_document:'')
 const bookingHtml=computed(()=>{const content=catalog.value?.config.booking_template?.content;return isHtmlContent(content)?content.html_document:''})
 const templateGlobals=computed<Record<string,unknown>>(()=>{const content=catalog.value?.config.booking_template?.content;return content&&!isHtmlContent(content)?content.global_styles||{}:{}})
+const widgetCatalog=computed<WidgetCatalog|null>(()=>{
+  const current=catalog.value
+  if(!current)return null
+  return{
+    config:{...current.config,booking_template:widgetTemplate(current.config.booking_template)},
+    services:current.services,
+    professionals:current.professionals,
+  }
+})
 const bookingPageStyle=computed<CSSProperties>(()=>{
   const globals=templateGlobals.value
   return {
@@ -70,7 +85,7 @@ onMounted(()=>void load())
     <template v-else-if="landingMode&&landing">
       <HtmlTemplateFrame v-if="landingHtml" :html="landingHtml" mode="landing" />
       <PublicLandingRenderer v-else :content="blockContent(landing.content)" :services="catalog?.services||[]" :professionals="catalog?.professionals||[]" :template-key="landing.template_key">
-        <template #booking><PublicBookingWidget v-if="catalog" :catalog="catalog"/><div v-else class="booking-unavailable"><CalendarDays :size="30"/><strong>Agenda online indisponível neste momento.</strong><span>Você ainda pode usar os contatos desta página.</span></div></template>
+        <template #booking><PublicBookingWidget v-if="widgetCatalog" :catalog="widgetCatalog"/><div v-else class="booking-unavailable"><CalendarDays :size="30"/><strong>Agenda online indisponível neste momento.</strong><span>Você ainda pode usar os contatos desta página.</span></div></template>
       </PublicLandingRenderer>
     </template>
 
@@ -78,7 +93,7 @@ onMounted(()=>void load())
       <HtmlTemplateFrame v-if="bookingHtml" :html="bookingHtml" mode="booking" />
       <section v-else class="direct-booking-shell" :data-template="catalog.config.booking_template?.key||''">
         <header class="direct-booking-header"><div class="direct-brand"><img v-if="catalog.branding.assets.logo_url" :src="catalog.branding.assets.logo_url" :alt="catalog.branding.app.public_name"/><div v-else class="direct-mark">SP</div><div><strong>{{catalog.branding.app.public_name||'Scheduler Pro'}}</strong><small>{{catalog.branding.app.slogan||'Agendamento online'}}</small></div></div><div class="direct-copy"><span>Agenda online</span><h1>{{catalog.config.title}}</h1><p>{{catalog.config.subtitle}}</p></div></header>
-        <PublicBookingWidget :catalog="catalog"/>
+        <PublicBookingWidget v-if="widgetCatalog" :catalog="widgetCatalog"/>
       </section>
     </template>
 
