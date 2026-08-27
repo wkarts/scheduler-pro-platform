@@ -38,6 +38,30 @@ def _validate_landing_content(content: dict[str, Any]) -> None:
     TemplateContract.ensure_content("LANDING", content, strict=True)
 
 
+async def _guard_html_editor_overwrite(
+    session: AsyncSession,
+    slug: str,
+    incoming: dict[str, Any],
+) -> None:
+    """Impede o editor de blocos de apagar uma Landing HTML sem intenção explícita.
+
+    Trocas de modelo continuam permitidas pelos endpoints de aplicação de template;
+    esta barreira protege apenas os saves/autosaves genéricos do editor visual.
+    """
+    current = await LandingPageService(session).editor_state(slug)
+    current_content = current.get("content")
+    if (
+        isinstance(current_content, dict)
+        and HtmlTemplateContract.is_html_content(current_content)
+        and not HtmlTemplateContract.is_html_content(incoming)
+    ):
+        raise APIError(
+            "LANDING_HTML_EDITOR_REQUIRED",
+            "Esta página usa um modelo HTML. Edite ou substitua o HTML pela área de modelos; para trocar para um modelo visual por blocos, aplique explicitamente outro modelo.",
+            409,
+        )
+
+
 @router.get("/templates")
 async def templates(
     context: TenantContext = Depends(get_tenant_context),
@@ -90,6 +114,7 @@ async def save_draft(
     session: AsyncSession = Depends(get_tenant_session),
 ) -> dict[str, Any]:
     _validate_landing_content(payload)
+    await _guard_html_editor_overwrite(session, slug, payload)
     draft = await LandingPageService(session).save_draft(
         slug,
         payload,
@@ -107,6 +132,7 @@ async def autosave(
     session: AsyncSession = Depends(get_tenant_session),
 ) -> dict[str, Any]:
     _validate_landing_content(payload)
+    await _guard_html_editor_overwrite(session, slug, payload)
     draft = await LandingPageService(session).save_draft(
         slug,
         payload,
