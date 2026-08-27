@@ -9,7 +9,7 @@ type ApiBridgeRequest={
   method:string
   body?:string|null
 }
-type BridgeMessage={type?:string;id?:string;path?:string;method?:string;body?:string|null;height?:number}
+type BridgeMessage={type?:string;id?:string;path?:string;method?:string;body?:string|null;height?:number;href?:string}
 
 const props=withDefaults(defineProps<{html:string;mode?:Mode}>(),{mode:'landing'})
 const frame=ref<HTMLIFrameElement|null>(null)
@@ -57,6 +57,18 @@ const BRIDGE_SOURCE=`
       headers:data.headers||{'content-type':'application/json'}
     }));
   });
+  document.addEventListener('click',function(event){
+    var node=event.target;
+    if(!node||typeof node.closest!=='function')return;
+    var link=node.closest('a[href]');
+    if(!link)return;
+    var href=String(link.getAttribute('href')||'').trim();
+    if(!href||href.charAt(0)==='#')return;
+    if(href==='/agendar'||href.indexOf('/agendar?')===0||href==='/pagina'||href.indexOf('/pagina?')===0){
+      event.preventDefault();
+      parent.postMessage({type:'scheduler-pro-html-navigate',href:href},'*');
+    }
+  },true);
   function reportHeight(){
     var root=document.documentElement;
     var body=document.body;
@@ -73,8 +85,17 @@ const BRIDGE_SOURCE=`
 const csp=`<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data: blob: https:; style-src 'unsafe-inline' https:; font-src data: https:; script-src 'unsafe-inline'; media-src data: blob: https:; frame-src https:; connect-src 'none'; form-action 'none'; base-uri 'none'">`
 const bridge='<script>'+BRIDGE_SOURCE+'</'+'script>'
 
+function runtimeCompatibleSource(source:string):string{
+  // srcdoc sem allow-same-origin possui origem opaca. Os HTMLs oficiais podem
+  // montar a URL pública usando window.location sem ganhar acesso ao origin do tenant.
+  // Esta adaptação existe somente em memória; o HTML versionado permanece intacto.
+  return source
+    .replace(/\bwindow\.location\.origin\b/g,"'https://scheduler-pro-template.local'")
+    .replace(/\bwindow\.location\.protocol\b/g,"'https:'")
+}
+
 const srcdoc=computed(()=>{
-  const source=props.html||''
+  const source=runtimeCompatibleSource(props.html||'')
   const injection=`${csp}${bridge}`
   if(/<head(?:\s[^>]*)?>/i.test(source))return source.replace(/<head(\s[^>]*)?>/i,(match)=>`${match}${injection}`)
   if(/<html(?:\s[^>]*)?>/i.test(source))return source.replace(/<html(\s[^>]*)?>/i,(match)=>`${match}<head>${injection}</head>`)
@@ -106,6 +127,10 @@ async function handleApiRequest(data:ApiBridgeRequest):Promise<void>{
   }
 }
 
+function localNavigation(href:string):void{
+  if(href==='/agendar'||href.startsWith('/agendar?')||href==='/pagina'||href.startsWith('/pagina?'))window.location.assign(href)
+}
+
 function onMessage(event:MessageEvent):void{
   if(event.source!==frame.value?.contentWindow)return
   const data=event.data as BridgeMessage|null
@@ -113,6 +138,7 @@ function onMessage(event:MessageEvent):void{
   if(data.type==='scheduler-pro-html-api-request'&&typeof data.id==='string'&&typeof data.path==='string'){
     void handleApiRequest({type:'scheduler-pro-html-api-request',id:data.id,path:data.path,method:String(data.method||'GET'),body:data.body})
   }
+  if(data.type==='scheduler-pro-html-navigate'&&typeof data.href==='string')localNavigation(data.href)
   if(data.type==='scheduler-pro-html-height'){
     const next=Math.max(480,Math.min(20000,Number(data.height||0)))
     if(Number.isFinite(next))frameHeight.value=next
