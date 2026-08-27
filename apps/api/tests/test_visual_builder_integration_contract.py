@@ -61,6 +61,7 @@ def test_old_visual_builder_release_directories_are_physically_removed() -> None
     assert list(parts.glob("part-*.b64"))
     materializer = _read("packages/visual-builder/scripts/materialize-release.mjs")
     assert "const VERSION = '2.1.0'" in materializer
+    assert "EXPECTED_SHA256" in materializer
     assert "template-packages.js" in materializer
 
 
@@ -82,9 +83,9 @@ def test_public_landing_uses_single_canonical_runtime() -> None:
     if not page or not renderer:
         return
     assert "PublicVisualLandingRenderer" in page
-    assert "schema.startsWith('argws-visual-builder/')" in page
     assert "builder_version" in page
     assert "loadVisualBuilderRuntime" in renderer
+    assert "argws-page-renderer" in renderer
     assert "deep:true" not in renderer
     assert "deep: true" not in renderer
     assert "requestAnimationFrame" in renderer
@@ -96,10 +97,11 @@ def test_builder_host_is_lazy_disposable_and_has_no_request_storm_observer() -> 
         return
     assert "createSchedulerProAdapter" in source
     assert "ARGWS_VISUAL_BUILDER_VERSION" in source
+    assert "document.createElement('argws-visual-builder')" in source
     assert "editor?.remove()" in source
-    assert "isHtmlContent(page.content)" in source
-    assert "htmlProtected.value=page.content" in source
+    assert "await editor.load()" in source
     assert "MutationObserver" not in source
+    assert "TenantPublicPageEditorV2" not in source
 
 
 def test_control_plane_does_not_mount_obsolete_release_manager() -> None:
