@@ -14,7 +14,6 @@ from app.api.deps import (
 from app.core.responses import success
 from app.core.tenant_context import TenantContext
 from app.services.booking_parameters_service import BookingParametersService
-from app.services.visual_builder_version_service import VisualBuilderVersionService
 
 router = APIRouter()
 
@@ -54,10 +53,6 @@ class BookingParametersUpdate(BaseModel):
     phone: PhoneSettings = Field(default_factory=PhoneSettings)
 
 
-class VisualBuilderSelectionUpdate(BaseModel):
-    version: str | None = Field(default=None, max_length=20)
-
-
 @router.get("/tenant")
 async def tenant_settings(
     context: TenantContext = Depends(get_tenant_context),
@@ -92,36 +87,6 @@ async def update_booking_parameters(
     session: AsyncSession = Depends(get_tenant_session),
 ) -> dict[str, Any]:
     return success(await BookingParametersService(session).update(payload.model_dump()))
-
-
-@router.get("/visual-builder")
-async def visual_builder_state(
-    context: TenantContext = Depends(get_tenant_context),
-    platform_session: AsyncSession = Depends(get_platform_session),
-    tenant_session: AsyncSession = Depends(get_tenant_session),
-) -> dict[str, Any]:
-    return success(
-        await VisualBuilderVersionService(platform_session).tenant_state(
-            context.tenant_id,
-            tenant_session,
-        )
-    )
-
-
-@router.put("/visual-builder")
-async def update_visual_builder_selection(
-    payload: VisualBuilderSelectionUpdate,
-    context: TenantContext = Depends(get_tenant_context),
-    platform_session: AsyncSession = Depends(get_platform_session),
-    tenant_session: AsyncSession = Depends(get_tenant_session),
-) -> dict[str, Any]:
-    return success(
-        await VisualBuilderVersionService(platform_session).select_tenant_version(
-            context.tenant_id,
-            tenant_session,
-            payload.version,
-        )
-    )
 
 
 @router.get("/capabilities")
