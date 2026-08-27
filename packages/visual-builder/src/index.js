@@ -1,6 +1,6 @@
-import '../runtime/package/styles/builder.css'
-import * as runtime from '../runtime/package/src/index.js'
-export * from '../runtime/package/src/index.js'
+import '../releases/2.0.1/styles/builder.css'
+import * as runtime from '../releases/2.0.1/src/index.js'
+export * from '../releases/2.0.1/src/index.js'
 
 export const ARGWS_VISUAL_BUILDER_VERSION='2.0.1'
 export const ARGWS_VISUAL_BUILDER_DEFAULT_VERSION='2.0.1'
@@ -19,7 +19,8 @@ function versionedPayload(document){
   return {...runtime.toSchedulerProContent(document),builder_version:ARGWS_VISUAL_BUILDER_VERSION}
 }
 
-export async function createSchedulerProAdapter(options={}){
+export async function createSchedulerProAdapter(_versionOrOptions={},maybeOptions={}){
+  const options=typeof _versionOrOptions==='string'?maybeOptions:_versionOrOptions
   const adapter=new runtime.SchedulerProAdapter(options)
   adapter.saveDraft=async document=>{
     const payload=versionedPayload(document)
