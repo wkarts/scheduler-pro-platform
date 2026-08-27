@@ -20,7 +20,7 @@ type WidgetBookingTemplate={key:string;version:number;content:BookingDesignConte
 type WidgetCatalog={config:Omit<BookingConfig,'booking_template'>&{booking_template?:WidgetBookingTemplate|null};services:Service[];professionals:Professional[]}
 type PageBlock={id:string;type:string;props:Record<string,unknown>;style?:CSSProperties;responsive?:{desktop?:CSSProperties;tablet?:CSSProperties;mobile?:CSSProperties;hidden?:Partial<Record<Device,boolean>>}}
 type BuilderState={schema?:string;root_ids?:string[];nodes?:Record<string,unknown>}
-type BlockPageContent={version:number;global_styles?:Record<string,unknown>;seo?:Record<string,unknown>;blocks?:PageBlock[];builder?:BuilderState}
+type BlockPageContent={version:number;schema?:string;builder_version?:string;global_styles?:Record<string,unknown>;seo?:Record<string,unknown>;blocks?:PageBlock[];builder?:BuilderState}
 type PageContent=BlockPageContent|HtmlContent
 type LandingPage={status:string;template_key?:string|null;content:PageContent}
 type LandingPayload={branding:BrandingManifest;landing_page:LandingPage}
@@ -32,7 +32,12 @@ const catalog=ref<Catalog|null>(null),landing=ref<LandingPage|null>(null),brandi
 const loading=ref(true),error=ref('')
 function isHtmlContent(value:unknown):value is HtmlContent{return Boolean(value&&typeof value==='object'&&(value as HtmlContent).render_mode==='HTML'&&typeof (value as HtmlContent).html_document==='string')}
 function blockContent(value:PageContent):BlockPageContent{return value as BlockPageContent}
-function isVisualBuilderContent(value:PageContent):boolean{return !isHtmlContent(value)&&blockContent(value).builder?.schema==='argws-visual-builder/v1'}
+function isVisualBuilderContent(value:PageContent):boolean{
+  if(isHtmlContent(value))return false
+  const content=blockContent(value)
+  const schema=String(content.schema||content.builder?.schema||'').toLowerCase()
+  return Boolean(content.builder_version||schema.startsWith('argws-visual-builder/'))
+}
 function widgetTemplate(template:BookingTemplate|null|undefined):WidgetBookingTemplate|null{if(!template||isHtmlContent(template.content))return null;return{key:template.key,version:template.version,content:template.content}}
 const landingHtml=computed(()=>landing.value&&isHtmlContent(landing.value.content)?landing.value.content.html_document:'')
 const bookingHtml=computed(()=>{const content=catalog.value?.config.booking_template?.content;return isHtmlContent(content)?content.html_document:''})
