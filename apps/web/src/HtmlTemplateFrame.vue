@@ -9,7 +9,7 @@ type ApiBridgeRequest={
   method:string
   body?:string|null
 }
-type HeightMessage={type:'scheduler-pro-html-height';height:number}
+type BridgeMessage={type?:string;id?:string;path?:string;method?:string;body?:string|null;height?:number}
 
 const props=withDefaults(defineProps<{html:string;mode?:Mode}>(),{mode:'landing'})
 const frame=ref<HTMLIFrameElement|null>(null)
@@ -71,7 +71,7 @@ const BRIDGE_SOURCE=`
 `
 
 const csp=`<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data: blob: https:; style-src 'unsafe-inline' https:; font-src data: https:; script-src 'unsafe-inline'; media-src data: blob: https:; frame-src https:; connect-src 'none'; form-action 'none'; base-uri 'none'">`
-const bridge=`<script>${BRIDGE_SOURCE.replace(/<\\/script/gi,'<\\\\/script')}<\/script>`
+const bridge='<script>'+BRIDGE_SOURCE+'</'+'script>'
 
 const srcdoc=computed(()=>{
   const source=props.html||''
@@ -108,9 +108,11 @@ async function handleApiRequest(data:ApiBridgeRequest):Promise<void>{
 
 function onMessage(event:MessageEvent):void{
   if(event.source!==frame.value?.contentWindow)return
-  const data=event.data as Partial<ApiBridgeRequest&HeightMessage>|null
+  const data=event.data as BridgeMessage|null
   if(!data||typeof data!=='object')return
-  if(data.type==='scheduler-pro-html-api-request'&&typeof data.id==='string'&&typeof data.path==='string')void handleApiRequest(data as ApiBridgeRequest)
+  if(data.type==='scheduler-pro-html-api-request'&&typeof data.id==='string'&&typeof data.path==='string'){
+    void handleApiRequest({type:'scheduler-pro-html-api-request',id:data.id,path:data.path,method:String(data.method||'GET'),body:data.body})
+  }
   if(data.type==='scheduler-pro-html-height'){
     const next=Math.max(480,Math.min(20000,Number(data.height||0)))
     if(Number.isFinite(next))frameHeight.value=next
