@@ -20,8 +20,11 @@ BOOKING_HTML = """<!doctype html>
 <meta name="scheduler-pro-content-version" content="2">
 <meta name="scheduler-pro-surface" content="public-booking">
 <style>@media(max-width:640px){main{padding:10px}}</style>
-</head><body><main data-scheduler-pro-booking>Agenda</main>
-<script>fetch(window.location.origin + '/api/v1/public/booking')</script>
+</head><body><main>Agenda</main>
+<script>
+const publicApiBase='/api/v1/public';
+fetch(window.location.origin + publicApiBase + '/booking')
+</script>
 </body></html>"""
 
 
@@ -38,7 +41,7 @@ def test_html_landing_is_first_class_and_css_top_is_not_parent_access() -> None:
     )
 
 
-def test_html_booking_contract_accepts_public_booking_api() -> None:
+def test_html_booking_contract_accepts_composed_public_booking_api() -> None:
     report = HtmlTemplateContract.validate_html(
         BOOKING_HTML,
         expected_surface="BOOKING",
