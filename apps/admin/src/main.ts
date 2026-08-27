@@ -3,7 +3,6 @@ import { createPinia } from 'pinia'
 import App from './AdminControlPlane.vue'
 import AdminHtmlTemplateImportOverlay from './AdminHtmlTemplateImportOverlay.vue'
 import AdminSecondFactorGate from './AdminSecondFactorGate.vue'
-import AdminTemplateImportCenter from './AdminTemplateImportCenter.vue'
 import AdminTemplateSupportCenter from './AdminTemplateSupportCenter.vue'
 import TenantManagementDrawer from './TenantManagementDrawer.vue'
 import { installDiagnosticsDownload } from './diagnostics-download'
@@ -32,11 +31,9 @@ templateSupportHost.id = 'scheduler-pro-template-support'
 document.body.appendChild(templateSupportHost)
 createApp(AdminTemplateSupportCenter).mount(templateSupportHost)
 
-const templateImportHost = document.createElement('div')
-templateImportHost.id = 'scheduler-pro-template-import'
-document.body.appendChild(templateImportHost)
-createApp(AdminTemplateImportCenter).mount(templateImportHost)
-
+// A autoria externa de novos modelos é HTML-first. O importador JSON legado
+// continua disponível no backend por compatibilidade, mas deixa de ser uma
+// segunda porta visual concorrente no Control Plane.
 const htmlTemplateImportHost = document.createElement('div')
 htmlTemplateImportHost.id = 'scheduler-pro-html-template-import'
 document.body.appendChild(htmlTemplateImportHost)
