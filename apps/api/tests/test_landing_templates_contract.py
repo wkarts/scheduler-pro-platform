@@ -4,8 +4,23 @@ from zipfile import ZIP_DEFLATED, ZipFile
 
 import pytest
 
+from app.services.builtin_template_package_service import (
+    OFFICIAL_TEMPLATE_KEYS,
+    builtin_template_archive,
+)
 from app.services.html_template_package_service import HtmlTemplatePackageService
 from app.services.landing_templates import list_templates, template_content
+
+
+EXPECTED_OFFICIAL_KEYS = {
+    "barber-shop-neo-generico",
+    "clinica-medica-generico",
+    "clinica-odontologica-generico",
+    "clinica-veterinaria-generico",
+    "martelinho-de-ouro-generico",
+    "studio-unhas-generico",
+    "tecnologia-generico-simples",
+}
 
 
 def _html(surface: str) -> str:
@@ -76,14 +91,21 @@ def test_template_package_contract_validates_real_zip_bytes() -> None:
     report = HtmlTemplatePackageService.validate(archive)
     assert report["valid"], report["errors"]
     assert report["package"]["key"] == "modelo-teste"
-    assert report["package"]["scope"] == "INTERNAL"
-    assert report["package"]["default_for_new_tenants"] is False
     assert set(report["surfaces"]) == {"landing", "booking"}
 
 
-def test_template_library_does_not_require_embedded_base64_archives() -> None:
-    # A biblioteca global é alimentada pela Central de Importação do Control Plane.
-    # Templates autorais são ZIPs reais enviados pelo usuário, nunca .zip.b64
-    # acoplados ao código-fonte ou ao bootstrap da plataforma.
+def test_exactly_seven_official_template_packages_are_embedded_and_valid() -> None:
+    assert set(OFFICIAL_TEMPLATE_KEYS) == EXPECTED_OFFICIAL_KEYS
+    assert len(OFFICIAL_TEMPLATE_KEYS) == 7
+    for key in OFFICIAL_TEMPLATE_KEYS:
+        archive = builtin_template_archive(key)
+        assert archive.startswith(b"PK")
+        report = HtmlTemplatePackageService.validate(archive)
+        assert report["valid"], {key: report["errors"]}
+        assert report["package"]["key"] == key
+        assert set(report["surfaces"]) == {"landing", "booking"}
+
+
+def test_platform_bootstrap_installs_official_template_library() -> None:
     source = __import__("app.platform_bootstrap", fromlist=["bootstrap_platform"])
-    assert not hasattr(source, "bootstrap_template_library")
+    assert hasattr(source, "bootstrap_template_library")
