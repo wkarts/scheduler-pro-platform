@@ -13,9 +13,7 @@ COPY apps/desktop/package.json apps/desktop/package.json
 COPY apps/mobile/package.json apps/mobile/package.json
 COPY packages/api-client/package.json packages/api-client/package.json
 COPY packages/types/package.json packages/types/package.json
-# O registry precisa das partes Base64 e do materializador antes do npm install,
-# pois o postinstall reconstrói localmente as três releases oficiais.
-COPY packages/visual-builder packages/visual-builder
+COPY packages/visual-builder/package.json packages/visual-builder/package.json
 
 RUN npm install
 
