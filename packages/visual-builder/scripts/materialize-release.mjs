@@ -30,25 +30,11 @@ function safePath(value) {
 }
 
 const names = await readdir(encodedRoot)
-const parts = names.filter(name => /^part-\d+\.b64$/.test(name)).sort()
+const parts = names.filter(name => /^part-\d{3}(?:-[ab])?\.b64$/.test(name)).sort()
 if (!parts.length) throw new Error(`ARGWS Visual Builder ${VERSION}: artefato Base64 ausente.`)
 
 const chunks = []
-for (const name of parts) {
-  const id = name.match(/^part-(\d+)\.b64$/)?.[1]
-  if (!id) continue
-  const repairA = `repair-${id}-a.b64`
-  const repairB = `repair-${id}-b.b64`
-  if (names.includes(repairA) || names.includes(repairB)) {
-    if (!names.includes(repairA) || !names.includes(repairB)) {
-      throw new Error(`ARGWS Visual Builder ${VERSION}: reparo incompleto do chunk ${id}.`)
-    }
-    chunks.push(await readFile(join(encodedRoot, repairA), 'utf8'))
-    chunks.push(await readFile(join(encodedRoot, repairB), 'utf8'))
-  } else {
-    chunks.push(await readFile(join(encodedRoot, name), 'utf8'))
-  }
-}
+for (const name of parts) chunks.push(await readFile(join(encodedRoot, name), 'utf8'))
 
 const encoded = chunks.join('').replace(/\s+/g, '')
 const tgz = Buffer.from(encoded, 'base64')
