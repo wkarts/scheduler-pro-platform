@@ -184,7 +184,7 @@ async def _resolve_customer(
                 set name=case when :update_name then :name else name end,
                     phone=:phone,
                     phone_normalized=:phone,
-                    email=case when :email is null then email else :email end
+                    email=coalesce(cast(:email as varchar), email)
                 where id=cast(:id as uuid)
                 """
             ),
