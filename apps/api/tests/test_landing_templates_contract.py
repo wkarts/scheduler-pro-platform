@@ -3,6 +3,7 @@ import pytest
 from app.services.builtin_template_package_service import (
     BUILTIN_TEMPLATE_PACKAGES,
     RESOURCE_DIR,
+    package_archive,
 )
 from app.services.html_template_package_service import HtmlTemplatePackageService
 from app.services.landing_templates import list_templates, template_content
@@ -34,7 +35,9 @@ def test_exactly_seven_new_template_packages_are_embedded_and_valid() -> None:
     for filename in BUILTIN_TEMPLATE_PACKAGES:
         path = RESOURCE_DIR / filename
         assert path.is_file(), filename
-        report = HtmlTemplatePackageService.validate(path.read_bytes())
+        archive = package_archive(path)
+        assert archive.startswith(b"PK")
+        report = HtmlTemplatePackageService.validate(archive)
         assert report["valid"], {filename: report["errors"]}
         assert set(report["surfaces"]) == {"landing", "booking"}
         assert report["package"]["scope"] == "INTERNAL"
