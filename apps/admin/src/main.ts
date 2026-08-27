@@ -4,7 +4,6 @@ import App from './AdminControlPlane.vue'
 import AdminHtmlTemplateImportOverlay from './AdminHtmlTemplateImportOverlay.vue'
 import AdminSecondFactorGate from './AdminSecondFactorGate.vue'
 import AdminTemplateSupportCenter from './AdminTemplateSupportCenter.vue'
-import AdminVisualBuilderManager from './AdminVisualBuilderManager.vue'
 import TenantManagementDrawer from './TenantManagementDrawer.vue'
 import { installDiagnosticsDownload } from './diagnostics-download'
 import { installFrontendTelemetry } from './frontend-telemetry'
@@ -31,11 +30,6 @@ const templateSupportHost = document.createElement('div')
 templateSupportHost.id = 'scheduler-pro-template-support'
 document.body.appendChild(templateSupportHost)
 createApp(AdminTemplateSupportCenter).mount(templateSupportHost)
-
-const visualBuilderManagerHost = document.createElement('div')
-visualBuilderManagerHost.id = 'scheduler-pro-visual-builder-manager'
-document.body.appendChild(visualBuilderManagerHost)
-createApp(AdminVisualBuilderManager).mount(visualBuilderManagerHost)
 
 // A autoria externa de novos modelos é HTML-first. O importador JSON legado
 // continua disponível no backend por compatibilidade, mas deixa de ser uma
