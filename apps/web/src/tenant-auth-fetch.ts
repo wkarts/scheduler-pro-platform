@@ -7,6 +7,7 @@ type RefreshEnvelope = {
 
 let installed = false
 let refreshPromise: Promise<string | null> | null = null
+const inflightReads = new Map<string, Promise<Response>>()
 
 function isSchedulerApi(url: URL): boolean {
   return url.origin === window.location.origin && url.pathname.startsWith('/api/v1/')
@@ -21,6 +22,10 @@ function isAuthBootstrap(url: URL): boolean {
   ].some((path) => url.pathname === path)
 }
 
+function isRealtimeOrStreaming(url: URL): boolean {
+  return url.pathname.startsWith('/api/v1/realtime/') || url.pathname.includes('/stream')
+}
+
 function currentAccessToken(): string {
   return localStorage.getItem('scheduler_pro_access_token') || ''
 }
@@ -33,21 +38,18 @@ function clearTenantSession(): void {
   localStorage.removeItem('scheduler_pro_access_token')
   localStorage.removeItem('scheduler_pro_refresh_token')
   localStorage.removeItem('scheduler_pro_realtime_sequence')
+  inflightReads.clear()
 }
 
 async function refreshAccessToken(nativeFetch: typeof window.fetch): Promise<string | null> {
   if (refreshPromise) return refreshPromise
   const refreshToken = currentRefreshToken()
   if (!refreshToken) return null
-
   refreshPromise = (async () => {
     try {
       const response = await nativeFetch(`${window.location.origin}/api/v1/auth/refresh`, {
         method: 'POST',
-        headers: {
-          Accept: 'application/json',
-          'Content-Type': 'application/json',
-        },
+        headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
         body: JSON.stringify({ refresh_token: refreshToken }),
         cache: 'no-store',
       })
@@ -60,6 +62,7 @@ async function refreshAccessToken(nativeFetch: typeof window.fetch): Promise<str
       }
       localStorage.setItem('scheduler_pro_access_token', accessToken)
       localStorage.setItem('scheduler_pro_refresh_token', rotatedRefresh)
+      inflightReads.clear()
       window.dispatchEvent(new CustomEvent('scheduler-pro-session-refreshed'))
       return accessToken
     } catch {
@@ -68,13 +71,16 @@ async function refreshAccessToken(nativeFetch: typeof window.fetch): Promise<str
       refreshPromise = null
     }
   })()
-
   return refreshPromise
 }
 
 function requestUrl(input: RequestInfo | URL): URL {
   if (input instanceof Request) return new URL(input.url, window.location.origin)
   return new URL(String(input), window.location.origin)
+}
+
+function requestMethod(input: RequestInfo | URL, init?: RequestInit): string {
+  return String(init?.method || (input instanceof Request ? input.method : 'GET') || 'GET').toUpperCase()
 }
 
 function withCurrentAuthorization(
@@ -96,42 +102,45 @@ function withCurrentAuthorization(
   return [input, { ...forceFresh, headers }]
 }
 
+async function authorizedFetch(
+  nativeFetch: typeof window.fetch,
+  input: RequestInfo | URL,
+  init?: RequestInit,
+): Promise<Response> {
+  const accessToken = currentAccessToken()
+  const [authorizedInput, authorizedInit] = withCurrentAuthorization(input, init, accessToken)
+  let response = await nativeFetch(authorizedInput, authorizedInit)
+  if (response.status !== 401 || !currentRefreshToken()) return response
+  const renewedAccessToken = await refreshAccessToken(nativeFetch)
+  if (!renewedAccessToken) {
+    window.dispatchEvent(new CustomEvent('scheduler-pro-realtime-unauthorized', { detail: { status: 401, reason: 'refresh_failed' } }))
+    return response
+  }
+  const [retryInput, retryInit] = withCurrentAuthorization(input, init, renewedAccessToken)
+  response = await nativeFetch(retryInput, retryInit)
+  return response
+}
+
 export function installTenantAuthFetch(): void {
   if (installed) return
   installed = true
   const nativeFetch = window.fetch.bind(window)
-
   window.fetch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
     const url = requestUrl(input)
-    if (!isSchedulerApi(url) || isAuthBootstrap(url)) {
-      return nativeFetch(input, init)
+    if (!isSchedulerApi(url) || isAuthBootstrap(url)) return nativeFetch(input, init)
+    const method = requestMethod(input, init)
+    const canShareRead = method === 'GET' && !init?.signal && !isRealtimeOrStreaming(url)
+    if (!canShareRead) return authorizedFetch(nativeFetch, input, init)
+
+    const key = `${currentAccessToken()}|${url.href}`
+    let pending = inflightReads.get(key)
+    if (!pending) {
+      pending = authorizedFetch(nativeFetch, input, init)
+      inflightReads.set(key, pending)
+      void pending.finally(() => {
+        if (inflightReads.get(key) === pending) inflightReads.delete(key)
+      }).catch(() => undefined)
     }
-
-    const accessToken = currentAccessToken()
-    const [authorizedInput, authorizedInit] = withCurrentAuthorization(
-      input,
-      init,
-      accessToken,
-    )
-    let response = await nativeFetch(authorizedInput, authorizedInit)
-    if (response.status !== 401 || !currentRefreshToken()) return response
-
-    const renewedAccessToken = await refreshAccessToken(nativeFetch)
-    if (!renewedAccessToken) {
-      window.dispatchEvent(
-        new CustomEvent('scheduler-pro-realtime-unauthorized', {
-          detail: { status: 401, reason: 'refresh_failed' },
-        }),
-      )
-      return response
-    }
-
-    const [retryInput, retryInit] = withCurrentAuthorization(
-      input,
-      init,
-      renewedAccessToken,
-    )
-    response = await nativeFetch(retryInput, retryInit)
-    return response
+    return (await pending).clone()
   }
 }
