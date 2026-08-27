@@ -86,9 +86,7 @@ async def update_booking_parameters(
     payload: BookingParametersUpdate,
     session: AsyncSession = Depends(get_tenant_session),
 ) -> dict[str, Any]:
-    return success(
-        await BookingParametersService(session).update(payload.model_dump())
-    )
+    return success(await BookingParametersService(session).update(payload.model_dump()))
 
 
 @router.get("/capabilities")

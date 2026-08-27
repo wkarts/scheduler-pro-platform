@@ -1,0 +1,9 @@
+/*
+  O editor usa Shadow DOM e injeta seus estilos internamente.
+  Este arquivo existe para hosts que desejem tokens compartilhados com elementos externos.
+*/
+:root {
+  --argws-builder-accent: #6c7cff;
+  --argws-builder-panel: #111722;
+  --argws-builder-border: #263043;
+}

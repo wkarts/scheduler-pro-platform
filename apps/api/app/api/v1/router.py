@@ -52,80 +52,119 @@ api_router.include_router(
     services.router,
     prefix="/services",
     tags=["Services"],
-    dependencies=[Depends(require_tenant_capability("services")), Depends(require_permission("services.manage"))],
+    dependencies=[
+        Depends(require_tenant_capability("services")),
+        Depends(require_permission("services.manage")),
+    ],
 )
 api_router.include_router(
     professionals.router,
     prefix="/professionals",
     tags=["Professionals"],
-    dependencies=[Depends(require_tenant_capability("professionals")), Depends(require_permission("professionals.manage"))],
+    dependencies=[
+        Depends(require_tenant_capability("professionals")),
+        Depends(require_permission("professionals.manage")),
+    ],
 )
 api_router.include_router(
     schedule.router,
     prefix="/schedule",
     tags=["Schedule Configuration"],
-    dependencies=[Depends(require_tenant_capability("appointments")), Depends(require_permission("professionals.manage"))],
+    dependencies=[
+        Depends(require_tenant_capability("appointments")),
+        Depends(require_permission("professionals.manage")),
+    ],
 )
 api_router.include_router(
     availability.router,
     prefix="/availability",
     tags=["Availability"],
-    dependencies=[Depends(require_tenant_capability("appointments")), Depends(require_permission("appointments.read"))],
+    dependencies=[
+        Depends(require_tenant_capability("appointments")),
+        Depends(require_permission("appointments.read")),
+    ],
 )
 api_router.include_router(
     appointments.router,
     prefix="/appointments",
     tags=["Appointments"],
-    dependencies=[Depends(require_tenant_capability("appointments")), Depends(require_permission("appointments.create"))],
+    dependencies=[
+        Depends(require_tenant_capability("appointments")),
+        Depends(require_permission("appointments.create")),
+    ],
 )
 api_router.include_router(
     agenda.router,
     prefix="/agenda",
     tags=["Agenda"],
-    dependencies=[Depends(require_tenant_capability("appointments")), Depends(require_permission("appointments.create"))],
+    dependencies=[
+        Depends(require_tenant_capability("appointments")),
+        Depends(require_permission("appointments.create")),
+    ],
 )
 api_router.include_router(
     appointment_operations.router,
     prefix="/appointments",
     tags=["Appointment Operations"],
-    dependencies=[Depends(require_tenant_capability("appointments")), Depends(require_permission("appointments.create"))],
+    dependencies=[
+        Depends(require_tenant_capability("appointments")),
+        Depends(require_permission("appointments.create")),
+    ],
 )
 api_router.include_router(
     appointment_edit.router,
     prefix="/appointments",
     tags=["Appointment Smart Edit"],
-    dependencies=[Depends(require_tenant_capability("appointments")), Depends(require_permission("appointments.create"))],
+    dependencies=[
+        Depends(require_tenant_capability("appointments")),
+        Depends(require_permission("appointments.create")),
+    ],
 )
 api_router.include_router(
     appointment_confirmations.router,
     prefix="/appointment-confirmations",
     tags=["Appointment Confirmations"],
-    dependencies=[Depends(require_tenant_capability("appointments")), Depends(require_permission("appointments.create"))],
+    dependencies=[
+        Depends(require_tenant_capability("appointments")),
+        Depends(require_permission("appointments.create")),
+    ],
 )
 api_router.include_router(realtime.router, prefix="/realtime", tags=["Realtime / Push"])
 api_router.include_router(
     notifications.router,
     prefix="/notifications",
     tags=["Notifications"],
-    dependencies=[Depends(require_tenant_capability("notifications")), Depends(require_permission("notifications.manage"))],
+    dependencies=[
+        Depends(require_tenant_capability("notifications")),
+        Depends(require_permission("notifications.manage")),
+    ],
 )
 api_router.include_router(
     landing_pages.router,
     prefix="/landing-pages",
     tags=["Landing Pages"],
-    dependencies=[Depends(require_tenant_capability("landing_pages")), Depends(require_permission("landing_pages.manage"))],
+    dependencies=[
+        Depends(require_tenant_capability("landing_pages")),
+        Depends(require_permission("landing_pages.manage")),
+    ],
 )
 api_router.include_router(
     files.router,
     prefix="/files",
     tags=["Files"],
-    dependencies=[Depends(require_tenant_capability("storage")), Depends(require_permission("tenant.manage"))],
+    dependencies=[
+        Depends(require_tenant_capability("storage")),
+        Depends(require_permission("tenant.manage")),
+    ],
 )
 api_router.include_router(
     whatsapp.router,
     prefix="/integrations/whatsapp",
     tags=["ARGWS WhatsApp API"],
-    dependencies=[Depends(require_tenant_capability("whatsapp")), Depends(require_permission("whatsapp.manage"))],
+    dependencies=[
+        Depends(require_tenant_capability("whatsapp")),
+        Depends(require_permission("whatsapp.manage")),
+    ],
 )
 api_router.include_router(
     settings.router,
@@ -137,16 +176,55 @@ api_router.include_router(
     observability.tenant_router,
     prefix="/observability",
     tags=["Tenant Observability"],
-    dependencies=[Depends(require_tenant_capability("observability")), Depends(require_permission("tenant.manage"))],
+    dependencies=[
+        Depends(require_tenant_capability("observability")),
+        Depends(require_permission("tenant.manage")),
+    ],
 )
-api_router.include_router(tenant_telemetry.router, prefix="/telemetry", tags=["Tenant Telemetry"])
-api_router.include_router(downloads.router, prefix="/downloads", tags=["Universal App Downloads"])
+api_router.include_router(
+    tenant_telemetry.router,
+    prefix="/telemetry",
+    tags=["Tenant Telemetry"],
+)
+api_router.include_router(
+    downloads.router,
+    prefix="/downloads",
+    tags=["Universal App Downloads"],
+)
 api_router.include_router(branding.router, prefix="/branding", tags=["Branding"])
 api_router.include_router(platform.router, prefix="/platform", tags=["Platform"])
-api_router.include_router(tenant_management.router, prefix="/platform/tenant-management", tags=["Tenant Management"])
-api_router.include_router(tenant_support.router, prefix="/platform/tenant-support", tags=["Tenant Support"])
-api_router.include_router(platform_templates.router, prefix="/platform/templates", tags=["Global Templates"])
-api_router.include_router(platform_html_templates.router, prefix="/platform/html-templates", tags=["HTML Templates"])
-api_router.include_router(platform_access.router, prefix="/platform/access", tags=["Platform IAM"])
-api_router.include_router(observability.router, prefix="/platform/observability", tags=["Platform Observability"])
-api_router.include_router(builds.router, prefix="/platform/builds", tags=["Build Manager"])
+api_router.include_router(
+    tenant_management.router,
+    prefix="/platform/tenant-management",
+    tags=["Tenant Management"],
+)
+api_router.include_router(
+    tenant_support.router,
+    prefix="/platform/tenant-support",
+    tags=["Tenant Support"],
+)
+api_router.include_router(
+    platform_templates.router,
+    prefix="/platform/templates",
+    tags=["Global Templates"],
+)
+api_router.include_router(
+    platform_html_templates.router,
+    prefix="/platform/html-templates",
+    tags=["HTML Templates"],
+)
+api_router.include_router(
+    platform_access.router,
+    prefix="/platform/access",
+    tags=["Platform IAM"],
+)
+api_router.include_router(
+    observability.router,
+    prefix="/platform/observability",
+    tags=["Platform Observability"],
+)
+api_router.include_router(
+    builds.router,
+    prefix="/platform/builds",
+    tags=["Build Manager"],
+)
