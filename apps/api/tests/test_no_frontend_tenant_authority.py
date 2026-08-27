@@ -6,6 +6,7 @@ CONTROL_PLANE_ROUTE_MODULES = {
     "tenant_management.py",
     "tenant_support.py",
     "platform_templates.py",
+    "platform_html_templates.py",
     "builds.py",
     "observability.py",
 }
