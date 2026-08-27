@@ -8,9 +8,9 @@ export const ARGWS_VISUAL_BUILDER_DEFAULT_VERSION = '2.0.1'
 export const ARGWS_VISUAL_BUILDER_SUPPORTED_VERSIONS = Object.freeze(ARGWS_VISUAL_BUILDER_RELEASES.map(item=>item.version))
 
 const runtimeLoaders = Object.freeze({
-  '1.0.0': async()=>{await import('@argws/visual-builder-v1/styles.css');return import('@argws/visual-builder-v1')},
-  '2.0.0': async()=>{await import('@argws/visual-builder-v2/styles.css');return import('@argws/visual-builder-v2')},
-  '2.0.1': async()=>{await import('@argws/visual-builder-v201/styles.css');return import('@argws/visual-builder-v201')},
+  '1.0.0': async()=>{await import('../releases-src/1.0.0/package/styles/builder.css');return import('../releases-src/1.0.0/package/src/index.js')},
+  '2.0.0': async()=>{await import('../releases-src/2.0.0/package/styles/builder.css');return import('../releases-src/2.0.0/package/src/index.js')},
+  '2.0.1': async()=>{await import('../releases-src/2.0.1/package/styles/builder.css');return import('../releases-src/2.0.1/package/src/index.js')},
 })
 
 let activeRuntimeVersion = ''
