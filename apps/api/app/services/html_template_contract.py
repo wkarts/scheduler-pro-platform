@@ -23,7 +23,13 @@ FORBIDDEN_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
     ("HTML_SERVICE_WORKER_FORBIDDEN", re.compile(r"navigator\s*\.\s*serviceWorker", re.I)),
     ("HTML_STORAGE_ACCESS_FORBIDDEN", re.compile(r"\b(?:localStorage|sessionStorage)\b", re.I)),
     ("HTML_COOKIE_ACCESS_FORBIDDEN", re.compile(r"document\s*\.\s*cookie", re.I)),
-    ("HTML_PARENT_ACCESS_FORBIDDEN", re.compile(r"\b(?:window\s*\.\s*)?(?:parent|top|opener)\b", re.I)),
+    (
+        "HTML_PARENT_ACCESS_FORBIDDEN",
+        re.compile(
+            r"(?:window\s*\.\s*(?:parent|top|opener)|(?:parent|top|opener)\s*\.\s*(?:document|location|postMessage))",
+            re.I,
+        ),
+    ),
     ("HTML_JAVASCRIPT_URL_FORBIDDEN", re.compile(r"javascript\s*:", re.I)),
 )
 
@@ -331,7 +337,6 @@ class HtmlTemplateContract:
             raise APIError("HTML_TEMPLATE_WRAPPER_INVALID", "Conteúdo HTML inválido.", 422)
         html_document = str(content["html_document"])
         normalized = cls.wrapper(html_document, expected_surface=expected_surface)
-        # Campos internos adicionais podem evoluir sem reescrever o HTML autoral.
         for key, value in deepcopy(content).items():
             if key not in normalized and key not in {"html_document"}:
                 normalized[key] = value
