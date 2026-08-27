@@ -11,7 +11,8 @@
     "apps/admin-desktop",
     "apps/admin-mobile",
     "packages/api-client",
-    "packages/types"
+    "packages/types",
+    "packages/visual-builder"
   ],
   "scripts": {
     "lint": "npm run lint --workspaces --if-present",
@@ -24,12 +25,6 @@
     "dev:admin-desktop": "npm --workspace apps/admin-desktop run tauri:dev",
     "dev:admin-mobile": "npm --workspace apps/admin-mobile run dev"
   },
-  "engines": {
-    "node": ">=22"
-  },
-  "overrides": {
-    "typescript": "5.5.4",
-    "vue-tsc": "2.1.10",
-    "tailwindcss": "3.4.17"
-  }
+  "engines": { "node": ">=22" },
+  "overrides": { "typescript": "5.5.4", "vue-tsc": "2.1.10", "tailwindcss": "3.4.17" }
 }

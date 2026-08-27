@@ -1,24 +1,12 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { Building2, MailCheck, RefreshCw, ServerCog } from 'lucide-vue-next'
+import { TENANT_NAVIGATION_EVENT } from './tenantNavigation'
 
 type SmtpStatus = {
-  enabled:boolean
-  delivery_mode?:'platform'|'tenant'
-  configured:boolean
-  tenant_configured?:boolean
-  platform_available?:boolean
-  platform_sender?:string|null
-  host:string
-  port:number
-  username:string
-  from_email:string
-  from_name:string
-  reply_to:string
-  use_tls:boolean
-  use_ssl:boolean
-  timeout_seconds:number
-  password_configured:boolean
+  enabled:boolean;delivery_mode?:'platform'|'tenant';configured:boolean;tenant_configured?:boolean;platform_available?:boolean;
+  platform_sender?:string|null;host:string;port:number;username:string;from_email:string;from_name:string;reply_to:string;
+  use_tls:boolean;use_ssl:boolean;timeout_seconds:number;password_configured:boolean
 }
 type Envelope<T>={data:T;error?:{message?:string}}
 
@@ -28,17 +16,12 @@ const loading=ref(false)
 const error=ref('')
 const message=ref('')
 const mode=computed(()=>status.value?.delivery_mode||'tenant')
-let observer:MutationObserver|undefined
-let detectRaf=0
 let requestGeneration=0
+let routeRaf=0
 
 function token():string{return localStorage.getItem('scheduler_pro_access_token')||''}
 async function api<T>(path:string,init:RequestInit={}):Promise<T>{
-  const response=await fetch(`/api/v1${path}`,{
-    ...init,
-    cache:'no-store',
-    headers:{accept:'application/json',...(init.body?{'content-type':'application/json'}:{}),authorization:`Bearer ${token()}`,...(init.headers||{})},
-  })
+  const response=await fetch(`/api/v1${path}`,{...init,cache:'no-store',headers:{accept:'application/json',...(init.body?{'content-type':'application/json'}:{}),authorization:`Bearer ${token()}`,...(init.headers||{})}})
   const payload=await response.json().catch(()=>({})) as Partial<Envelope<T>>
   if(!response.ok)throw new Error(payload.error?.message||`Não foi possível concluir a operação (${response.status}).`)
   return payload.data as T
@@ -46,18 +29,12 @@ async function api<T>(path:string,init:RequestInit={}):Promise<T>{
 
 async function load(force=false):Promise<void>{
   if(loading.value)return
-  if(status.value&&!force)return
+  if((status.value&&!force)||!visible.value)return
   const generation=++requestGeneration
-  loading.value=true
-  error.value=''
-  try{
-    const data=await api<SmtpStatus>('/notifications/smtp')
-    if(generation===requestGeneration)status.value=data
-  }catch(exc){
-    if(generation===requestGeneration)error.value=exc instanceof Error?exc.message:'Falha ao consultar o canal de e-mail.'
-  }finally{
-    if(generation===requestGeneration)loading.value=false
-  }
+  loading.value=true;error.value=''
+  try{const data=await api<SmtpStatus>('/notifications/smtp');if(generation===requestGeneration)status.value=data}
+  catch(exc){if(generation===requestGeneration)error.value=exc instanceof Error?exc.message:'Falha ao consultar o canal de e-mail.'}
+  finally{if(generation===requestGeneration)loading.value=false}
 }
 
 async function choose(value:'platform'|'tenant'):Promise<void>{
@@ -70,37 +47,35 @@ async function choose(value:'platform'|'tenant'):Promise<void>{
   finally{loading.value=false}
 }
 
-function detectNow():void{
-  const root=document.querySelector('.tenant-console .main-content > .sp-extension-root')
-  const heading=root?.querySelector('.sp-extension-header h1')?.textContent?.trim()||''
-  const next=Boolean(root&&heading==='E-mail da agenda')
-  if(next!==visible.value){
-    visible.value=next
-    if(!next){status.value=null;error.value='';message.value='';requestGeneration+=1}
-  }
-  if(next&&!status.value&&!loading.value)void load()
+function syncFromRoute():void{
+  const next=(window.location.hash||'').replace(/^#/,'')==='smtp'
+  if(next===visible.value){if(next&&!status.value&&!loading.value)void load();return}
+  visible.value=next
+  requestGeneration+=1
+  if(!next){status.value=null;loading.value=false;error.value='';message.value='';return}
+  void load()
 }
 
-function scheduleDetect():void{
-  cancelAnimationFrame(detectRaf)
-  detectRaf=requestAnimationFrame(detectNow)
-}
+function scheduleRouteSync():void{cancelAnimationFrame(routeRaf);routeRaf=requestAnimationFrame(syncFromRoute)}
 
 onMounted(()=>{
-  observer=new MutationObserver(scheduleDetect)
-  observer.observe(document.body,{subtree:true,childList:true})
-  scheduleDetect()
+  window.addEventListener(TENANT_NAVIGATION_EVENT,scheduleRouteSync)
+  window.addEventListener('hashchange',scheduleRouteSync)
+  window.addEventListener('popstate',scheduleRouteSync)
+  scheduleRouteSync()
 })
-onUnmounted(()=>{observer?.disconnect();cancelAnimationFrame(detectRaf);requestGeneration+=1})
+onUnmounted(()=>{
+  window.removeEventListener(TENANT_NAVIGATION_EVENT,scheduleRouteSync)
+  window.removeEventListener('hashchange',scheduleRouteSync)
+  window.removeEventListener('popstate',scheduleRouteSync)
+  cancelAnimationFrame(routeRaf);requestGeneration+=1
+})
 </script>
 
 <template>
   <Teleport v-if="visible" to=".tenant-console .main-content > .sp-extension-root">
     <section class="sp-mail-mode-card">
-      <header>
-        <div><span>Canal de e-mail</span><strong>Como esta empresa vai enviar e-mails?</strong><small>Escolha uma única origem. Nada fica sobreposto à tela de SMTP.</small></div>
-        <button type="button" :disabled="loading" title="Atualizar" @click="load(true)"><RefreshCw :class="{spin:loading}" :size="17"/></button>
-      </header>
+      <header><div><span>Canal de e-mail</span><strong>Como esta empresa vai enviar e-mails?</strong><small>Escolha uma única origem. Nada fica sobreposto à tela de SMTP.</small></div><button type="button" :disabled="loading" title="Atualizar" @click="load(true)"><RefreshCw :class="{spin:loading}" :size="17"/></button></header>
       <div class="sp-mail-mode-options">
         <button :class="{active:mode==='platform'}" :disabled="loading||status?.platform_available===false" @click="choose('platform')"><Building2 :size="20"/><span><strong>Usar e-mail da plataforma</strong><small v-if="status?.platform_available">Conta compartilhada pronta{{ status.platform_sender ? ` · ${status.platform_sender}` : '' }}</small><small v-else>Indisponível até o administrador configurar o SMTP da plataforma.</small></span><MailCheck v-if="mode==='platform'" :size="18"/></button>
         <button :class="{active:mode==='tenant'}" :disabled="loading" @click="choose('tenant')"><ServerCog :size="20"/><span><strong>Usar minha conta SMTP</strong><small>{{ status?.tenant_configured ? 'Conta própria já configurada.' : 'Configure servidor, usuário, senha e remetente abaixo.' }}</small></span><MailCheck v-if="mode==='tenant'" :size="18"/></button>
