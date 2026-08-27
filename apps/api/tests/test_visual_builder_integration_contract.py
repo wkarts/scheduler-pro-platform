@@ -21,41 +21,38 @@ def _read(path: str) -> str:
     return ""
 
 
-def test_visual_builder_is_a_versioned_first_class_workspace_package() -> None:
+def test_visual_builder_is_single_current_workspace_package() -> None:
     raw = _read("packages/visual-builder/package.json")
     if not raw:
         return
     package = json.loads(raw)
     assert package["name"] == "@argws/visual-builder"
     assert package["version"] == "2.0.1"
-    assert set(package["dependencies"]) == {
-        "@argws/visual-builder-v1",
-        "@argws/visual-builder-v2",
-        "@argws/visual-builder-v201",
-    }
+    assert not package.get("dependencies")
+    assert package["scripts"]["materialize"] == "node scripts/materialize-releases.mjs"
     assert "typecheck" in package["scripts"]
     assert "build" in package["scripts"]
 
 
-def test_release_registry_exposes_exactly_the_three_requested_versions() -> None:
+def test_release_registry_exposes_only_2_0_1() -> None:
     source = _read("packages/visual-builder/src/index.js")
     if not source:
         return
-    for version in ("1.0.0", "2.0.0", "2.0.1"):
-        assert f"version:'{version}'" in source
-    assert "ARGWS_VISUAL_BUILDER_DEFAULT_VERSION = '2.0.1'" in source
-    assert "builder_version:version" in source
+    assert "ARGWS_VISUAL_BUILDER_VERSION='2.0.1'" in source
+    assert "builder_version:ARGWS_VISUAL_BUILDER_VERSION" in source
+    assert "1.0.0" not in source
+    assert "2.0.0" not in source
     assert "loadVisualBuilderRuntime" in source
 
 
-def test_scheduler_adapter_stamps_release_and_keeps_one_runtime_per_document() -> None:
-    source = _read("packages/visual-builder/src/index.js")
+def test_runtime_is_materialized_from_textual_release_and_validated() -> None:
+    source = _read("packages/visual-builder/scripts/materialize-releases.mjs")
     if not source:
         return
-    assert "createSchedulerProAdapter" in source
-    assert "versionedPayload" in source
-    assert "ARGWS_VISUAL_BUILDER_RELOAD_REQUIRED" in source
-    assert "activeRuntimeVersion" in source
+    assert "const VERSION='2.0.1'" in source
+    assert "release-b64" in source
+    assert "manifest.version!==VERSION" in source
+    assert "gunzipSync" in source
 
 
 def test_new_visual_builder_replaces_old_editor_by_default_with_rollback_flag() -> None:
@@ -68,7 +65,7 @@ def test_new_visual_builder_replaces_old_editor_by_default_with_rollback_flag() 
     assert '<TenantPublicPageEditorV2 v-else' in source
 
 
-def test_public_landing_detects_any_argws_builder_schema_and_uses_release_renderer() -> None:
+def test_public_landing_detects_argws_builder_and_uses_single_runtime() -> None:
     page = _read("apps/web/src/PublicSitePage.vue")
     renderer = _read("apps/web/src/PublicVisualLandingRenderer.vue")
     if not page or not renderer:
@@ -76,32 +73,29 @@ def test_public_landing_detects_any_argws_builder_schema_and_uses_release_render
     assert "PublicVisualLandingRenderer" in page
     assert "schema.startsWith('argws-visual-builder/')" in page
     assert "builder_version" in page
-    assert "resolveVisualBuilderVersionFromContent" in renderer
     assert "loadVisualBuilderRuntime" in renderer
+    assert "resolveVisualBuilderVersionFromContent" not in renderer
     assert "deep:true" not in renderer
     assert "deep: true" not in renderer
     assert "requestAnimationFrame" in renderer
 
 
-def test_builder_host_is_lazy_disposable_and_version_selectable() -> None:
+def test_builder_host_is_lazy_disposable_and_has_no_version_selector() -> None:
     source = _read("apps/web/src/TenantVisualPageBuilder.vue")
     if not source:
         return
     assert "createSchedulerProAdapter" in source
+    assert "ARGWS_VISUAL_BUILDER_VERSION" in source
     assert "editor?.remove()" in source
     assert "isHtmlContent(page.content)" in source
     assert "htmlProtected.value=page.content" in source
-    assert "/settings/visual-builder" in source
-    assert "allowedReleases" in source
+    assert "/settings/visual-builder" not in source
+    assert "allowedReleases" not in source
 
 
-def test_control_plane_has_a_release_manager_for_default_and_tenant_policy() -> None:
-    source = _read("apps/admin/src/AdminVisualBuilderManager.vue")
+def test_control_plane_does_not_mount_obsolete_release_manager() -> None:
     main = _read("apps/admin/src/main.ts")
-    if not source or not main:
+    if not main:
         return
-    assert "/platform/visual-builder/default" in source
-    assert "/platform/visual-builder/tenants/" in source
-    assert "allowed_versions" in source
-    assert "Herdar global" in source
-    assert "AdminVisualBuilderManager" in main
+    assert "AdminVisualBuilderManager" not in main
+    assert "scheduler-pro-visual-builder-manager" not in main
