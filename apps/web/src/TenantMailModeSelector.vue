@@ -28,7 +28,8 @@ async function api<T>(path:string,init:RequestInit={}):Promise<T>{
 }
 
 async function load(force=false):Promise<void>{
-  if(loading.value||(status.value&&!force)||!visible.value)return
+  if(loading.value)return
+  if((status.value&&!force)||!visible.value)return
   const generation=++requestGeneration
   loading.value=true;error.value=''
   try{const data=await api<SmtpStatus>('/notifications/smtp');if(generation===requestGeneration)status.value=data}
