@@ -16,6 +16,7 @@ from app.core.responses import success
 from app.core.security import AuthPrincipal
 from app.core.tenant_context import TenantContext
 from app.services.global_template_service import GlobalTemplateService
+from app.services.html_template_contract import HtmlTemplateContract
 from app.services.landing_service import LandingPageService
 from app.services.template_contract import TemplateContract
 
@@ -28,6 +29,13 @@ class PublishRequest(BaseModel):
 
 class DuplicateRequest(BaseModel):
     new_slug: str = Field(min_length=2, max_length=120, pattern=r"^[a-z0-9][a-z0-9-]*[a-z0-9]$")
+
+
+def _validate_landing_content(content: dict[str, Any]) -> None:
+    if HtmlTemplateContract.is_html_content(content):
+        HtmlTemplateContract.ensure_wrapper(content, expected_surface="LANDING")
+        return
+    TemplateContract.ensure_content("LANDING", content, strict=True)
 
 
 @router.get("/templates")
@@ -81,7 +89,7 @@ async def save_draft(
     principal: AuthPrincipal = Depends(get_current_user),
     session: AsyncSession = Depends(get_tenant_session),
 ) -> dict[str, Any]:
-    TemplateContract.ensure_content("LANDING", payload, strict=True)
+    _validate_landing_content(payload)
     draft = await LandingPageService(session).save_draft(
         slug,
         payload,
@@ -98,7 +106,7 @@ async def autosave(
     principal: AuthPrincipal = Depends(get_current_user),
     session: AsyncSession = Depends(get_tenant_session),
 ) -> dict[str, Any]:
-    TemplateContract.ensure_content("LANDING", payload, strict=True)
+    _validate_landing_content(payload)
     draft = await LandingPageService(session).save_draft(
         slug,
         payload,
@@ -134,14 +142,11 @@ async def apply_template(
         )
         return success(data)
 
-    TemplateContract.ensure_content(
-        "LANDING",
-        template["version"]["content"],
-        strict=True,
-    )
+    template_content = template["version"]["content"]
+    _validate_landing_content(template_content)
     draft = await LandingPageService(session).save_draft(
         slug,
-        template["version"]["content"],
+        template_content,
         created_by=principal.user_id,
         label=f"Modelo global: {template['name']} v{template['version']['version_number']}",
     )
