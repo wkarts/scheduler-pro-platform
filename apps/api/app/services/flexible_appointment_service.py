@@ -91,12 +91,16 @@ class FlexibleAppointmentService(AppointmentService):
             if not await self._is_inside_business_hours(professional_id, starts_at, ends_at):
                 raise APIError(
                     "APPOINTMENT_OUTSIDE_BUSINESS_HOURS",
-                    "Horário fora do expediente.",
+                    "O horário escolhido está fora do expediente configurado. Escolha um horário válido ou desative a restrição de expediente nas configurações da Agenda.",
                     409,
                 )
         if bool(rules.get("enforce_blocked_periods", True)):
             if await self._is_blocked(professional_id, starts_at, ends_at):
-                raise APIError("APPOINTMENT_BLOCKED_PERIOD", "Horário bloqueado.", 409)
+                raise APIError(
+                    "APPOINTMENT_BLOCKED_PERIOD",
+                    "Este horário está bloqueado. Escolha outro horário ou ajuste os bloqueios da Agenda.",
+                    409,
+                )
 
         simultaneous = _mapping(params.get("simultaneous"))
         public = str(source or "").lower().startswith("public")
@@ -117,7 +121,7 @@ class FlexibleAppointmentService(AppointmentService):
         if occupied >= capacity:
             raise APIError(
                 "APPOINTMENT_SLOT_UNAVAILABLE",
-                "Horário sem capacidade disponível.",
+                "Este horário atingiu a capacidade configurada. Escolha outro horário ou ajuste a capacidade da Agenda.",
                 409,
                 {"capacity": capacity, "occupied": occupied},
             )
@@ -159,8 +163,6 @@ class FlexibleAppointmentService(AppointmentService):
         enforce_blocked_periods = bool(rules.get("enforce_blocked_periods", True))
         capacity = await self.capacity(source) if enforce_capacity else 10000
 
-        local_day_start = datetime.combine(day, time(hour=8), tzinfo=self.timezone)
-        local_day_end = datetime.combine(day, time(hour=18), tzinfo=self.timezone)
         windows: list[tuple[datetime, datetime]] = []
         if enforce_business_hours:
             business_rows = (
@@ -177,17 +179,25 @@ class FlexibleAppointmentService(AppointmentService):
                         """
                     ),
                     {
-                        "dow": int(local_day_start.strftime("%w")),
+                        "dow": int(datetime.combine(day, time.min).strftime("%w")),
                         "professional_id": professional_id,
                     },
                 )
             ).mappings().all()
+            # Dia sem faixa configurada é dia fechado. Antes o fallback 08:00-18:00
+            # podia anunciar horários que o motor de criação rejeitaria depois.
+            if not business_rows:
+                return []
             for row in business_rows:
                 local_start = datetime.combine(day, row["opens_at"], tzinfo=self.timezone)
                 local_end = datetime.combine(day, row["closes_at"], tzinfo=self.timezone)
                 windows.append((local_start.astimezone(UTC), local_end.astimezone(UTC)))
-        if not windows:
-            windows.append((local_day_start.astimezone(UTC), local_day_end.astimezone(UTC)))
+        else:
+            # Quando o modelo de negócio desativa expediente, não inventamos uma
+            # janela 08:00-18:00. A disponibilidade representa o dia inteiro.
+            local_start = datetime.combine(day, time.min, tzinfo=self.timezone)
+            local_end = datetime.combine(day + timedelta(days=1), time.min, tzinfo=self.timezone)
+            windows.append((local_start.astimezone(UTC), local_end.astimezone(UTC)))
 
         slots: list[dict[str, Any]] = []
         step = timedelta(minutes=max(5, slot_minutes))
