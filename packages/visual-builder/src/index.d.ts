@@ -1,11 +1,15 @@
-export type Device='desktop'|'tablet'|'mobile';
-export interface ResponsiveStyles{desktop:Record<string,unknown>;tablet:Record<string,unknown>;mobile:Record<string,unknown>;hidden:Record<Device,boolean>}
-export interface PageNode{id:string;type:string;props:Record<string,unknown>;style:Record<string,unknown>;responsive:ResponsiveStyles;children:string[];meta:Record<string,unknown>}
-export interface PageDocument{schema:string;version:number;title:string;global_styles:Record<string,unknown>;seo:Record<string,unknown>;builder:{schema:string;root_ids:string[];nodes:Record<string,PageNode>};blocks:unknown[]}
-export interface PageAdapter{load():Promise<PageDocument>;saveDraft(document:PageDocument):Promise<unknown>;autosave?(document:PageDocument):Promise<unknown>;publish(document:PageDocument):Promise<unknown>;listTemplates?():Promise<unknown[]>;upload?(file:File):Promise<string>}
-export const SCHEMA:string;export const DEVICES:Device[];
-export function createDocument(options?:Record<string,unknown>):PageDocument;export function normalizeDocument(input:unknown):PageDocument;export function renderDocument(input:unknown,options?:{device?:Device;context?:Record<string,unknown>}):{html:string;css:string;document:PageDocument};export function toSchedulerProContent(input:unknown):Record<string,unknown>;export function exportStandaloneHtml(input:unknown,options?:Record<string,unknown>):string;
-export class SchedulerProAdapter implements PageAdapter{constructor(options?:{baseUrl?:string;slug?:string;token?:()=>string});state:unknown;load():Promise<PageDocument>;saveDraft(document:PageDocument):Promise<unknown>;autosave(document:PageDocument):Promise<unknown>;publish(document:PageDocument):Promise<unknown>;listTemplates():Promise<unknown[]>;applyTemplate(key:string):Promise<unknown>;versions():Promise<unknown[]>;restoreVersion(id:string):Promise<unknown>;services():Promise<unknown[]>;professionals():Promise<unknown[]>;upload(file:File):Promise<string>}
-export class ArgwsVisualBuilder extends HTMLElement{adapter:PageAdapter;document:PageDocument;load():Promise<void>;save(options?:{autosave?:boolean}):Promise<unknown>;publish():Promise<unknown>}
-export class ArgwsPageRenderer extends HTMLElement{document:PageDocument;context:Record<string,unknown>;render():void}
-export const BUILTIN_TEMPLATES:Array<{key:string;name:string;description:string;create:()=>PageDocument}>;
+export type VisualBuilderVersion='1.0.0'|'2.0.0'|'2.0.1'
+export type Device='desktop'|'tablet'|'mobile'
+export interface VisualBuilderRelease{version:VisualBuilderVersion;label:string;schema:string;channel:string;recommended:boolean;description:string}
+export interface PageDocument extends Record<string,unknown>{schema?:string;version?:number;title?:string;builder_version?:VisualBuilderVersion;builder?:Record<string,unknown>;blocks?:unknown[]}
+export interface PageAdapter{state?:Record<string,unknown>|null;load():Promise<PageDocument>;saveDraft(document:PageDocument):Promise<unknown>;autosave?(document:PageDocument):Promise<unknown>;publish(document:PageDocument):Promise<unknown>;listTemplates?():Promise<unknown[]>;upload?(file:File):Promise<string>}
+export interface RuntimeModule{SchedulerProAdapter:new(options?:Record<string,unknown>)=>PageAdapter&Record<string,any>;toSchedulerProContent(input:unknown):Record<string,unknown>;normalizeDocument?(input:unknown):PageDocument;[key:string]:unknown}
+export const ARGWS_VISUAL_BUILDER_RELEASES:readonly VisualBuilderRelease[]
+export const ARGWS_VISUAL_BUILDER_DEFAULT_VERSION:VisualBuilderVersion
+export const ARGWS_VISUAL_BUILDER_SUPPORTED_VERSIONS:readonly VisualBuilderVersion[]
+export function normalizeVisualBuilderVersion(value:unknown,fallback?:VisualBuilderVersion):VisualBuilderVersion
+export function visualBuilderRelease(value:unknown):VisualBuilderRelease|undefined
+export function activeVisualBuilderRuntimeVersion():VisualBuilderVersion|null
+export function resolveVisualBuilderVersionFromContent(content:Record<string,any>|null|undefined):VisualBuilderVersion
+export function loadVisualBuilderRuntime(value?:VisualBuilderVersion|string):Promise<RuntimeModule>
+export function createSchedulerProAdapter(value:VisualBuilderVersion|string,options?:Record<string,unknown>):Promise<{adapter:PageAdapter&Record<string,any>;runtime:RuntimeModule;version:VisualBuilderVersion}>
