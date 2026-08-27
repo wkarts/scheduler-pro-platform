@@ -1,9 +1,11 @@
+import { createHash } from 'node:crypto'
 import { gunzipSync } from 'node:zlib'
 import { mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const VERSION = '2.1.0'
+const EXPECTED_SHA256 = '9b350bb89e381c3cb9827ad02f50bea4b5a94a16c8076322a6474b6c1fb22fdc'
 const here = dirname(fileURLToPath(import.meta.url))
 const packageRoot = resolve(here, '..')
 const encodedRoot = join(packageRoot, 'release-b64', VERSION)
@@ -27,14 +29,34 @@ function safePath(value) {
   return normalized
 }
 
-const parts = (await readdir(encodedRoot)).filter(name => /^part-\d+\.b64$/.test(name)).sort()
+const names = await readdir(encodedRoot)
+const parts = names.filter(name => /^part-\d+\.b64$/.test(name)).sort()
 if (!parts.length) throw new Error(`ARGWS Visual Builder ${VERSION}: artefato Base64 ausente.`)
 
-const encoded = (await Promise.all(parts.map(name => readFile(join(encodedRoot, name), 'utf8'))))
-  .join('')
-  .replace(/\s+/g, '')
+const chunks = []
+for (const name of parts) {
+  const id = name.match(/^part-(\d+)\.b64$/)?.[1]
+  if (!id) continue
+  const repairA = `repair-${id}-a.b64`
+  const repairB = `repair-${id}-b.b64`
+  if (names.includes(repairA) || names.includes(repairB)) {
+    if (!names.includes(repairA) || !names.includes(repairB)) {
+      throw new Error(`ARGWS Visual Builder ${VERSION}: reparo incompleto do chunk ${id}.`)
+    }
+    chunks.push(await readFile(join(encodedRoot, repairA), 'utf8'))
+    chunks.push(await readFile(join(encodedRoot, repairB), 'utf8'))
+  } else {
+    chunks.push(await readFile(join(encodedRoot, name), 'utf8'))
+  }
+}
+
+const encoded = chunks.join('').replace(/\s+/g, '')
 const tgz = Buffer.from(encoded, 'base64')
 if (!tgz.length) throw new Error(`ARGWS Visual Builder ${VERSION}: artefato vazio.`)
+const digest = createHash('sha256').update(tgz).digest('hex')
+if (digest !== EXPECTED_SHA256) {
+  throw new Error(`ARGWS Visual Builder ${VERSION}: integridade inválida (${digest}).`)
+}
 
 const tar = gunzipSync(tgz)
 await rm(outputRoot, { recursive: true, force: true })
@@ -69,4 +91,4 @@ if (manifest.version !== VERSION) {
 await readFile(join(outputRoot, 'package', 'src', 'index.js'))
 await readFile(join(outputRoot, 'package', 'src', 'template-packages.js'))
 await readFile(join(outputRoot, 'package', 'styles', 'builder.css'))
-console.log(`ARGWS Visual Builder ${VERSION}: ${files} arquivos materializados e validados.`)
+console.log(`ARGWS Visual Builder ${VERSION}: ${files} arquivos materializados, hash ${digest} validado.`)
