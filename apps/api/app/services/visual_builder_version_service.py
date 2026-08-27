@@ -50,20 +50,28 @@ def _version(value: Any, *, allow_none: bool = False) -> str | None:
             "VISUAL_BUILDER_VERSION_UNSUPPORTED",
             "Versão do ARGWS Visual Builder não suportada.",
             422,
-            {"version": candidate, "supported_versions": list(SUPPORTED_VERSIONS)},
+            {
+                "version": candidate,
+                "supported_versions": list(SUPPORTED_VERSIONS),
+            },
         )
     return candidate
 
 
 def _ordered_versions(values: list[str] | tuple[str, ...]) -> list[str]:
     requested = {str(item).strip() for item in values}
-    invalid = sorted(item for item in requested if item and item not in SUPPORTED_VERSIONS)
+    invalid = sorted(
+        item for item in requested if item and item not in SUPPORTED_VERSIONS
+    )
     if invalid:
         raise APIError(
             "VISUAL_BUILDER_VERSION_UNSUPPORTED",
             "Uma ou mais versões do ARGWS Visual Builder não são suportadas.",
             422,
-            {"versions": invalid, "supported_versions": list(SUPPORTED_VERSIONS)},
+            {
+                "versions": invalid,
+                "supported_versions": list(SUPPORTED_VERSIONS),
+            },
         )
     return [version for version in SUPPORTED_VERSIONS if version in requested]
 
@@ -72,10 +80,24 @@ class VisualBuilderVersionService:
     def __init__(self, platform_session: AsyncSession) -> None:
         self.platform_session = platform_session
 
+    async def _tenant_exists(self, tenant_id: str) -> bool:
+        return bool(
+            await self.platform_session.scalar(
+                text(
+                    "select exists(select 1 from tenants "
+                    "where id=cast(:tenant_id as uuid))"
+                ),
+                {"tenant_id": tenant_id},
+            )
+        )
+
     async def platform_policy(self) -> dict[str, Any]:
         row = (
             await self.platform_session.execute(
-                text("select enabled, rules from feature_flags where key=:key limit 1"),
+                text(
+                    "select enabled, rules from feature_flags "
+                    "where key=:key limit 1"
+                ),
                 {"key": POLICY_FLAG_KEY},
             )
         ).mappings().first()
@@ -100,7 +122,10 @@ class VisualBuilderVersionService:
                 on conflict(key) do update set enabled=true, rules=excluded.rules
                 """
             ),
-            {"key": POLICY_FLAG_KEY, "rules": json.dumps({"default_version": normalized})},
+            {
+                "key": POLICY_FLAG_KEY,
+                "rules": json.dumps({"default_version": normalized}),
+            },
         )
         await self.platform_session.commit()
         return await self.platform_policy()
@@ -156,15 +181,17 @@ class VisualBuilderVersionService:
                 "VISUAL_BUILDER_DEFAULT_NOT_ALLOWED",
                 "A versão padrão do cliente precisa estar entre as versões liberadas.",
                 422,
-                {"default_version": tenant_default, "allowed_versions": allowed},
+                {
+                    "default_version": tenant_default,
+                    "allowed_versions": allowed,
+                },
             )
-        exists = await self.platform_session.scalar(
-            text("select exists(select 1 from tenants where id=cast(:tenant_id as uuid))"),
-            {"tenant_id": tenant_id},
-        )
-        if not exists:
+        if not await self._tenant_exists(tenant_id):
             raise APIError("TENANT_NOT_FOUND", "Empresa não encontrada.", 404)
-        payload = {"allowed_versions": allowed, "default_version": tenant_default}
+        payload = {
+            "allowed_versions": allowed,
+            "default_version": tenant_default,
+        }
         await self.platform_session.execute(
             text(
                 """
@@ -178,7 +205,26 @@ class VisualBuilderVersionService:
                 where id=cast(:tenant_id as uuid)
                 """
             ),
-            {"tenant_id": tenant_id, "policy": json.dumps(payload)},
+            {
+                "tenant_id": tenant_id,
+                "policy": json.dumps(payload),
+            },
+        )
+        await self.platform_session.commit()
+        return await self.tenant_policy(tenant_id)
+
+    async def reset_tenant_policy(self, tenant_id: str) -> dict[str, Any]:
+        if not await self._tenant_exists(tenant_id):
+            raise APIError("TENANT_NOT_FOUND", "Empresa não encontrada.", 404)
+        await self.platform_session.execute(
+            text(
+                """
+                update tenants
+                set settings=coalesce(settings, '{}'::jsonb) - 'argws_visual_builder'
+                where id=cast(:tenant_id as uuid)
+                """
+            ),
+            {"tenant_id": tenant_id},
         )
         await self.platform_session.commit()
         return await self.tenant_policy(tenant_id)
@@ -234,7 +280,10 @@ class VisualBuilderVersionService:
                 "VISUAL_BUILDER_VERSION_NOT_RELEASED",
                 "Esta versão do ARGWS Visual Builder não foi liberada para a empresa.",
                 403,
-                {"version": normalized, "allowed_versions": policy["allowed_versions"]},
+                {
+                    "version": normalized,
+                    "allowed_versions": policy["allowed_versions"],
+                },
             )
         await tenant_session.execute(
             text(
@@ -244,7 +293,10 @@ class VisualBuilderVersionService:
                 on conflict(key) do update set value=excluded.value, updated_at=now()
                 """
             ),
-            {"key": TENANT_SELECTION_KEY, "value": json.dumps(normalized)},
+            {
+                "key": TENANT_SELECTION_KEY,
+                "value": json.dumps(normalized),
+            },
         )
         await tenant_session.commit()
         return await self.tenant_state(tenant_id, tenant_session)
