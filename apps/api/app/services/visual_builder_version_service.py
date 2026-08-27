@@ -145,8 +145,12 @@ class VisualBuilderVersionService:
         platform = await self.platform_policy()
         tenant_settings = dict(row["settings"] or {})
         raw = tenant_settings.get(TENANT_POLICY_KEY)
-        explicit = isinstance(raw, dict)
-        policy = dict(raw) if explicit else {}
+        if isinstance(raw, dict):
+            explicit = True
+            policy: dict[str, Any] = {str(key): value for key, value in raw.items()}
+        else:
+            explicit = False
+            policy = {}
         if explicit:
             allowed = _ordered_versions(list(policy.get("allowed_versions") or []))
             configured_default = str(policy.get("default_version") or "").strip()
