@@ -1,0 +1,53 @@
+{
+  "name": "@argws/visual-builder",
+  "version": "2.0.1",
+  "description": "ARGWS Visual Builder Universal 2.0.1: núcleo visual universal New-Only para HTML, PHP/Blade, Laravel, Python/Jinja, Vue, React, Svelte, Node e Scheduler Pro; sem editor legado em runtime.",
+  "type": "module",
+  "main": "./src/index.js",
+  "module": "./src/index.js",
+  "types": "./src/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./src/index.d.ts",
+      "import": "./src/index.js"
+    },
+    "./styles.css": "./styles/builder.css"
+  },
+  "files": [
+    "src",
+    "styles",
+    "LICENSE",
+    "README.md",
+    "VERSION"
+  ],
+  "scripts": {
+    "test": "node --test tests/*.test.js",
+    "check": "node --check src/model.js && node --check src/registry.js && node --check src/history.js && node --check src/sanitize.js && node --check src/dynamic.js && node --check src/dynamic-tags.js && node --check src/data-sources.js && node --check src/actions.js && node --check src/plugins.js && node --check src/services.js && node --check src/submissions.js && node --check src/forms.js && node --check src/library.js && node --check src/assets.js && node --check src/permissions.js && node --check src/i18n.js && node --check src/operations.js && node --check src/project-package.js && node --check src/custom-code.js && node --check src/embeds.js && node --check src/audit.js && node --check src/site-kit.js && node --check src/runtime.js && node --check src/renderer.js && node --check src/adapters.js && node --check src/editor.js && node --check src/page-renderer.js && node --check src/templates.js && node --check src/index.js"
+  },
+  "keywords": [
+    "page-builder",
+    "landing-page",
+    "web-component",
+    "visual-editor",
+    "responsive",
+    "dynamic-content",
+    "popup-builder",
+    "form-builder",
+    "scheduler-pro",
+    "blade",
+    "laravel",
+    "fastapi",
+    "php",
+    "python",
+    "vue",
+    "react",
+    "svelte",
+    "query-builder",
+    "dynamic-tags",
+    "site-builder"
+  ],
+  "license": "MIT",
+  "engines": {
+    "node": ">=20"
+  }
+}
