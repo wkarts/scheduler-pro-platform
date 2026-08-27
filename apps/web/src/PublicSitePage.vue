@@ -68,12 +68,26 @@ const bookingPageStyle=computed<CSSProperties>(()=>{
 
 async function request<T>(resource:string):Promise<T>{const response=await fetch(`${window.location.origin}/api/v1/public${resource}`,{cache:'no-store',headers:{Accept:'application/json'}});const payload=await response.json().catch(()=>({})) as Envelope<T>;if(!response.ok||payload.data===undefined)throw new Error(payload.error?.message||`Falha HTTP ${response.status}`);return payload.data}
 function upsertMeta(selector:string,attribute:'name'|'property',key:string,value:string):void{let node=document.head.querySelector<HTMLMetaElement>(selector);if(!node){node=document.createElement('meta');node.setAttribute(attribute,key);document.head.appendChild(node)}node.content=value}
+function applyHtmlMetadata(source:string,fallbackTitle:string):void{
+  const doc=new DOMParser().parseFromString(source,'text/html')
+  document.title=doc.title.trim()||fallbackTitle
+  const named=['description','robots','theme-color','color-scheme','twitter:card','twitter:title','twitter:description','twitter:image']
+  for(const name of named){const value=doc.head.querySelector<HTMLMetaElement>(`meta[name="${name}"]`)?.content?.trim();if(value)upsertMeta(`meta[name="${name}"]`,'name',name,value)}
+  const properties=['og:type','og:locale','og:title','og:description','og:image','og:url']
+  for(const property of properties){const value=doc.head.querySelector<HTMLMetaElement>(`meta[property="${property}"]`)?.content?.trim();if(value)upsertMeta(`meta[property="${property}"]`,'property',property,value)}
+  document.head.querySelectorAll('script[data-scheduler-pro-html-jsonld]').forEach(node=>node.remove())
+  doc.head.querySelectorAll<HTMLScriptElement>('script[type="application/ld+json"]').forEach(sourceNode=>{
+    const raw=sourceNode.textContent?.trim();if(!raw)return
+    try{JSON.parse(raw)}catch{return}
+    const node=document.createElement('script');node.type='application/ld+json';node.dataset.schedulerProHtmlJsonld='true';node.textContent=raw;document.head.appendChild(node)
+  })
+}
 function applyMetadata(page:LandingPage):void{
-  if(isHtmlContent(page.content)){document.title=branding.value?.app.public_name||'Página pública';return}
+  if(isHtmlContent(page.content)){applyHtmlMetadata(page.content.html_document,branding.value?.app.public_name||'Página pública');return}
   const seo=blockContent(page.content).seo||{};const title=String(seo.title||branding.value?.app.public_name||'Agendamento online');const description=String(seo.description||'Agende seu horário online.');const image=String(seo.share_image||branding.value?.assets.logo_url||'');document.title=title;upsertMeta('meta[name="description"]','name','description',description);upsertMeta('meta[property="og:title"]','property','og:title',title);upsertMeta('meta[property="og:description"]','property','og:description',description);upsertMeta('meta[property="og:type"]','property','og:type','website');if(image)upsertMeta('meta[property="og:image"]','property','og:image',image)
 }
 async function loadLanding():Promise<void>{const landingResult=await request<LandingPayload>('/landing?slug=home');landing.value=landingResult.landing_page;branding.value=landingResult.branding;applyBranding(landingResult.branding);applyMetadata(landingResult.landing_page);try{catalog.value=await request<Catalog>('/booking')}catch{catalog.value=null}}
-async function loadBooking():Promise<void>{const result=await request<Catalog>('/booking');catalog.value=result;branding.value=result.branding;applyBranding(result.branding);document.title=result.config.title||result.branding.app.public_name||'Agendamento online'}
+async function loadBooking():Promise<void>{const result=await request<Catalog>('/booking');catalog.value=result;branding.value=result.branding;applyBranding(result.branding);const html=result.config.booking_template?.content;if(isHtmlContent(html))applyHtmlMetadata(html.html_document,result.config.title||result.branding.app.public_name||'Agendamento online');else document.title=result.config.title||result.branding.app.public_name||'Agendamento online'}
 async function load():Promise<void>{loading.value=true;error.value='';try{if(landingMode.value)await loadLanding();else await loadBooking()}catch(exc){error.value=exc instanceof Error?exc.message:'Página pública indisponível.'}finally{loading.value=false}}
 onMounted(()=>void load())
 </script>
