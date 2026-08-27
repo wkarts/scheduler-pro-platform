@@ -11,6 +11,7 @@ from app.api.deps import (
     get_platform_session,
     require_platform_permission,
 )
+from app.core.errors import APIError
 from app.core.responses import success
 from app.core.security import AuthPrincipal
 from app.core.tenant_context import TenantContext
@@ -64,6 +65,25 @@ def _validate_template_content(surface: str, content: dict[str, Any]) -> None:
         HtmlTemplateContract.ensure_wrapper(content, expected_surface=surface)
         return
     TemplateContract.ensure_content(surface, content, strict=True)
+
+
+async def _guard_html_editor_overwrite(
+    database: AsyncSession,
+    slug: str,
+    incoming: dict[str, Any],
+) -> None:
+    current = await LandingPageService(database).editor_state(slug)
+    current_content = current.get("content")
+    if (
+        isinstance(current_content, dict)
+        and HtmlTemplateContract.is_html_content(current_content)
+        and not HtmlTemplateContract.is_html_content(incoming)
+    ):
+        raise APIError(
+            "LANDING_HTML_EDITOR_REQUIRED",
+            "Esta página usa um modelo HTML. Edite ou substitua o HTML pela área de modelos; para trocar para um modelo visual por blocos, aplique explicitamente outro modelo.",
+            409,
+        )
 
 
 @router.get("/{tenant_id}/booking-parameters")
@@ -135,6 +155,7 @@ async def save_tenant_landing_support(
     _validate_template_content("LANDING", payload)
     context = await _context(platform, tenant_id)
     async for database in tenant_session(context):
+        await _guard_html_editor_overwrite(database, slug, payload)
         result = await LandingPageService(database).save_draft(
             slug,
             payload,
@@ -180,8 +201,6 @@ async def apply_global_landing_template_support(
         tenant_id=tenant_id,
     )
     if template["surface"] != "LANDING":
-        from app.core.errors import APIError
-
         raise APIError("GLOBAL_TEMPLATE_SURFACE_MISMATCH", "Este modelo não é de Landing Page.", 422)
     template_content = template["version"]["content"]
     _validate_template_content("LANDING", template_content)
@@ -276,8 +295,6 @@ async def apply_global_booking_template_support(
         tenant_id=tenant_id,
     )
     if template["surface"] != "BOOKING":
-        from app.core.errors import APIError
-
         raise APIError("GLOBAL_TEMPLATE_SURFACE_MISMATCH", "Este modelo não é de Página de Agendamento.", 422)
     template_content = template["version"]["content"]
     _validate_template_content("BOOKING", template_content)
