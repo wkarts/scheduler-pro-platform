@@ -7,6 +7,8 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.errors import APIError
+from app.services.html_template_contract import HtmlTemplateContract
+from app.services.template_contract import TemplateContract
 
 SURFACES = {"LANDING", "BOOKING"}
 SCOPES = {"GLOBAL", "SELECTED", "EXCLUSIVE", "INTERNAL"}
@@ -236,7 +238,17 @@ class GlobalTemplateService:
         actor: str | None,
         publish: bool = False,
     ) -> dict[str, Any]:
-        await self.get(template_id)
+        current = await self.get(template_id)
+        surface = str(current["surface"])
+        if HtmlTemplateContract.is_html_content(content):
+            normalized_content = HtmlTemplateContract.ensure_wrapper(
+                content,
+                expected_surface=surface,
+            )
+        else:
+            TemplateContract.ensure_content(surface, content, strict=True)
+            normalized_content = deepcopy(content)
+
         await self.session.execute(
             text("select pg_advisory_xact_lock(hashtext(:key))"),
             {"key": f"scheduler-pro:global-template:{template_id}"},
@@ -263,7 +275,7 @@ class GlobalTemplateService:
             {
                 "id": template_id,
                 "version": next_version,
-                "content": __import__("json").dumps(content, ensure_ascii=False),
+                "content": __import__("json").dumps(normalized_content, ensure_ascii=False),
                 "changelog": changelog,
                 "actor": actor,
             },
