@@ -1,4 +1,4 @@
-export * from '../runtime/package/src/index.js'
+export * from '../releases/2.0.1/src/index.js'
 
 export type VisualBuilderVersion='2.0.1'
 export interface VisualBuilderRelease{version:VisualBuilderVersion;label:string;schema:string;channel:string;recommended:boolean;description:string}
@@ -10,5 +10,5 @@ export function normalizeVisualBuilderVersion(value?:unknown,fallback?:VisualBui
 export function visualBuilderRelease(value?:unknown):VisualBuilderRelease
 export function activeVisualBuilderRuntimeVersion():VisualBuilderVersion
 export function resolveVisualBuilderVersionFromContent(content?:Record<string,unknown>|null):VisualBuilderVersion
-export function loadVisualBuilderRuntime():Promise<Record<string,any>>
-export function createSchedulerProAdapter(options?:Record<string,unknown>):Promise<{adapter:Record<string,any>;runtime:Record<string,any>;version:VisualBuilderVersion}>
+export function loadVisualBuilderRuntime(value?:VisualBuilderVersion|string):Promise<Record<string,any>>
+export function createSchedulerProAdapter(valueOrOptions?:VisualBuilderVersion|string|Record<string,unknown>,options?:Record<string,unknown>):Promise<{adapter:Record<string,any>;runtime:Record<string,any>;version:VisualBuilderVersion}>
