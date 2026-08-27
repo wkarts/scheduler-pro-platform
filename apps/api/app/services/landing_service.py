@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.enums import LandingPageStatus
 from app.core.errors import APIError
 from app.db.models_tenant import LandingPage, LandingPageVersion
+from app.services.html_template_contract import HtmlTemplateContract
 from app.services.landing_templates import list_templates, template_content
 
 ALLOWED_TAGS = set(bleach.sanitizer.ALLOWED_TAGS) | {
@@ -134,12 +135,18 @@ class LandingPageService:
                     protocols={"http", "https", "mailto", "tel"},
                     strip=True,
                 )
-            # Texto comum não aceita marcação executável. Mantemos caracteres e
-            # conteúdo editorial, removendo apenas tags HTML.
             return bleach.clean(value, tags=set(), attributes={}, strip=True)
         return value
 
     def sanitize(self, content: dict[str, Any]) -> dict[str, Any]:
+        # HTML completo é um artefato autoral de primeira classe. Ele é validado
+        # pelo contrato próprio e executado posteriormente em iframe sandboxed;
+        # aplicar bleach recursivo aqui destruiria CSS/JS e a identidade do modelo.
+        if HtmlTemplateContract.is_html_content(content):
+            return HtmlTemplateContract.ensure_wrapper(
+                content,
+                expected_surface="LANDING",
+            )
         clean = self._sanitize_value("content", deepcopy(content))
         return clean if isinstance(clean, dict) else {"version": 2, "blocks": []}
 
@@ -242,7 +249,6 @@ class LandingPageService:
             label=f"Modelo: {template_key}",
         )
         page.template_key = template_key
-        # Não toca current_version_id: a página que está no ar permanece intacta.
         await self.session.commit()
         return {
             "landing_page_id": str(page.id),
@@ -343,7 +349,6 @@ class LandingPageService:
             label=f"Restaurado da versão {source.version_number}",
             source_version_id=str(source.id),
         )
-        # Restauração cria rascunho; publicação continua sendo decisão explícita.
         await self.session.commit()
         return {
             "version_id": str(restored.id),

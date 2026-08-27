@@ -11,6 +11,7 @@ from app.api.deps import (
     get_platform_session,
     require_platform_permission,
 )
+from app.core.errors import APIError
 from app.core.responses import success
 from app.core.security import AuthPrincipal
 from app.core.tenant_context import TenantContext
@@ -18,6 +19,7 @@ from app.db.session import tenant_session
 from app.services.booking_parameters_service import BookingParametersService
 from app.services.branding_service import BrandingService
 from app.services.global_template_service import GlobalTemplateService
+from app.services.html_template_contract import HtmlTemplateContract
 from app.services.landing_service import LandingPageService
 from app.services.template_contract import TemplateContract
 from app.services.tenant_resolver import TenantResolver
@@ -56,6 +58,32 @@ class BookingPageSettingsUpdate(BaseModel):
 
 async def _context(session: AsyncSession, tenant_id: str) -> TenantContext:
     return await TenantResolver(session).resolve_by_id(tenant_id, require_active=False)
+
+
+def _validate_template_content(surface: str, content: dict[str, Any]) -> None:
+    if HtmlTemplateContract.is_html_content(content):
+        HtmlTemplateContract.ensure_wrapper(content, expected_surface=surface)
+        return
+    TemplateContract.ensure_content(surface, content, strict=True)
+
+
+async def _guard_html_editor_overwrite(
+    database: AsyncSession,
+    slug: str,
+    incoming: dict[str, Any],
+) -> None:
+    current = await LandingPageService(database).editor_state(slug)
+    current_content = current.get("content")
+    if (
+        isinstance(current_content, dict)
+        and HtmlTemplateContract.is_html_content(current_content)
+        and not HtmlTemplateContract.is_html_content(incoming)
+    ):
+        raise APIError(
+            "LANDING_HTML_EDITOR_REQUIRED",
+            "Esta página usa um modelo HTML. Edite ou substitua o HTML pela área de modelos; para trocar para um modelo visual por blocos, aplique explicitamente outro modelo.",
+            409,
+        )
 
 
 @router.get("/{tenant_id}/booking-parameters")
@@ -124,9 +152,10 @@ async def save_tenant_landing_support(
     platform: AsyncSession = Depends(get_platform_session),
 ) -> dict[str, Any]:
     assert_platform_tenant_access(principal, tenant_id)
-    TemplateContract.ensure_content("LANDING", payload, strict=True)
+    _validate_template_content("LANDING", payload)
     context = await _context(platform, tenant_id)
     async for database in tenant_session(context):
+        await _guard_html_editor_overwrite(database, slug, payload)
         result = await LandingPageService(database).save_draft(
             slug,
             payload,
@@ -172,20 +201,15 @@ async def apply_global_landing_template_support(
         tenant_id=tenant_id,
     )
     if template["surface"] != "LANDING":
-        from app.core.errors import APIError
-
         raise APIError("GLOBAL_TEMPLATE_SURFACE_MISMATCH", "Este modelo não é de Landing Page.", 422)
-    TemplateContract.ensure_content(
-        "LANDING",
-        template["version"]["content"],
-        strict=True,
-    )
+    template_content = template["version"]["content"]
+    _validate_template_content("LANDING", template_content)
     context = await _context(platform, tenant_id)
     async for database in tenant_session(context):
         service = LandingPageService(database)
         draft = await service.save_draft(
             slug,
-            template["version"]["content"],
+            template_content,
             created_by=None,
             label=f"Modelo global: {template['name']} v{template['version']['version_number']}",
         )
@@ -271,20 +295,15 @@ async def apply_global_booking_template_support(
         tenant_id=tenant_id,
     )
     if template["surface"] != "BOOKING":
-        from app.core.errors import APIError
-
         raise APIError("GLOBAL_TEMPLATE_SURFACE_MISMATCH", "Este modelo não é de Página de Agendamento.", 422)
-    TemplateContract.ensure_content(
-        "BOOKING",
-        template["version"]["content"],
-        strict=True,
-    )
+    template_content = template["version"]["content"]
+    _validate_template_content("BOOKING", template_content)
     context = await _context(platform, tenant_id)
     async for database in tenant_session(context):
         values = {
             "booking_page_template_key": template["key"],
             "booking_page_template_version": int(template["version"]["version_number"]),
-            "booking_page_template_content": template["version"]["content"],
+            "booking_page_template_content": template_content,
         }
         for key, value in values.items():
             await database.execute(

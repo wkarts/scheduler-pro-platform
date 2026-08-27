@@ -17,6 +17,7 @@ import TenantSecondFactorGate from './TenantSecondFactorGate.vue'
 import TenantUniversalDownloads from './TenantUniversalDownloads.vue'
 import TenantWorkspaceCoordinator from './TenantWorkspaceCoordinator.vue'
 import './tenantContrast.css'
+import './tenantEditorMobileHotfix.css'
 
 const authenticated = ref(Boolean(localStorage.getItem('scheduler_pro_access_token')))
 const normalizedPath = window.location.pathname.replace(/\/+$/, '') || '/'
