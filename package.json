@@ -15,7 +15,6 @@
     "packages/visual-builder"
   ],
   "scripts": {
-    "postinstall": "npm --workspace packages/visual-builder run materialize",
     "lint": "npm run lint --workspaces --if-present",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "build": "npm run build --workspaces --if-present",
