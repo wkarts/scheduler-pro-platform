@@ -1,4 +1,5 @@
 from pathlib import Path
+import re
 
 
 def _repository_root() -> Path:
@@ -60,7 +61,11 @@ def test_html_runtime_is_sandboxed_without_same_origin() -> None:
     source = _read("apps/web/src/HtmlTemplateFrame.vue")
     if not source:
         return
-    assert "sandbox=\"allow-scripts" in source
-    assert "allow-same-origin" not in source
+    sandbox = re.search(r'sandbox="([^"]+)"', source)
+    assert sandbox is not None
+    assert "allow-scripts" in sandbox.group(1)
+    assert "allow-same-origin" not in sandbox.group(1)
     assert "scheduler-pro-html-api-request" in source
     assert "/api/v1/public/booking" in source
+    assert "runtimeCompatibleSource" in source
+    assert "scheduler-pro-html-navigate" in source
