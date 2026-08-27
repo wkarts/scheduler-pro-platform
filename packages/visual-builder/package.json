@@ -10,17 +10,13 @@
     ".": { "types": "./src/index.d.ts", "import": "./src/index.js" },
     "./styles.css": "./styles/builder.css"
   },
-  "files": ["src", "styles", "releases", "LICENSE", "README.md"],
+  "files": ["src", "styles", "release-b64", "scripts", "LICENSE", "README.md"],
   "scripts": {
+    "materialize": "node scripts/materialize-releases.mjs",
     "test": "node --test tests/*.test.js",
     "check": "node --check src/index.js",
     "typecheck": "npm run check",
-    "build": "npm run check"
-  },
-  "dependencies": {
-    "@argws/visual-builder-v1": "file:./releases/argws-visual-builder-1.0.0.tgz",
-    "@argws/visual-builder-v2": "file:./releases/argws-visual-builder-2.0.0.tgz",
-    "@argws/visual-builder-v201": "file:./releases/argws-visual-builder-2.0.1.tgz"
+    "build": "npm run materialize && npm run check"
   },
   "keywords": ["page-builder", "landing-page", "visual-editor", "scheduler-pro", "argws"],
   "license": "MIT",
