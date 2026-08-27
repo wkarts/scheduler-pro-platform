@@ -24,7 +24,6 @@ from app.api.v1.routes import (
     platform_access,
     platform_html_templates,
     platform_templates,
-    platform_visual_builder,
     professionals,
     public,
     realtime,
@@ -213,11 +212,6 @@ api_router.include_router(
     platform_html_templates.router,
     prefix="/platform/html-templates",
     tags=["HTML Templates"],
-)
-api_router.include_router(
-    platform_visual_builder.router,
-    prefix="/platform/visual-builder",
-    tags=["ARGWS Visual Builder"],
 )
 api_router.include_router(
     platform_access.router,
