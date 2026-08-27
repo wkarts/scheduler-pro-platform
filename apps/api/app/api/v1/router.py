@@ -22,6 +22,7 @@ from app.api.v1.routes import (
     password_reset_pages,
     platform,
     platform_access,
+    platform_html_templates,
     platform_templates,
     professionals,
     public,
@@ -145,6 +146,7 @@ api_router.include_router(platform.router, prefix="/platform", tags=["Platform"]
 api_router.include_router(tenant_management.router, prefix="/platform/tenant-management", tags=["Tenant Management"])
 api_router.include_router(tenant_support.router, prefix="/platform/tenant-support", tags=["Tenant Support"])
 api_router.include_router(platform_templates.router, prefix="/platform/templates", tags=["Global Templates"])
+api_router.include_router(platform_html_templates.router, prefix="/platform/html-templates", tags=["HTML Templates"])
 api_router.include_router(platform_access.router, prefix="/platform/access", tags=["Platform IAM"])
 api_router.include_router(observability.router, prefix="/platform/observability", tags=["Platform Observability"])
 api_router.include_router(builds.router, prefix="/platform/builds", tags=["Build Manager"])
