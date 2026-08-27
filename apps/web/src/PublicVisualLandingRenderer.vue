@@ -1,11 +1,6 @@
 <script setup lang="ts">
 import { nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
-import {
-  loadVisualBuilderRuntime,
-  resolveVisualBuilderVersionFromContent,
-  type PageDocument,
-  type VisualBuilderVersion,
-} from '@argws/visual-builder'
+import { loadVisualBuilderRuntime, type PageDocument } from '@argws/visual-builder'
 
 type Service={id:string;name:string;duration_minutes:number;price?:number|null}
 type Professional={id:string;name:string}
@@ -14,7 +9,6 @@ const props=defineProps<{content:PageDocument|Record<string,unknown>;services?:S
 const host=ref<HTMLDivElement|null>(null)
 const bookingTarget=ref<Element|null>(null)
 const error=ref('')
-const runtimeVersion=ref<VisualBuilderVersion|null>(null)
 let renderer:RendererElement|null=null
 let renderRaf=0
 let generation=0
@@ -27,11 +21,9 @@ function professionalsHtml():string{if(!props.professionals?.length)return '<div
 async function ensureRenderer():Promise<void>{
   if(renderer||!host.value)return
   const current=++generation
-  const version=resolveVisualBuilderVersionFromContent(props.content as Record<string,any>)
   try{
-    await loadVisualBuilderRuntime(version)
+    await loadVisualBuilderRuntime()
     if(current!==generation||renderer||!host.value)return
-    runtimeVersion.value=version
     const element=document.createElement('argws-page-renderer') as RendererElement
     element.addEventListener('upb-rendered',onRendered)
     host.value.appendChild(element)
@@ -41,13 +33,6 @@ async function ensureRenderer():Promise<void>{
 async function render():Promise<void>{
   await ensureRenderer()
   if(!renderer)return
-  const requested=resolveVisualBuilderVersionFromContent(props.content as Record<string,any>)
-  if(runtimeVersion.value&&requested!==runtimeVersion.value){
-    // Uma página pública usa uma única release por carregamento. Mudança de versão
-    // publicada é percebida naturalmente no próximo navigation/reload.
-    window.location.reload()
-    return
-  }
   renderer.context={servicesHtml:servicesHtml(),professionalsHtml:professionalsHtml(),ensureBooking:true}
   renderer.document=props.content as PageDocument
   await nextTick()
