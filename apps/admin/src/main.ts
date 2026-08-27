@@ -1,6 +1,7 @@
 import { createApp } from 'vue'
 import { createPinia } from 'pinia'
 import App from './AdminControlPlane.vue'
+import AdminHtmlTemplateImportOverlay from './AdminHtmlTemplateImportOverlay.vue'
 import AdminSecondFactorGate from './AdminSecondFactorGate.vue'
 import AdminTemplateImportCenter from './AdminTemplateImportCenter.vue'
 import AdminTemplateSupportCenter from './AdminTemplateSupportCenter.vue'
@@ -35,6 +36,11 @@ const templateImportHost = document.createElement('div')
 templateImportHost.id = 'scheduler-pro-template-import'
 document.body.appendChild(templateImportHost)
 createApp(AdminTemplateImportCenter).mount(templateImportHost)
+
+const htmlTemplateImportHost = document.createElement('div')
+htmlTemplateImportHost.id = 'scheduler-pro-html-template-import'
+document.body.appendChild(htmlTemplateImportHost)
+createApp(AdminHtmlTemplateImportOverlay).mount(htmlTemplateImportHost)
 
 const secondFactorHost = document.createElement('div')
 secondFactorHost.id = 'scheduler-pro-admin-second-factor'
