@@ -64,7 +64,7 @@ def test_public_surfaces_are_separated_and_editor_uses_canonical_visual_builder(
     assert "TenantVisualPageBuilder" in app
     assert "TenantPublicPageEditorV2" not in app
     assert "TenantWorkspaceCoordinator" not in app
-    assert "'/agendar'" in app and "'/pagina'" in app
+    assert "'/agendar'" in app and "'/pagina'" in app and "'/login'" in app
     assert "landingMode" in site
     assert "PublicVisualLandingRenderer" in site
     assert "SchedulerProProjectAdapter" in editor

@@ -18,6 +18,7 @@ import {
   TrendingUp,
 } from 'lucide-vue-next'
 import { openAgendaOperator } from './tenantNavigation'
+import { confirmDialog } from './appDialog'
 
 type Period='day'|'week'|'month'|'quarter'|'semester'|'year'
 type Tab='overview'|'calendar'|'reports'|'automation'
@@ -37,6 +38,7 @@ const saving=ref(false)
 const error=ref('')
 const message=ref('')
 const appointments=ref<Appointment[]>([])
+const tenantTimezone=ref('America/Bahia')
 const report=ref<Report|null>(null)
 const overviewWeek=ref<Report|null>(null)
 const overviewMonth=ref<Report|null>(null)
@@ -65,12 +67,12 @@ const monthDays=computed(()=>{
 const maxCurve=computed(()=>Math.max(1,...(report.value?.analytical.curve.map((item)=>item.appointments)||[1])))
 
 function token():string{return localStorage.getItem('scheduler_pro_access_token')||''}
-function localDateKey(value:Date):string{const offset=value.getTimezoneOffset()*60000;return new Date(value.getTime()-offset).toISOString().slice(0,10)}
+function localDateKey(value:Date):string{const parts=new Intl.DateTimeFormat('en-CA',{timeZone:tenantTimezone.value,year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(value);const val=(type:string)=>parts.find(item=>item.type===type)?.value||'';return `${val('year')}-${val('month')}-${val('day')}`}
 function todayKey():string{return localDateKey(new Date())}
 function dayKey(value:string):string{return localDateKey(new Date(value))}
 function startOfMonth(value:Date):Date{return new Date(value.getFullYear(),value.getMonth(),1,12)}
 function money(value:number):string{return new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(Number(value||0))}
-function time(value:string):string{return new Date(value).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})}
+function time(value:string):string{return new Intl.DateTimeFormat('pt-BR',{timeZone:tenantTimezone.value,hour:'2-digit',minute:'2-digit'}).format(new Date(value))}
 function status(value:string):string{return statusLabels[value]||value}
 function periodLabel(value:Period):string{return periodLabels[value]}
 function flash(value:string):void{message.value=value;window.setTimeout(()=>{if(message.value===value)message.value=''},3500)}
@@ -83,14 +85,16 @@ async function api<T>(path:string,init:RequestInit={}):Promise<T>{
   return payload.data as T
 }
 async function fetchReport(target:Period,targetAnchor=anchor.value):Promise<Report>{return api<Report>(`/agenda/reports/summary?period=${target}&anchor=${encodeURIComponent(targetAnchor)}`)}
-async function loadBase():Promise<void>{appointments.value=await api<Appointment[]>('/appointments')}
+async function loadTenantContext():Promise<void>{const settings=await api<{timezone?:string}>('/settings/tenant').catch(()=>({timezone:tenantTimezone.value}));if(settings?.timezone)tenantTimezone.value=settings.timezone}
+function calendarRange():{startsAt:string;endsAt:string}{const first=startOfMonth(monthCursor.value);const gridStart=new Date(first);gridStart.setDate(first.getDate()-first.getDay());const gridEnd=new Date(gridStart);gridEnd.setDate(gridStart.getDate()+42);const key=(d:Date)=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;return{startsAt:`${key(gridStart)}T00:00:00`,endsAt:`${key(gridEnd)}T00:00:00`}}
+async function loadBase():Promise<void>{const range=calendarRange();appointments.value=await api<Appointment[]>(`/appointments?starts_at=${encodeURIComponent(range.startsAt)}&ends_at=${encodeURIComponent(range.endsAt)}`)}
 async function loadOverview():Promise<void>{const [week,month]=await Promise.all([fetchReport('week',todayKey()),fetchReport('month',todayKey())]);overviewWeek.value=week;overviewMonth.value=month}
 async function loadReport():Promise<void>{report.value=await fetchReport(period.value)}
 async function loadSchedules():Promise<void>{schedules.value=await api<ReportSchedule[]>('/agenda/reports/schedules')}
-async function load():Promise<void>{if(!visible.value)return;loading.value=true;error.value='';try{await Promise.all([loadBase(),loadOverview(),loadReport(),loadSchedules()])}catch(exc){error.value=exc instanceof Error?exc.message:'Não foi possível carregar a Agenda.'}finally{loading.value=false}}
+async function load():Promise<void>{if(!visible.value)return;loading.value=true;error.value='';try{await loadTenantContext();await Promise.all([loadBase(),loadOverview(),loadReport(),loadSchedules()])}catch(exc){error.value=exc instanceof Error?exc.message:'Não foi possível carregar a Agenda.'}finally{loading.value=false}}
 function setTab(value:Tab):void{tab.value=value;if(value==='reports')void loadReport();if(value==='automation')void loadSchedules()}
-function shiftMonth(delta:number):void{monthCursor.value=new Date(monthCursor.value.getFullYear(),monthCursor.value.getMonth()+delta,1,12)}
-function chooseDay(key:string):void{selectedDay.value=key;const d=new Date(`${key}T12:00:00`);monthCursor.value=startOfMonth(d)}
+function shiftMonth(delta:number):void{monthCursor.value=new Date(monthCursor.value.getFullYear(),monthCursor.value.getMonth()+delta,1,12);void loadBase()}
+function chooseDay(key:string):void{selectedDay.value=key;const d=new Date(`${key}T12:00:00`);const next=startOfMonth(d);const changed=next.getMonth()!==monthCursor.value.getMonth()||next.getFullYear()!==monthCursor.value.getFullYear();monthCursor.value=next;if(changed)void loadBase()}
 function openNew(startsAt?:string):void{openAgendaOperator({tab:'quick',startsAt})}
 function openManage():void{openAgendaOperator({tab:'manage'})}
 function openRecurring():void{openAgendaOperator({tab:'recurring'})}
@@ -104,10 +108,11 @@ async function persistSchedules(next:ReportSchedule[],notice:string):Promise<voi
 async function saveSchedule():Promise<void>{const existing=schedules.value.filter((item)=>item.period!==scheduleForm.value.period);const next=[...existing,copySchedule(scheduleForm.value)];try{await persistSchedules(next,'Automação do relatório salva.')}catch{/* mensagem já tratada */}}
 function editSchedule(item:ReportSchedule):void{scheduleForm.value=copySchedule(item);flash(`${periodLabel(item.period)} carregado para edição.`)}
 async function toggleSchedule(item:ReportSchedule):Promise<void>{const next=schedules.value.map(row=>row.period===item.period?{...copySchedule(row),enabled:!row.enabled}:copySchedule(row));try{await persistSchedules(next,item.enabled?'Automação pausada.':'Automação ativada.')}catch{/* mensagem já tratada */}}
-async function deleteSchedule(item:ReportSchedule):Promise<void>{if(!window.confirm(`Excluir a automação ${periodLabel(item.period).toLowerCase()}?`))return;const next=schedules.value.filter(row=>row.period!==item.period).map(copySchedule);try{await persistSchedules(next,'Automação excluída.');if(scheduleForm.value.period===item.period)scheduleForm.value={enabled:false,period:'month',delivery_channels:['email'],email:localStorage.getItem('scheduler_pro_email')||'',whatsapp:'',format:'link',hour:8}}catch{/* mensagem já tratada */}}
+async function deleteSchedule(item:ReportSchedule):Promise<void>{if(!await confirmDialog({title:'Excluir automação',message:`Excluir a automação ${periodLabel(item.period).toLowerCase()}?`,danger:true,confirmLabel:'Excluir'}))return;const next=schedules.value.filter(row=>row.period!==item.period).map(copySchedule);try{await persistSchedules(next,'Automação excluída.');if(scheduleForm.value.period===item.period)scheduleForm.value={enabled:false,period:'month',delivery_channels:['email'],email:localStorage.getItem('scheduler_pro_email')||'',whatsapp:'',format:'link',hour:8}}catch{/* mensagem já tratada */}}
 function syncVisibility():void{visible.value=window.location.hash==='#agenda';document.body.classList.toggle('sp-agenda-center-open',visible.value);if(visible.value)void load()}
-onMounted(()=>{window.addEventListener('hashchange',syncVisibility);syncVisibility()})
-onUnmounted(()=>{window.removeEventListener('hashchange',syncVisibility);document.body.classList.remove('sp-agenda-center-open')})
+function onAppointmentsChanged():void{if(visible.value)void loadBase()}
+onMounted(()=>{window.addEventListener('hashchange',syncVisibility);window.addEventListener('scheduler-pro-appointments-changed',onAppointmentsChanged);syncVisibility()})
+onUnmounted(()=>{window.removeEventListener('hashchange',syncVisibility);window.removeEventListener('scheduler-pro-appointments-changed',onAppointmentsChanged);document.body.classList.remove('sp-agenda-center-open')})
 </script>
 
 <template>

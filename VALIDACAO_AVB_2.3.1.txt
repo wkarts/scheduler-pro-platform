@@ -1,0 +1,60 @@
+Scheduler Pro + ARGWS Visual Builder 2.3.1 — Validação canônica
+Data: 2026-08-28
+
+BASE
+- main atual fornecida pelo usuário nesta rodada.
+- nenhuma publicação automática no GitHub.
+
+VERSÃO
+- packages/visual-builder/VERSION: 2.3.1
+- packages/visual-builder/package.json: 2.3.1
+- apps/web @argws/visual-builder: 2.3.1
+- contexto público backend: visual_builder_version=2.3.1
+
+PÁGINAS
+- LANDING /pagina
+- BOOKING /agendar
+- LOGIN /login
+- três páginas independentes de primeira classe.
+
+TEMPLATES
+- 8 famílias oficiais reais em ZIP.
+- scheduler-pro-padrao-generico é fallback central da plataforma.
+- 8/8 pacotes validados pelo HtmlTemplatePackageService.
+- 8/8 pacotes importados no AVB como LANDING + BOOKING + LOGIN.
+- nenhum html_surface legado gerado.
+
+AVB
+- npm run check: OK.
+- npm test: 60/60 PASS.
+- modelos internos antigos removidos da lista; permanece apenas Em branco.
+- Aplicar template atua somente na página selecionada.
+- abertura de página recarrega o documento real; usa publicação/fallback quando necessário.
+- dialogs/prompt internos no Project Workspace.
+
+CONTEXTO PÚBLICO
+- Preview abre a rota pública real da superfície.
+- Landing/Agenda/Login respeitam flags e capabilities do tenant.
+- condicionais centrais para Login, Agenda, Contato e WhatsApp.
+- Login personalizado usa SchedulerProAuth.login e a autenticação real da aplicação.
+
+AGENDA
+- API suporta consulta starts_at/ends_at por período.
+- calendário carrega o intervalo visível e usa timezone do tenant.
+- realtime e Operador da Agenda notificam scheduler-pro-appointments-changed.
+- criação, recorrência, permuta, cancelamento e exclusão atualizam o calendário sem reload completo.
+
+DIALOGS
+- alert()/confirm()/prompt() nativos de aplicação removidos de Web, Admin e AVB.
+- chamadas .prompt() remanescentes pertencem exclusivamente ao evento oficial beforeinstallprompt do PWA.
+
+STATIC CHECKS
+- python -m compileall: OK.
+- Vue/TypeScript transpile syntax: 43 arquivos, 0 falhas.
+- templates backend: 8/8 OK.
+- templates AVB: 8/8 OK.
+
+LIMITAÇÃO DO AMBIENTE
+- pytest completo não pôde iniciar localmente porque structlog não está instalado neste runtime.
+- build Vue completo não foi executado porque este ambiente não contém as dependências npm completas do monorepo.
+- essas validações devem rodar normalmente no CI/GitHub Actions após npm/pip install oficiais.

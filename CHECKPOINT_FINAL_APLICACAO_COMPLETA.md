@@ -1,113 +1,56 @@
-# Checkpoint final — Scheduler Pro
+# Checkpoint — Scheduler Pro + ARGWS Visual Builder 2.3.1
 
-Data: 2026-08-16
-Branch: `feature/final-hubfiscal-native-checkpoint`
+Data: 2026-08-28
 
-Este checkpoint consolida o estado da aplicação após as entregas incrementais e define o critério objetivo para chamar o Scheduler Pro de concluído.
+## Base
 
-## Estado real do deploy observado
+Atualização aplicada sobre a `main` atual fornecida nesta rodada.
 
-Os logs de produção mostram que a stack Docker/CloudPanel sobe corretamente:
+## Estado canônico
 
-- `scheduler-api`: saudável e respondendo `/api/v1/health/ready`.
-- `scheduler-proxy`: servindo web/admin e proxy `/api/v1`.
-- `scheduler-admin`: servindo PWA administrativo.
-- `scheduler-web`: servindo PWA cliente.
-- `postgres`, `redis`, `rabbitmq`, `minio`: healthy.
-- Login administrativo retornou `200 OK` quando a senha correta foi usada.
-- Endpoints administrativos retornaram `200 OK` para dashboard, tenants, domains, builds e observability.
+- ARGWS Visual Builder: **2.3.1**;
+- PWA: experiência principal;
+- Android/APK: ativo;
+- iOS/IPA: ativo;
+- desktop Windows/Linux/macOS: código preservado, builds fora do fluxo ativo.
 
-## Entregas consolidadas
+## Páginas públicas
 
-### Control Plane administrativo
+- Landing Page `/pagina`;
+- Agenda Pública `/agendar`;
+- Login `/login`.
 
-- Login administrativo sem localhost.
-- API relativa no PWA e absoluta nos apps nativos.
-- Dashboard administrativo.
-- Clientes SaaS / tenants.
-- Domínios temporários e customizados.
-- Verificação de DNS temporário separada de Custom Hostnames.
-- Builds e artefatos.
-- Logs e observabilidade.
-- Diagnóstico Cloudflare separado por DNS, Custom Hostname e Purge Cache.
-- Visual atualizado para padrão Hub Fiscal no Admin Desktop.
+As três superfícies são páginas independentes e editáveis.
 
-### Cliente / tenant
+## Biblioteca de templates
 
-- WebApp/PWA cliente.
-- Desktop cliente com API absoluta embutida por build.
-- Mobile cliente com API absoluta embutida por build.
-- Remoção de campo técnico de URL/API para o usuário final.
-- Branding por distribuição/build profile.
+Oito famílias oficiais estão versionadas como ZIPs reais em `apps/api/resources/template-packages/`. O modelo `scheduler-pro-padrao-generico` é fallback e padrão para ausência de personalização.
 
-### Infraestrutura
+O bootstrap sincroniza somente a biblioteca global. Ele não substitui automaticamente páginas já personalizadas de tenants.
 
-- Docker Compose CloudPanel/Dockge.
-- Porta interna `127.0.0.1:18080`.
-- GHCR images para API/worker/web/admin/proxy.
-- Release pós-merge.
-- Artefatos nativos pós-merge, não em pull request.
-- APK debug instalável para homologação direta.
-- Desktop instalável por plataforma, sem pacote portátil solto.
-- Perfil ACME/Let’s Encrypt DNS-01 via Cloudflare para wildcard.
+## Correções 2.3.1
 
-### Isolamento por tenant
+- página publicada pode ser recuperada para edição quando o rascunho estiver ausente/inválido;
+- Preview real abre a rota pública da superfície e respeita parâmetros do tenant;
+- canvas HTML do editor respeita flags condicionais sem executar scripts importados;
+- Agenda Pública offline não renderiza como online;
+- Login público pode ser ativado/desativado;
+- Login na Landing, Agendamento na Landing, Contato e WhatsApp usam flags centrais;
+- Login personalizado usa a autenticação real através de `SchedulerProAuth.login`;
+- dialogs, confirmações e prompts de Web/Admin/AVB usam UI interna;
+- calendário consulta intervalo visível, usa timezone do tenant e reage a eventos realtime e às mutações do Operador da Agenda;
+- aplicar template afeta somente a superfície selecionada;
+- modelos internos antigos do AVB foram removidos da lista, permanecendo apenas “Em branco”.
 
-Cada tenant deve manter recursos segregados:
+## Validações executadas neste ambiente
 
-- banco próprio;
-- usuário de banco próprio;
-- storage/prefixo próprio;
-- artefatos próprios;
-- logs próprios;
-- build profiles próprios;
-- domínios próprios.
+- 8/8 pacotes oficiais validados pelo `HtmlTemplatePackageService`;
+- LANDING + BOOKING + LOGIN presentes nas oito famílias;
+- `python -m compileall`: OK;
+- testes do ARGWS Visual Builder: 60/60 aprovados;
+- scripts Vue/TypeScript verificados sintaticamente com TypeScript;
+- nenhum `alert()`, `confirm()` ou `prompt()` nativo de aplicação encontrado no AVB/Web/Admin; chamadas `.prompt()` restantes são exclusivamente o contrato `beforeinstallprompt` do PWA.
 
-## Critério para chamar de concluído
+## Limitação do ambiente de validação
 
-A aplicação só pode ser marcada como concluída quando todos os itens abaixo passarem em ambiente real:
-
-1. WebApp cliente abre, autentica e executa agenda/clientes/serviços/profissionais/notificações.
-2. Admin PWA abre, autentica, cria tenant, cria domínio temporário, verifica domínio, executa purge, lista logs e cria build.
-3. Admin Desktop instala e autentica usando `https://admin.scheduler.argws.com.br/api/v1`.
-4. Cliente Desktop instala e autentica usando `https://scheduler.argws.com.br/api/v1` ou endpoint do tenant.
-5. Admin Mobile APK instala e autentica.
-6. Cliente Mobile APK instala e autentica.
-7. Cloudflare DNS cria CNAME/A proxied e o backend marca domínio temporário como `ACTIVE` quando o registro existe.
-8. Purge Cloudflare funciona com token que tenha permissão de Cache Purge.
-9. Let’s Encrypt wildcard via DNS-01 emite `fullchain.pem` e `privkey.pem` em `scheduler-pro-data/certs`.
-10. Build Manager gera artefatos por tenant sem misturar storage/logs/artefatos.
-11. Logs do tenant e logs da plataforma aparecem separados no painel.
-12. Todas as telas administrativas e cliente seguem o padrão visual aprovado, sem telas vazias ou cards genéricos.
-
-## Pendências que impedem declarar completo sem validação
-
-- Validar token Cloudflare com permissão de purge/cache.
-- Rodar o perfil ACME no servidor e confirmar emissão/renovação wildcard.
-- Regenerar e reinstalar os binários nativos após a última alteração de UI/API.
-- Validar fluxo completo de agenda e WhatsApp em tenant real.
-- Validar tela mobile/desktop real no dispositivo após build final.
-
-## Comando de atualização pós-merge
-
-```bash
-docker compose pull
-docker compose up -d --remove-orphans
-```
-
-## Comando ACME/SSL wildcard
-
-```bash
-docker compose -f compose.yaml -f compose.acme.yaml --profile ssl up -d scheduler-acme
-```
-
-Certificados esperados:
-
-```text
-./scheduler-pro-data/certs/fullchain.pem
-./scheduler-pro-data/certs/privkey.pem
-```
-
-## Decisão final
-
-Este checkpoint não deve ser usado para mascarar pendência. Ele define exatamente o que precisa estar verde antes de declarar a aplicação concluída em produção.
+A suíte Python completa e o build Vue completo não puderam ser executados aqui porque este runtime não possui todas as dependências do projeto e não tem acesso de rede para instalá-las. A validação completa deve ser repetida no GitHub Actions/ambiente de desenvolvimento com as dependências oficiais.

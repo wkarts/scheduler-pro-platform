@@ -1,167 +1,52 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 
-type Mode='landing'|'booking'|'preview'
-type ApiBridgeRequest={
-  type:'scheduler-pro-html-api-request'
-  id:string
-  path:string
-  method:string
-  body?:string|null
-}
-type BridgeMessage={type?:string;id?:string;path?:string;method?:string;body?:string|null;height?:number;href?:string}
-
-const props=withDefaults(defineProps<{html:string;mode?:Mode}>(),{mode:'landing'})
+type Mode='landing'|'booking'|'login'|'preview'
+type RuntimeContext={features?:Record<string,unknown>;pages?:Record<string,{enabled?:boolean}>;preferences?:Record<string,unknown>;tenant?:Record<string,unknown>}
+type BridgeMessage={type?:string;id?:string;path?:string;method?:string;body?:string|null;height?:number;href?:string;email?:string;password?:string}
+const props=withDefaults(defineProps<{html:string;mode?:Mode;context?:RuntimeContext}>(),{mode:'landing',context:()=>({})})
 const frame=ref<HTMLIFrameElement|null>(null)
 const frameHeight=ref(720)
 
 const BRIDGE_SOURCE=`
 (function(){
-  var pending=new Map();
-  var sequence=0;
-  function publicPath(raw){
-    var value=String(raw||'');
-    var marker='/api/v1/public';
-    var index=value.indexOf(marker);
-    return index>=0?value.slice(index):'';
+  var pending=new Map(),sequence=0;
+  var runtime=window.SCHEDULER_PRO_CONTEXT||{};
+  function memoryStorage(){var values={};return{getItem:function(key){key=String(key);return Object.prototype.hasOwnProperty.call(values,key)?values[key]:null;},setItem:function(key,value){values[String(key)]=String(value);},removeItem:function(key){delete values[String(key)];},clear:function(){values={};},key:function(index){return Object.keys(values)[Number(index)]||null;},get length(){return Object.keys(values).length;}};}
+  try{void window.localStorage;}catch(_){try{Object.defineProperty(window,'localStorage',{value:memoryStorage(),configurable:true});}catch(__){}}
+  try{void window.sessionStorage;}catch(_){try{Object.defineProperty(window,'sessionStorage',{value:memoryStorage(),configurable:true});}catch(__){}}
+  function feature(name,fallback){var f=runtime.features||{};return Object.prototype.hasOwnProperty.call(f,name)?!!f[name]:fallback;}
+  function applyConditions(){
+    var booking=feature('public_booking',feature('booking',false));
+    var login=feature('show_login',feature('login',false));
+    var contact=feature('show_contact',true);
+    var whatsapp=feature('show_whatsapp',true);
+    document.body&&document.body.setAttribute('data-public-booking',booking?'enabled':'disabled');
+    document.querySelectorAll('[data-booking-only],[data-booking-link],[data-action="booking"]').forEach(function(el){el.hidden=!booking;el.setAttribute('aria-hidden',booking?'false':'true');});
+    document.querySelectorAll('[data-login-link],[data-sp-role="login-link"]').forEach(function(el){el.hidden=!login;el.setAttribute('aria-hidden',login?'false':'true');});
+    document.querySelectorAll('[data-contact-only],[data-section="contact"],a[href^="tel:"],a[href^="mailto:"]').forEach(function(el){el.hidden=!contact;el.setAttribute('aria-hidden',contact?'false':'true');});
+    document.querySelectorAll('[data-whatsapp-link],a[href*="wa.me"],a[href*="whatsapp"]').forEach(function(el){el.hidden=!whatsapp;el.setAttribute('aria-hidden',whatsapp?'false':'true');});
   }
-  window.fetch=function(input,init){
-    init=init||{};
-    var raw=typeof input==='string'?input:(input&&input.url?input.url:'');
-    var path=publicPath(raw);
-    if(!path){return Promise.reject(new Error('Acesso de rede externo bloqueado pelo Scheduler Pro.'));}
-    var id='sp-html-'+(++sequence)+'-'+Date.now();
-    return new Promise(function(resolve,reject){
-      pending.set(id,{resolve:resolve,reject:reject});
-      parent.postMessage({
-        type:'scheduler-pro-html-api-request',id:id,path:path,
-        method:String(init.method||'GET').toUpperCase(),
-        body:typeof init.body==='string'?init.body:null
-      },'*');
-      setTimeout(function(){
-        if(!pending.has(id))return;
-        pending.delete(id);
-        reject(new Error('Tempo esgotado ao consultar o Scheduler Pro.'));
-      },30000);
-    });
-  };
-  window.addEventListener('message',function(event){
-    if(event.source!==parent)return;
-    var data=event.data||{};
-    if(data.type!=='scheduler-pro-html-api-response'||!data.id)return;
-    var entry=pending.get(data.id);
-    if(!entry)return;
-    pending.delete(data.id);
-    entry.resolve(new Response(String(data.body||''),{
-      status:Number(data.status||500),
-      headers:data.headers||{'content-type':'application/json'}
-    }));
-  });
-  document.addEventListener('click',function(event){
-    var node=event.target;
-    if(!node||typeof node.closest!=='function')return;
-    var link=node.closest('a[href]');
-    if(!link)return;
-    var href=String(link.getAttribute('href')||'').trim();
-    if(!href||href.charAt(0)==='#')return;
-    if(href==='/agendar'||href.indexOf('/agendar?')===0||href==='/pagina'||href.indexOf('/pagina?')===0){
-      event.preventDefault();
-      parent.postMessage({type:'scheduler-pro-html-navigate',href:href},'*');
-    }
-  },true);
-  function reportHeight(){
-    var root=document.documentElement;
-    var body=document.body;
-    var height=Math.max(root?root.scrollHeight:0,body?body.scrollHeight:0,480);
-    parent.postMessage({type:'scheduler-pro-html-height',height:height},'*');
-  }
-  window.addEventListener('load',reportHeight);
-  window.addEventListener('resize',reportHeight);
-  if(window.ResizeObserver){new ResizeObserver(reportHeight).observe(document.documentElement);}
-  setTimeout(reportHeight,80);setTimeout(reportHeight,500);setTimeout(reportHeight,1500);
+  window.SchedulerProAuth={login:function(email,password){var id='sp-auth-'+(++sequence)+'-'+Date.now();return new Promise(function(resolve,reject){pending.set(id,{resolve:resolve,reject:reject});parent.postMessage({type:'scheduler-pro-auth-login',id:id,email:String(email||''),password:String(password||'')},'*');setTimeout(function(){if(!pending.has(id))return;pending.delete(id);reject(new Error('Tempo esgotado ao autenticar.'));},30000);});}};
+  window.fetch=function(input,init){init=init||{};var raw=typeof input==='string'?input:(input&&input.url?input.url:'');var marker='/api/v1/public';var idx=raw.indexOf(marker);var path=idx>=0?raw.slice(idx):'';if(!path)return Promise.reject(new Error('Acesso de rede externo bloqueado pelo Scheduler Pro.'));var id='sp-html-'+(++sequence)+'-'+Date.now();return new Promise(function(resolve,reject){pending.set(id,{resolve:resolve,reject:reject});parent.postMessage({type:'scheduler-pro-html-api-request',id:id,path:path,method:String(init.method||'GET').toUpperCase(),body:typeof init.body==='string'?init.body:null},'*');setTimeout(function(){if(!pending.has(id))return;pending.delete(id);reject(new Error('Tempo esgotado ao consultar o Scheduler Pro.'));},30000);});};
+  window.addEventListener('message',function(event){if(event.source!==parent)return;var data=event.data||{};if(data.type==='scheduler-pro-context'){runtime=data.context||{};window.SCHEDULER_PRO_CONTEXT=runtime;applyConditions();return;}if(data.type==='scheduler-pro-html-api-response'||data.type==='scheduler-pro-auth-response'){var entry=pending.get(data.id);if(!entry)return;pending.delete(data.id);if(data.type==='scheduler-pro-auth-response'){if(data.ok)entry.resolve(data.data||{});else entry.reject(new Error(data.message||'Falha ao autenticar.'));return;}entry.resolve(new Response(String(data.body||''),{status:Number(data.status||500),headers:data.headers||{'content-type':'application/json'}}));}});
+  document.addEventListener('click',function(event){var node=event.target;if(!node||typeof node.closest!=='function')return;var link=node.closest('a[href]');if(!link)return;var href=String(link.getAttribute('href')||'').trim();if(!href||href.charAt(0)==='#')return;if(['/agendar','/pagina','/login'].some(function(path){return href===path||href.indexOf(path+'?')===0;})){event.preventDefault();parent.postMessage({type:'scheduler-pro-html-navigate',href:href},'*');}},true);
+  function reportHeight(){var root=document.documentElement,body=document.body;var height=Math.max(root?root.scrollHeight:0,body?body.scrollHeight:0,480);parent.postMessage({type:'scheduler-pro-html-height',height:height},'*');}
+  document.addEventListener('DOMContentLoaded',applyConditions);window.addEventListener('load',function(){applyConditions();reportHeight();});window.addEventListener('resize',reportHeight);if(window.ResizeObserver)new ResizeObserver(reportHeight).observe(document.documentElement);setTimeout(function(){applyConditions();reportHeight();},80);setTimeout(reportHeight,500);
 })();
 `
-
 const csp=`<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data: blob: https:; style-src 'unsafe-inline' https:; font-src data: https:; script-src 'unsafe-inline'; media-src data: blob: https:; frame-src https:; connect-src 'none'; form-action 'none'; base-uri 'none'">`
 const bridge='<script>'+BRIDGE_SOURCE+'</'+'script>'
-
-function runtimeCompatibleSource(source:string):string{
-  // srcdoc sem allow-same-origin possui origem opaca. Os HTMLs oficiais podem
-  // montar a URL pública usando window.location sem ganhar acesso ao origin do tenant.
-  // Esta adaptação existe somente em memória; o HTML versionado permanece intacto.
-  return source
-    .replace(/\bwindow\.location\.origin\b/g,"'https://scheduler-pro-template.local'")
-    .replace(/\bwindow\.location\.protocol\b/g,"'https:'")
-}
-
-const srcdoc=computed(()=>{
-  const source=runtimeCompatibleSource(props.html||'')
-  const injection=`${csp}${bridge}`
-  if(/<head(?:\s[^>]*)?>/i.test(source))return source.replace(/<head(\s[^>]*)?>/i,(match)=>`${match}${injection}`)
-  if(/<html(?:\s[^>]*)?>/i.test(source))return source.replace(/<html(\s[^>]*)?>/i,(match)=>`${match}<head>${injection}</head>`)
-  return `<!doctype html><html><head>${injection}</head><body>${source}</body></html>`
-})
-
-function allowed(path:string,method:string):boolean{
-  const clean=path.split('#',1)[0]||''
-  if(method==='GET'&&clean.startsWith('/api/v1/public/booking/availability'))return true
-  if(clean==='/api/v1/public/booking'&&['GET','POST'].includes(method))return true
-  if(method==='GET'&&clean.startsWith('/api/v1/public/landing'))return true
-  return false
-}
-
-async function handleApiRequest(data:ApiBridgeRequest):Promise<void>{
-  const target=frame.value?.contentWindow
-  if(!target)return
-  const method=String(data.method||'GET').toUpperCase()
-  if(!allowed(data.path,method)){
-    target.postMessage({type:'scheduler-pro-html-api-response',id:data.id,status:403,body:JSON.stringify({error:{code:'HTML_TEMPLATE_API_DENIED',message:'Recurso não permitido neste modelo.',details:{}}}),headers:{'content-type':'application/json'}},'*')
-    return
-  }
-  try{
-    const response=await fetch(data.path,{method,cache:'no-store',headers:{Accept:'application/json',...(data.body?{'content-type':'application/json'}:{})},...(data.body?{body:data.body}:{})})
-    const body=await response.text()
-    target.postMessage({type:'scheduler-pro-html-api-response',id:data.id,status:response.status,body,headers:{'content-type':response.headers.get('content-type')||'application/json'}},'*')
-  }catch{
-    target.postMessage({type:'scheduler-pro-html-api-response',id:data.id,status:503,body:JSON.stringify({error:{code:'HTML_TEMPLATE_API_UNAVAILABLE',message:'Não foi possível acessar o Scheduler Pro.',details:{}}}),headers:{'content-type':'application/json'}},'*')
-  }
-}
-
-function localNavigation(href:string):void{
-  if(href==='/agendar'||href.startsWith('/agendar?')||href==='/pagina'||href.startsWith('/pagina?'))window.location.assign(href)
-}
-
-function onMessage(event:MessageEvent):void{
-  if(event.source!==frame.value?.contentWindow)return
-  const data=event.data as BridgeMessage|null
-  if(!data||typeof data!=='object')return
-  if(data.type==='scheduler-pro-html-api-request'&&typeof data.id==='string'&&typeof data.path==='string'){
-    void handleApiRequest({type:'scheduler-pro-html-api-request',id:data.id,path:data.path,method:String(data.method||'GET'),body:data.body})
-  }
-  if(data.type==='scheduler-pro-html-navigate'&&typeof data.href==='string')localNavigation(data.href)
-  if(data.type==='scheduler-pro-html-height'){
-    const next=Math.max(480,Math.min(20000,Number(data.height||0)))
-    if(Number.isFinite(next))frameHeight.value=next
-  }
-}
-
-onMounted(()=>window.addEventListener('message',onMessage))
-onUnmounted(()=>window.removeEventListener('message',onMessage))
+const contextScript=computed(()=>`<script>window.SCHEDULER_PRO_CONTEXT=${JSON.stringify(props.context||{}).replace(/</g,'\\u003c')}</`+'script>')
+function runtimeCompatibleSource(source:string):string{return source.replace(/\bwindow\.location\.origin\b/g,"'https://scheduler-pro-template.local'").replace(/\bwindow\.location\.protocol\b/g,"'https:'")}
+const srcdoc=computed(()=>{const source=runtimeCompatibleSource(props.html||'');const injection=`${csp}${contextScript.value}${bridge}`;if(/<head(?:\s[^>]*)?>/i.test(source))return source.replace(/<head(\s[^>]*)?>/i,m=>`${m}${injection}`);if(/<html(?:\s[^>]*)?>/i.test(source))return source.replace(/<html(\s[^>]*)?>/i,m=>`${m}<head>${injection}</head>`);return `<!doctype html><html><head>${injection}</head><body>${source}</body></html>`})
+function allowed(path:string,method:string):boolean{const clean=path.split('#',1)[0]||'';if(method==='GET'&&clean.startsWith('/api/v1/public/booking/availability'))return true;if(clean==='/api/v1/public/booking'&&['GET','POST'].includes(method))return true;if(method==='GET'&&clean.startsWith('/api/v1/public/landing'))return true;if(method==='GET'&&clean==='/api/v1/public/context')return true;return false}
+async function handleApi(data:BridgeMessage):Promise<void>{const target=frame.value?.contentWindow;if(!target||!data.id||!data.path)return;const method=String(data.method||'GET').toUpperCase();if(!allowed(data.path,method)){target.postMessage({type:'scheduler-pro-html-api-response',id:data.id,status:403,body:JSON.stringify({error:{code:'HTML_TEMPLATE_API_DENIED',message:'Recurso não permitido neste modelo.'}})},'*');return}try{const response=await fetch(data.path,{method,cache:'no-store',headers:{Accept:'application/json',...(data.body?{'content-type':'application/json'}:{})},...(data.body?{body:data.body}:{})});target.postMessage({type:'scheduler-pro-html-api-response',id:data.id,status:response.status,body:await response.text(),headers:{'content-type':response.headers.get('content-type')||'application/json'}},'*')}catch{target.postMessage({type:'scheduler-pro-html-api-response',id:data.id,status:503,body:JSON.stringify({error:{message:'Não foi possível acessar o Scheduler Pro.'}})},'*')}}
+async function handleLogin(data:BridgeMessage):Promise<void>{const target=frame.value?.contentWindow;if(!target||!data.id)return;try{const response=await fetch('/api/v1/auth/login',{method:'POST',cache:'no-store',headers:{Accept:'application/json','content-type':'application/json'},body:JSON.stringify({email:data.email||'',password:data.password||''})});const payload=await response.json().catch(()=>({}));if(!response.ok||!payload.data)throw new Error(payload.error?.message||'E-mail ou senha inválidos.');const result=payload.data;localStorage.setItem('scheduler_pro_access_token',String(result.access_token||''));if(result.refresh_token)localStorage.setItem('scheduler_pro_refresh_token',String(result.refresh_token));window.dispatchEvent(new Event('scheduler-pro-auth-changed'));target.postMessage({type:'scheduler-pro-auth-response',id:data.id,ok:true,data:result},'*');window.location.assign('/#dashboard')}catch(error){target.postMessage({type:'scheduler-pro-auth-response',id:data.id,ok:false,message:error instanceof Error?error.message:'Falha ao autenticar.'},'*')}}
+function localNavigation(href:string):void{if(['/agendar','/pagina','/login'].some(path=>href===path||href.startsWith(path+'?')))window.location.assign(href)}
+function onMessage(event:MessageEvent):void{if(event.source!==frame.value?.contentWindow)return;const data=event.data as BridgeMessage|null;if(!data||typeof data!=='object')return;if(data.type==='scheduler-pro-html-api-request')void handleApi(data);if(data.type==='scheduler-pro-auth-login')void handleLogin(data);if(data.type==='scheduler-pro-html-navigate'&&data.href)localNavigation(data.href);if(data.type==='scheduler-pro-html-height'){const next=Math.max(480,Math.min(20000,Number(data.height||0)));if(Number.isFinite(next))frameHeight.value=next}}
+function pushContext():void{frame.value?.contentWindow?.postMessage({type:'scheduler-pro-context',context:props.context||{}},'*')}
+onMounted(()=>window.addEventListener('message',onMessage));onUnmounted(()=>window.removeEventListener('message',onMessage))
 </script>
-
-<template>
-  <iframe
-    ref="frame"
-    class="scheduler-html-template-frame"
-    :data-mode="mode"
-    :srcdoc="srcdoc"
-    :style="{height:`${frameHeight}px`}"
-    sandbox="allow-scripts allow-forms allow-modals allow-popups allow-popups-to-escape-sandbox allow-top-navigation-by-user-activation"
-    referrerpolicy="no-referrer"
-    title="Página personalizada"
-  />
-</template>
-
-<style scoped>
-.scheduler-html-template-frame{display:block;width:100%;min-height:480px;border:0;background:transparent;overflow:hidden}
-</style>
+<template><iframe ref="frame" class="scheduler-html-template-frame" :data-mode="mode" :srcdoc="srcdoc" :style="{height:`${frameHeight}px`}" sandbox="allow-scripts allow-forms" referrerpolicy="no-referrer" title="Página personalizada" @load="pushContext"/></template>
+<style scoped>.scheduler-html-template-frame{display:block;width:100%;min-height:480px;border:0;background:transparent;overflow:hidden}</style>

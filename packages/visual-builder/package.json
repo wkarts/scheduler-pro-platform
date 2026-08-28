@@ -1,7 +1,7 @@
 {
   "name": "@argws/visual-builder",
-  "version": "2.3.0",
-  "description": "ARGWS Visual Builder Universal 2.3.0: Project/Site Workspace universal, páginas de primeira classe e templates multi-página sem html_surface como widget.",
+  "version": "2.3.1",
+  "description": "ARGWS Visual Builder Universal 2.3.1: Project/Site Workspace universal com Brand Alignment AVB seguro em Light/Dark.",
   "type": "module",
   "main": "./src/index.js",
   "module": "./src/index.js",

@@ -115,7 +115,7 @@ function cssVariable(html, key) { const match = String(html).match(new RegExp(`-
 export function schedulerHtmlWrapper(htmlDocument, expectedSurface = null) {
   const html = String(htmlDocument || '');
   const declared = metaContent(html, 'scheduler-pro-surface').toLowerCase();
-  const surface = declared === 'booking' || declared === 'public-booking' || declared === 'agendamento' ? 'BOOKING' : 'LANDING';
+  const surface = declared === 'booking' || declared === 'public-booking' || declared === 'agendamento' ? 'BOOKING' : (declared === 'login' || declared === 'sign-in' ? 'LOGIN' : 'LANDING');
   const expected = String(expectedSurface || '').toUpperCase();
   if (expected && expected !== surface) throw new Error(`O HTML declara ${surface}, mas a importação exige ${expected}.`);
   const key = metaContent(html, 'scheduler-pro-template');
@@ -127,7 +127,7 @@ export function schedulerHtmlWrapper(htmlDocument, expectedSurface = null) {
     contract: 'scheduler-pro-html-template/v1',
     template_key: key.toLowerCase(),
     surface,
-    content_version: Math.max(2, contentVersion || 2),
+    content_version: surface === 'LOGIN' ? Math.max(1, contentVersion || 1) : Math.max(2, contentVersion || 2),
     html_document: html,
   };
 }
@@ -200,15 +200,17 @@ function schedulerSurfacePage(entries, manifest, surfaceName, options={}) {
   const descriptor = manifest.package.surfaces?.[surfaceName];
   if (!descriptor) return null;
   if (String(descriptor.renderer || '').toUpperCase() !== 'HTML') throw new Error(`Renderer ${descriptor.renderer || 'desconhecido'} ainda não é suportado por este importador.`);
-  const entry = String(descriptor.entry || (surfaceName === 'booking' ? 'agendamento.html' : 'landing.html'));
+  const defaults={landing:'landing.html',booking:'agendamento.html',login:'login.html'};
+  const entry = String(descriptor.entry || defaults[surfaceName] || 'landing.html');
   const htmlBytes = entries.get(entry) || entryByBasename(entries, entry.split('/').pop());
   if (!htmlBytes) throw new Error(`Arquivo ${entry} não encontrado no pacote.`);
   const html = new TextDecoder('utf-8').decode(htmlBytes);
-  const expectedSurface = surfaceName === 'booking' ? 'BOOKING' : 'LANDING';
+  const expectedSurface = surfaceName === 'booking' ? 'BOOKING' : (surfaceName === 'login' ? 'LOGIN' : 'LANDING');
   const wrapper = schedulerHtmlWrapper(html, expectedSurface);
   const packageMeta = schedulerPackageMeta(manifest);
   const seo = descriptor.seo || {};
-  const title = seo.title || (surfaceName === 'booking' ? `${manifest.package.name || wrapper.template_key} — Agendamento` : (manifest.package.name || wrapper.template_key));
+  const suffix=surfaceName==='booking'?' — Agendamento':(surfaceName==='login'?' — Login':'');
+  const title = seo.title || `${manifest.package.name || wrapper.template_key}${suffix}`;
   const document = documentFromHtmlSurface(html, {
     title,
     expectedSurface,
@@ -218,8 +220,10 @@ function schedulerSurfacePage(entries, manifest, surfaceName, options={}) {
   });
   if (seo.title) document.seo.title = seo.title;
   if (seo.description) document.seo.description = seo.description;
-  const route = String(descriptor.route || (surfaceName === 'booking' ? '/agendar' : '/pagina'));
-  const slug = route.replace(/^\/+|\/+$/g,'') || (surfaceName === 'booking' ? 'agendar' : 'pagina');
+  const routeDefaults={landing:'/pagina',booking:'/agendar',login:'/login'};
+  const slugDefaults={landing:'pagina',booking:'agendar',login:'login'};
+  const route=String(descriptor.route||routeDefaults[surfaceName]||'/pagina');
+  const slug=route.replace(/^\/+|\/+$/g,'')||slugDefaults[surfaceName]||'pagina';
   return {
     page:createProjectPage({
       id:`scheduler-${surfaceName}`,
@@ -238,7 +242,7 @@ function schedulerSurfacePage(entries, manifest, surfaceName, options={}) {
 
 /**
  * Importa a família inteira do Scheduler Pro como um Projeto AVB.
- * landing.html e agendamento.html viram páginas independentes de primeira classe.
+ * landing.html, agendamento.html e login.html viram páginas independentes de primeira classe.
  */
 export async function importSchedulerProTemplateFamily(source, options = {}) {
   const entries = await readZipEntries(source, options.zip || {});
@@ -249,7 +253,7 @@ export async function importSchedulerProTemplateFamily(source, options = {}) {
   if (manifest?.schema !== 'scheduler-pro-template-package/v1' || !manifest?.package?.surfaces) throw new Error('Formato de pacote não suportado. Esperado scheduler-pro-template-package/v1.');
   const pages=[];
   const wrappers={};
-  for (const surfaceName of ['landing','booking']) {
+  for (const surfaceName of ['landing','booking','login']) {
     const result=schedulerSurfacePage(entries,manifest,surfaceName,options);
     if(!result) continue;
     pages.push(result.page);
@@ -275,7 +279,7 @@ export async function importSchedulerProTemplateFamily(source, options = {}) {
 export async function importSchedulerProTemplatePackage(source, options = {}) {
   const family=await importSchedulerProTemplateFamily(source,options);
   const surfaceName=String(options.surface||'landing').toLowerCase();
-  const wanted=surfaceName==='booking'?'BOOKING':'LANDING';
+  const wanted=surfaceName==='booking'?'BOOKING':(surfaceName==='login'?'LOGIN':'LANDING');
   const page=family.project.pages.find(item=>item.surface===wanted);
   if(!page) throw new Error(`Superfície ${surfaceName} não encontrada no pacote.`);
   return {

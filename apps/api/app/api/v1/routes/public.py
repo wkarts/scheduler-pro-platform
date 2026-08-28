@@ -20,8 +20,12 @@ from app.core.tenant_context import TenantContext
 from app.services.agenda_report_delivery_service import verify_report_token
 from app.services.branding_service import BrandingService
 from app.services.file_service import TenantFileService
+from app.services.global_template_service import GlobalTemplateService
+from app.services.html_template_contract import HtmlTemplateContract
 from app.services.landing_service import LandingPageService
 from app.services.public_booking_service import PublicBookingService
+from app.services.public_page_context_service import PublicPageContextService
+from app.services.builtin_template_package_service import DEFAULT_TEMPLATE_KEY
 from app.services.template_contract import TemplateContract
 
 router = APIRouter()
@@ -48,6 +52,20 @@ class PublicBookingCreate(BaseModel):
 def _public_base_url(context: TenantContext) -> str:
     scheme = "http" if context.hostname in {"localhost", "127.0.0.1"} else "https"
     return f"{scheme}://{context.hostname}"
+
+
+async def _ensure_public_booking_enabled(
+    *,
+    context: TenantContext,
+    tenant_session: AsyncSession,
+    platform_session: AsyncSession,
+) -> dict[str, Any]:
+    runtime = await PublicPageContextService(
+        context=context, tenant_session=tenant_session, platform_session=platform_session
+    ).build()
+    if not runtime["pages"]["booking"]["enabled"]:
+        raise APIError("PUBLIC_BOOKING_DISABLED", "A Agenda Pública está offline para esta empresa.", 404)
+    return runtime
 
 
 def _safe_booking_html(value: str) -> str:
@@ -146,6 +164,109 @@ async def public_agenda_report(
     )
 
 
+@router.get("/context")
+async def public_page_context(
+    context: TenantContext = Depends(get_tenant_context),
+    tenant_session: AsyncSession = Depends(get_tenant_session),
+    platform_session: AsyncSession = Depends(get_platform_session),
+) -> dict[str, Any]:
+    runtime = await PublicPageContextService(
+        context=context,
+        tenant_session=tenant_session,
+        platform_session=platform_session,
+    ).build()
+    return success(runtime)
+
+
+@router.get("/login")
+async def public_login_page(
+    context: TenantContext = Depends(get_tenant_context),
+    tenant_session: AsyncSession = Depends(get_tenant_session),
+    platform_session: AsyncSession = Depends(get_platform_session),
+) -> dict[str, Any]:
+    runtime = await PublicPageContextService(
+        context=context,
+        tenant_session=tenant_session,
+        platform_session=platform_session,
+    ).build()
+    if not runtime["pages"]["login"]["enabled"]:
+        raise APIError(
+            "PUBLIC_LOGIN_DISABLED",
+            "O Login público está desativado para esta empresa.",
+            404,
+        )
+
+    preferences = runtime.get("preferences", {})
+    key = str(preferences.get("login_page_template_key") or DEFAULT_TEMPLATE_KEY)
+    custom_content = await tenant_session.scalar(
+        text("select value from tenant_settings where key='login_page_template_content'")
+    )
+    custom_version = await tenant_session.scalar(
+        text("select value from tenant_settings where key='login_page_template_version'")
+    )
+    content: dict[str, Any] | None = None
+    version_number: int | float | str | None = None
+    status = "PUBLISHED"
+
+    if isinstance(custom_content, dict) and HtmlTemplateContract.is_html_content(
+        custom_content
+    ):
+        try:
+            HtmlTemplateContract.ensure_wrapper(
+                custom_content,
+                expected_surface="LOGIN",
+            )
+        except APIError:
+            custom_content = None
+        else:
+            content = custom_content
+            version_number = custom_version if custom_version is not None else 1
+            status = "CUSTOM"
+
+    if content is None:
+        service = GlobalTemplateService(platform_session)
+        try:
+            template = await service.content(
+                surface="LOGIN",
+                key=key,
+                tenant_id=context.tenant_id,
+            )
+        except APIError as exc:
+            if exc.code != "GLOBAL_TEMPLATE_NOT_FOUND" or key == DEFAULT_TEMPLATE_KEY:
+                raise
+            key = DEFAULT_TEMPLATE_KEY
+            template = await service.content(
+                surface="LOGIN",
+                key=key,
+                tenant_id=context.tenant_id,
+            )
+        content = template["version"]["content"]
+        version_number = template["version"]["version_number"]
+        if not isinstance(content, dict) or not HtmlTemplateContract.is_html_content(
+            content
+        ):
+            raise APIError(
+                "PUBLIC_LOGIN_TEMPLATE_INVALID",
+                "A página de Login configurada é incompatível.",
+                409,
+            )
+
+    branding = await BrandingService(platform_session).manifest_for_context(context)
+    return success(
+        {
+            "tenant": runtime["tenant"],
+            "branding": branding,
+            "context": runtime,
+            "login_page": {
+                "status": status,
+                "template_key": key,
+                "version_number": version_number,
+                "content": content,
+            },
+        }
+    )
+
+
 @router.get("/landing")
 async def landing(
     _: None = Depends(require_tenant_capability("landing_pages")),
@@ -154,13 +275,42 @@ async def landing(
     tenant_session: AsyncSession = Depends(get_tenant_session),
     platform_session: AsyncSession = Depends(get_platform_session),
 ) -> dict[str, Any]:
+    runtime = await PublicPageContextService(
+        context=context,
+        tenant_session=tenant_session,
+        platform_session=platform_session,
+    ).build()
+    if not runtime["pages"]["landing"]["enabled"]:
+        raise APIError(
+            "PUBLIC_LANDING_DISABLED",
+            "A Landing Page pública está desativada para esta empresa.",
+            404,
+        )
+
     branding = await BrandingService(platform_session).manifest_for_context(context)
     page = await LandingPageService(tenant_session).get_published(slug)
-    return success({
-        "tenant": {"id": context.tenant_id, "slug": context.slug},
-        "branding": branding,
-        "landing_page": page,
-    })
+    if page.get("status") == "DEFAULT":
+        fallback = await GlobalTemplateService(platform_session).content(
+            surface="LANDING",
+            key=DEFAULT_TEMPLATE_KEY,
+            tenant_id=context.tenant_id,
+        )
+        page = {
+            "slug": slug,
+            "status": "DEFAULT",
+            "template_key": DEFAULT_TEMPLATE_KEY,
+            "version_number": fallback["version"]["version_number"],
+            "content": fallback["version"]["content"],
+            "fallback": True,
+        }
+    return success(
+        {
+            "tenant": runtime["tenant"],
+            "branding": branding,
+            "context": runtime,
+            "landing_page": page,
+        }
+    )
 
 
 @router.get("/booking")
@@ -170,27 +320,47 @@ async def public_booking_catalog(
     tenant_session: AsyncSession = Depends(get_tenant_session),
     platform_session: AsyncSession = Depends(get_platform_session),
 ) -> dict[str, Any]:
+    runtime = await _ensure_public_booking_enabled(
+        context=context,
+        tenant_session=tenant_session,
+        platform_session=platform_session,
+    )
     service = PublicBookingService(
         tenant_session,
         public_base_url=_public_base_url(context),
         timezone=context.timezone,
     )
     catalog = await service.catalog()
+    if not catalog["config"].get("booking_template"):
+        fallback = await GlobalTemplateService(platform_session).content(
+            surface="BOOKING",
+            key=DEFAULT_TEMPLATE_KEY,
+            tenant_id=context.tenant_id,
+        )
+        catalog["config"]["booking_template"] = {
+            "key": DEFAULT_TEMPLATE_KEY,
+            "version": int(fallback["version"]["version_number"]),
+            "content": fallback["version"]["content"],
+            "fallback": True,
+        }
     _apply_booking_template_copy(catalog["config"])
     catalog["config"]["custom_html"] = _safe_booking_html(
         str(catalog["config"].get("custom_html") or "")
     )
     branding = await BrandingService(platform_session).manifest_for_context(context)
-    return success({
-        **catalog,
-        "tenant": {
-            "id": context.tenant_id,
-            "slug": context.slug,
-            "hostname": context.hostname,
-            "timezone": context.timezone,
-        },
-        "branding": branding,
-    })
+    return success(
+        {
+            **catalog,
+            "tenant": {
+                "id": context.tenant_id,
+                "slug": context.slug,
+                "hostname": context.hostname,
+                "timezone": context.timezone,
+            },
+            "branding": branding,
+            "context": runtime,
+        }
+    )
 
 
 @router.get("/booking/availability")
@@ -201,7 +371,9 @@ async def public_booking_availability(
     _: None = Depends(require_tenant_capability("public_booking")),
     context: TenantContext = Depends(get_tenant_context),
     session: AsyncSession = Depends(get_tenant_session),
+    platform_session: AsyncSession = Depends(get_platform_session),
 ) -> dict[str, Any]:
+    await _ensure_public_booking_enabled(context=context, tenant_session=session, platform_session=platform_session)
     service = PublicBookingService(
         session,
         public_base_url=_public_base_url(context),
@@ -220,7 +392,9 @@ async def create_public_booking(
     _: None = Depends(require_tenant_capability("public_booking")),
     context: TenantContext = Depends(get_tenant_context),
     session: AsyncSession = Depends(get_tenant_session),
+    platform_session: AsyncSession = Depends(get_platform_session),
 ) -> dict[str, Any]:
+    await _ensure_public_booking_enabled(context=context, tenant_session=session, platform_session=platform_session)
     service = PublicBookingService(
         session,
         public_base_url=_public_base_url(context),

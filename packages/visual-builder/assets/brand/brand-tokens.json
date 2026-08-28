@@ -1,27 +1,40 @@
 {
   "name": "ARGWS Visual Builder",
   "short_name": "AVB",
-  "version": "2.2.0",
+  "version": "2.3.1",
   "palette": {
-    "navy_950": "#06101f",
-    "navy_900": "#08172b",
-    "navy_800": "#0d2340",
-    "cyan_400": "#19e8ef",
-    "cyan_500": "#08cfe5",
-    "blue_500": "#0d82ff",
-    "blue_600": "#1768f2",
-    "violet_500": "#7b43ff",
-    "violet_600": "#6427f0",
-    "surface_light": "#f7f9fc",
-    "surface_dark": "#0a1322"
+    "deep_navy": "#0B1020",
+    "charcoal": "#1E2435",
+    "cyan": "#1AD5E8",
+    "electric_blue": "#2563FF",
+    "violet": "#7A4DFF",
+    "light_gray": "#E9EEF5"
   },
-  "gradient": "linear-gradient(135deg,#19e8ef 0%,#0d82ff 48%,#7b43ff 100%)",
+  "gradient": "linear-gradient(90deg,#1AD5E8 0%,#2563FF 50%,#7A4DFF 100%)",
   "typography": {
-    "ui": "Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif",
+    "heading": "Space Grotesk, Inter, ui-sans-serif, system-ui, sans-serif",
+    "interface_body": "Inter, ui-sans-serif, system-ui, sans-serif",
     "weights": {
       "regular": 400,
       "medium": 500,
-      "semibold": 600
+      "semibold": 600,
+      "bold": 700
+    }
+  },
+  "themes": {
+    "light": {
+      "background": "#F6F8FB",
+      "surface": "#FFFFFF",
+      "canvas": "#E9EEF5",
+      "text": "#0B1020",
+      "muted": "#5B677A"
+    },
+    "dark": {
+      "background": "#0B1020",
+      "surface": "#121827",
+      "elevated": "#1E2435",
+      "text": "#F7F9FC",
+      "muted": "#A6B2C4"
     }
   }
 }
