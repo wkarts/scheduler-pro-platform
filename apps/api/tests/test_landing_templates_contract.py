@@ -108,4 +108,5 @@ def test_seven_official_page_families_are_real_zip_packages() -> None:
 
 
 def test_platform_bootstrap_installs_official_page_families() -> None:
-    source = __import__("app.platform_bootstrap", fromlist=["bootstrap_platform"]); assert hasattr(source, "bootstrap_template_library")
+    source = __import__("app.platform_bootstrap", fromlist=["bootstrap_platform"])
+    assert hasattr(source, "bootstrap_template_library")
