@@ -108,28 +108,73 @@ function schedulerResponsive(node) {
     hidden: { desktop:Boolean(node.responsive?.hidden?.desktop), tablet:Boolean(node.responsive?.hidden?.tablet), mobile:Boolean(node.responsive?.hidden?.mobile) },
   };
 }
+function normalizeSchedulerHtmlDocument(htmlDocument,{templateKey='argws-importado',surface='LANDING',contentVersion=2}={}) {
+  let html=String(htmlDocument||'');
+  const normalizedSurface=String(surface||'LANDING').toUpperCase();
+  const declaredSurface=normalizedSurface==='BOOKING'?'public-booking':(normalizedSurface==='LOGIN'?'login':'landing');
+  const minimumVersion=normalizedSurface==='LOGIN'?1:2;
+  const version=Math.max(minimumVersion,Number(contentVersion||minimumVersion));
+  const safeKey=String(templateKey||'argws-importado').toLowerCase().replace(/[^a-z0-9-]+/g,'-').replace(/^-+|-+$/g,'').slice(0,120)||'argws-importado';
+  if(!/^<!doctype\s+html/i.test(html.trim())) html=`<!doctype html>${html}`;
+  if(!/<html[\s>]/i.test(html)) html=`<!doctype html><html lang="pt-BR"><head></head><body>${html.replace(/^<!doctype\s+html>/i,'')}</body></html>`;
+  if(!/<head[\s>]/i.test(html)) html=html.replace(/<html([^>]*)>/i,'<html$1><head></head>');
+  if(!/<body[\s>]/i.test(html)) html=html.replace(/<\/head>/i,'</head><body>').replace(/<\/html>/i,'</body></html>');
+  function currentMeta(name){
+    const escaped=name.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
+    const byName=new RegExp(`<meta\\s+[^>]*name=["']${escaped}["'][^>]*content=["']([^"']*)["'][^>]*>`,'i');
+    const byContent=new RegExp(`<meta\\s+[^>]*content=["']([^"']*)["'][^>]*name=["']${escaped}["'][^>]*>`,'i');
+    return html.match(byName)?.[1]??html.match(byContent)?.[1]??'';
+  }
+  function setMeta(name,value){
+    const escaped=name.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
+    const byName=new RegExp(`(<meta\\s+[^>]*name=["']${escaped}["'][^>]*content=["'])([^"']*)(["'][^>]*>)`,'i');
+    const byContent=new RegExp(`(<meta\\s+[^>]*content=["'])([^"']*)(["'][^>]*name=["']${escaped}["'][^>]*>)`,'i');
+    if(byName.test(html)){html=html.replace(byName,`$1${value}$3`);return;}
+    if(byContent.test(html)){html=html.replace(byContent,`$1${value}$3`);return;}
+    html=html.replace(/<head([^>]*)>/i,match=>`${match}<meta name="${name}" content="${String(value).replace(/"/g,'&quot;')}">`);
+  }
+  const viewport=currentMeta('viewport');
+  if(!viewport.replace(/\s+/g,'').toLowerCase().includes('width=device-width'))setMeta('viewport','width=device-width,initial-scale=1');
+  const existingKey=currentMeta('scheduler-pro-template').trim().toLowerCase();
+  if(!/^[a-z0-9][a-z0-9-]{0,118}[a-z0-9]$/.test(existingKey))setMeta('scheduler-pro-template',safeKey.length<2?'argws-importado':safeKey);
+  const existingVersion=Number(currentMeta('scheduler-pro-content-version'));
+  if(!Number.isFinite(existingVersion)||existingVersion<minimumVersion)setMeta('scheduler-pro-content-version',String(version));
+  const existingSurface=currentMeta('scheduler-pro-surface').trim().toLowerCase();
+  const accepted=normalizedSurface==='BOOKING'?['booking','public-booking','agendamento']:(normalizedSurface==='LOGIN'?['login','sign-in']:['landing']);
+  if(!accepted.includes(existingSurface))setMeta('scheduler-pro-surface',declaredSurface);
+  return html;
+}
+
 export function toSchedulerProContent(input) {
   const doc = normalizeDocument(input);
   if (isHtmlDocument(doc) && String(doc.html?.contract || '').startsWith('scheduler-pro-html-template/')) {
+    const surface=String(doc.surface || doc.html.surface || 'LANDING').toUpperCase();
+    const minimumVersion=surface==='LOGIN'?1:2;
+    const contentVersion=Math.max(minimumVersion,Number(doc.html.content_version || minimumVersion));
+    const templateKey=String(doc.html.template_key || 'argws-importado');
     return {
       render_mode: 'HTML',
       contract: doc.html.contract || 'scheduler-pro-html-template/v1',
-      template_key: String(doc.html.template_key || 'argws-importado'),
-      surface: String(doc.surface || doc.html.surface || 'LANDING').toUpperCase(),
-      content_version: Math.max(2, Number(doc.html.content_version || 2)),
-      html_document: String(doc.html.document || ''),
+      template_key: templateKey,
+      surface,
+      content_version: contentVersion,
+      html_document: normalizeSchedulerHtmlDocument(doc.html.document,{templateKey,surface,contentVersion}),
     };
   }
   // Compatibilidade defensiva com documentos antigos ainda não normalizados.
   const htmlSurface = Object.values(doc.builder?.nodes || {}).find(node => node?.type === 'html_surface' && typeof node?.props?.html_document === 'string' && node.props.html_document.trim());
   if (htmlSurface && String(htmlSurface.props.contract || '').startsWith('scheduler-pro-html-template/')) {
+    const surface=String(htmlSurface.props.surface || 'LANDING').toUpperCase();
+    const minimumVersion=surface==='LOGIN'?1:2;
+    const contentVersion=Math.max(minimumVersion,Number(htmlSurface.props.content_version || minimumVersion));
+    const templateKey=String(htmlSurface.props.template_key || 'argws-importado');
     return {
       render_mode: 'HTML',
       contract: htmlSurface.props.contract || 'scheduler-pro-html-template/v1',
-      template_key: String(htmlSurface.props.template_key || 'argws-importado'),
-      surface: String(htmlSurface.props.surface || 'LANDING').toUpperCase(),
-      content_version: Math.max(2, Number(htmlSurface.props.content_version || 2)),
-      html_document: String(htmlSurface.props.html_document),
+      template_key: templateKey,
+      surface,
+      content_version: contentVersion,
+      html_document: normalizeSchedulerHtmlDocument(htmlSurface.props.html_document,{templateKey,surface,contentVersion}),
     };
   }
   const blocks = [];
