@@ -4,7 +4,6 @@ import { CalendarDays, LoaderCircle } from 'lucide-vue-next'
 import { applyBranding, type BrandingManifest } from './branding'
 import HtmlTemplateFrame from './HtmlTemplateFrame.vue'
 import PublicBookingWidget from './PublicBookingWidget.vue'
-import PublicLandingRenderer from './PublicLandingRenderer.vue'
 import PublicVisualLandingRenderer from './PublicVisualLandingRenderer.vue'
 
 type Device='desktop'|'tablet'|'mobile'
@@ -32,16 +31,9 @@ const catalog=ref<Catalog|null>(null),landing=ref<LandingPage|null>(null),brandi
 const loading=ref(true),error=ref('')
 function isHtmlContent(value:unknown):value is HtmlContent{return Boolean(value&&typeof value==='object'&&(value as HtmlContent).render_mode==='HTML'&&typeof (value as HtmlContent).html_document==='string')}
 function blockContent(value:PageContent):BlockPageContent{return value as BlockPageContent}
-function isVisualBuilderContent(value:PageContent):boolean{
-  if(isHtmlContent(value))return false
-  const content=blockContent(value)
-  const schema=String(content.schema||content.builder?.schema||'').toLowerCase()
-  return Boolean(content.builder_version||schema.startsWith('argws-visual-builder/'))
-}
 function widgetTemplate(template:BookingTemplate|null|undefined):WidgetBookingTemplate|null{if(!template||isHtmlContent(template.content))return null;return{key:template.key,version:template.version,content:template.content}}
 const landingHtml=computed(()=>landing.value&&isHtmlContent(landing.value.content)?landing.value.content.html_document:'')
 const bookingHtml=computed(()=>{const content=catalog.value?.config.booking_template?.content;return isHtmlContent(content)?content.html_document:''})
-const visualLanding=computed(()=>Boolean(landing.value&&!isHtmlContent(landing.value.content)&&isVisualBuilderContent(landing.value.content)))
 const templateGlobals=computed<Record<string,unknown>>(()=>{const content=catalog.value?.config.booking_template?.content;return content&&!isHtmlContent(content)?content.global_styles||{}:{}})
 const widgetCatalog=computed<WidgetCatalog|null>(()=>{const current=catalog.value;if(!current)return null;return{config:{...current.config,booking_template:widgetTemplate(current.config.booking_template)},services:current.services,professionals:current.professionals}})
 const bookingPageStyle=computed<CSSProperties>(()=>{const g=templateGlobals.value;return{'--booking-page-primary':String(g.primary||'var(--sp-primary,#2563eb)'),'--booking-page-secondary':String(g.secondary||'#071426'),'--booking-page-accent':String(g.accent||'var(--sp-accent,#7c3aed)'),'--booking-page-bg':String(g.background||'#f5f7fb'),'--booking-page-text':String(g.text||'#0f172a'),'--booking-page-radius':`${Number(g.radius||26)}px`} as CSSProperties})
@@ -61,12 +53,9 @@ onMounted(()=>void load())
     <div v-if="loading" class="public-state"><LoaderCircle :size="36" class="spin"/><strong>Carregando página...</strong></div>
     <template v-else-if="landingMode&&landing">
       <HtmlTemplateFrame v-if="landingHtml" :html="landingHtml" mode="landing"/>
-      <PublicVisualLandingRenderer v-else-if="visualLanding" :content="blockContent(landing.content)" :services="catalog?.services||[]" :professionals="catalog?.professionals||[]">
-        <template #booking><PublicBookingWidget v-if="widgetCatalog" :catalog="widgetCatalog"/><div v-else class="booking-unavailable"><CalendarDays :size="30"/><strong>Agenda online indisponível neste momento.</strong></div></template>
-      </PublicVisualLandingRenderer>
-      <PublicLandingRenderer v-else :content="blockContent(landing.content)" :services="catalog?.services||[]" :professionals="catalog?.professionals||[]" :template-key="landing.template_key">
+      <PublicVisualLandingRenderer v-else :content="blockContent(landing.content)" :services="catalog?.services||[]" :professionals="catalog?.professionals||[]">
         <template #booking><PublicBookingWidget v-if="widgetCatalog" :catalog="widgetCatalog"/><div v-else class="booking-unavailable"><CalendarDays :size="30"/><strong>Agenda online indisponível neste momento.</strong><span>Você ainda pode usar os contatos desta página.</span></div></template>
-      </PublicLandingRenderer>
+      </PublicVisualLandingRenderer>
     </template>
     <template v-else-if="!landingMode&&catalog">
       <HtmlTemplateFrame v-if="bookingHtml" :html="bookingHtml" mode="booking"/>
