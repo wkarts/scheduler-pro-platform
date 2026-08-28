@@ -54,3 +54,10 @@ O bootstrap sincroniza somente a biblioteca global. Ele não substitui automatic
 ## Limitação do ambiente de validação
 
 A suíte Python completa e o build Vue completo não puderam ser executados aqui porque este runtime não possui todas as dependências do projeto e não tem acesso de rede para instalá-las. A validação completa deve ser repetida no GitHub Actions/ambiente de desenvolvimento com as dependências oficiais.
+
+## Correção pós-CI — 2026-08-28
+
+- Ruff corrigido em `landing_pages.py`;
+- `sqlalchemy.text` importado em `public.py`;
+- head canônico da plataforma atualizado para `platform_0012_login_surface`;
+- readiness e testes de integração alinhados à migração 0012 de Login.

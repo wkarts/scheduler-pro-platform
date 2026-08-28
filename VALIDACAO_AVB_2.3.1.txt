@@ -58,3 +58,14 @@ LIMITAÇÃO DO AMBIENTE
 - pytest completo não pôde iniciar localmente porque structlog não está instalado neste runtime.
 - build Vue completo não foi executado porque este ambiente não contém as dependências npm completas do monorepo.
 - essas validações devem rodar normalmente no CI/GitHub Actions após npm/pip install oficiais.
+
+=== CORREÇÃO PÓS-CI 89862302147 / 89862302062 ===
+API Ruff: 5 erros identificados e corrigidos.
+- E701 landing_pages.py: corrigido.
+- F821 sqlalchemy.text em public.py: corrigido.
+Migration head esperado: platform_0012_login_surface.
+Readiness alinhado à migração 0012.
+Integration contract alinhado à migração 0012.
+Python compileall após correção: OK.
+AVB 2.3.1: 60/60 testes.
+Templates: 8/8 válidos com LANDING+BOOKING+LOGIN.

@@ -83,15 +83,52 @@ async def template_families() -> dict[str, Any]:
 
 
 @router.get("/template-families/{template_key}/{surface}")
-async def template_family_surface(template_key: str, surface: str) -> dict[str, Any]:
-    normalized=surface.strip().upper()
-    if normalized not in {"LANDING","BOOKING","LOGIN"}:
-        raise APIError("TEMPLATE_SURFACE_INVALID","Área de modelo inválida.",422)
-    try: package=builtin_template_package(template_key)
-    except KeyError as exc: raise APIError("LANDING_TEMPLATE_NOT_FOUND","Modelo oficial não encontrado.",404) from exc
-    document=package["documents"].get(normalized)
-    if not document: raise APIError("TEMPLATE_SURFACE_NOT_FOUND","Esta página não existe no modelo selecionado.",404)
-    return success({"key":template_key,"surface":normalized,"content":HtmlTemplateContract.wrapper(document,expected_surface=normalized),"package":package["package"],"surface_meta":next((item for item in package["surfaces"].values() if item["surface"]==normalized),None)})
+async def template_family_surface(
+    template_key: str,
+    surface: str,
+) -> dict[str, Any]:
+    normalized = surface.strip().upper()
+    if normalized not in {"LANDING", "BOOKING", "LOGIN"}:
+        raise APIError(
+            "TEMPLATE_SURFACE_INVALID",
+            "Área de modelo inválida.",
+            422,
+        )
+    try:
+        package = builtin_template_package(template_key)
+    except KeyError as exc:
+        raise APIError(
+            "LANDING_TEMPLATE_NOT_FOUND",
+            "Modelo oficial não encontrado.",
+            404,
+        ) from exc
+    document = package["documents"].get(normalized)
+    if not document:
+        raise APIError(
+            "TEMPLATE_SURFACE_NOT_FOUND",
+            "Esta página não existe no modelo selecionado.",
+            404,
+        )
+    surface_meta = next(
+        (
+            item
+            for item in package["surfaces"].values()
+            if item["surface"] == normalized
+        ),
+        None,
+    )
+    return success(
+        {
+            "key": template_key,
+            "surface": normalized,
+            "content": HtmlTemplateContract.wrapper(
+                document,
+                expected_surface=normalized,
+            ),
+            "package": package["package"],
+            "surface_meta": surface_meta,
+        }
+    )
 
 
 @router.get("/{slug}")
