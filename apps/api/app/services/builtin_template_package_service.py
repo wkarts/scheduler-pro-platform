@@ -54,6 +54,18 @@ def _safe_release_path(raw: str) -> str | None:
     return str(path)
 
 
+def _decode_base64_strict(encoded: str, label: str) -> bytes:
+    """Decodifica Base64 estrito aceitando somente padding final omitido."""
+    remainder = len(encoded) % 4
+    if remainder == 1:
+        raise RuntimeError(f"{label} possui Base64 inválido.")
+    padded = encoded + ("=" * ((4 - remainder) % 4))
+    try:
+        return base64.b64decode(padded, validate=True)
+    except ValueError as exc:
+        raise RuntimeError(f"{label} possui Base64 inválido.") from exc
+
+
 @lru_cache(maxsize=1)
 def _release_files() -> dict[str, bytes]:
     parts: list[tuple[int, Path]] = []
@@ -66,10 +78,7 @@ def _release_files() -> dict[str, bytes]:
         raise RuntimeError("Release oficial de templates está ausente ou com partes descontínuas.")
 
     encoded = "".join(path.read_text(encoding="ascii").strip() for _, path in parts)
-    try:
-        release = base64.b64decode(encoded, validate=True)
-    except ValueError as exc:
-        raise RuntimeError("Release oficial de templates possui Base64 inválido.") from exc
+    release = _decode_base64_strict(encoded, "Release oficial de templates")
     if len(release) > MAX_RELEASE_BYTES:
         raise RuntimeError("Release oficial de templates excede o limite interno.")
     if hashlib.sha256(release).hexdigest() != EXPECTED_RELEASE_SHA256:
@@ -126,12 +135,13 @@ def _asset_data_uri(sha256: str, media_type: str) -> str:
     filename = f"assets/{sha256}.b64"
     try:
         encoded = _release_files()[filename].decode("ascii").strip()
-        raw = base64.b64decode(encoded, validate=True)
-    except (KeyError, UnicodeDecodeError, ValueError) as exc:
+    except (KeyError, UnicodeDecodeError) as exc:
         raise RuntimeError(f"Asset oficial inválido: {sha256}") from exc
+    raw = _decode_base64_strict(encoded, f"Asset oficial {sha256}")
     if hashlib.sha256(raw).hexdigest() != sha256:
         raise RuntimeError(f"SHA-256 divergente no asset oficial: {sha256}")
-    return f"data:image/{media_type};base64,{encoded}"
+    padded = encoded + ("=" * ((4 - (len(encoded) % 4)) % 4))
+    return f"data:image/{media_type};base64,{padded}"
 
 
 def _expand_document(source: str, key: str, surface: str) -> str:
