@@ -69,3 +69,10 @@ Integration contract alinhado à migração 0012.
 Python compileall após correção: OK.
 AVB 2.3.1: 60/60 testes.
 Templates: 8/8 válidos com LANDING+BOOKING+LOGIN.
+
+--- Correção adicional CI 89869194560 ---
+- validate_pair backward compatibility: PASS
+- workspace explicit "Aplicar template": PASS
+- failing test test_html_pair_requires_same_template_key: PASS (execução direta)
+- failing test test_visual_builder_uses_three_first_class_scheduler_pages: PASS (execução direta)
+- ARGWS Visual Builder 2.3.1 após correção: 60/60 PASS

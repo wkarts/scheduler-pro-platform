@@ -448,9 +448,50 @@ class HtmlTemplateContract:
         return report
 
     @classmethod
-    def validate_pair(cls, *, landing_html: str | None = None, booking_html: str | None = None) -> dict[str, Any]:
-        return cls.validate_family(landing_html=landing_html, booking_html=booking_html)
+    def validate_pair(
+        cls,
+        *,
+        landing_html: str | None = None,
+        booking_html: str | None = None,
+    ) -> dict[str, Any]:
+        """Compatibilidade 2.3.0: mantém o código de erro histórico do par.
+
+        O contrato 2.3.1 trata LANDING/BOOKING/LOGIN como uma família, porém
+        consumidores antigos ainda verificam HTML_TEMPLATE_PAIR_KEY_MISMATCH.
+        """
+        report = cls.validate_family(
+            landing_html=landing_html,
+            booking_html=booking_html,
+        )
+        report["errors"] = [
+            {
+                **issue,
+                "code": (
+                    "HTML_TEMPLATE_PAIR_KEY_MISMATCH"
+                    if issue.get("code") == "HTML_TEMPLATE_FAMILY_KEY_MISMATCH"
+                    else issue.get("code")
+                ),
+            }
+            for issue in report["errors"]
+        ]
+        return report
 
     @classmethod
-    def ensure_pair(cls, *, landing_html: str | None = None, booking_html: str | None = None) -> dict[str, Any]:
-        return cls.ensure_family(landing_html=landing_html, booking_html=booking_html)
+    def ensure_pair(
+        cls,
+        *,
+        landing_html: str | None = None,
+        booking_html: str | None = None,
+    ) -> dict[str, Any]:
+        report = cls.validate_pair(
+            landing_html=landing_html,
+            booking_html=booking_html,
+        )
+        if not report["valid"]:
+            raise APIError(
+                "HTML_TEMPLATE_PAIR_INVALID",
+                "A família HTML não atende ao padrão do Scheduler Pro.",
+                422,
+                details=report,
+            )
+        return report
