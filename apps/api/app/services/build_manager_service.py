@@ -22,8 +22,6 @@ from app.services.github_actions_service import GitHubActionsService
 WORKFLOW_FILE_BY_TARGET = {
     "web": "distribution-artifacts.yml",
     "pwa": "distribution-artifacts.yml",
-    "desktop": "desktop-artifacts.yml",
-    "admin-desktop": "desktop-artifacts.yml",
     "android": "mobile-artifacts.yml",
     "ios": "mobile-artifacts.yml",
     "admin-android": "mobile-artifacts.yml",

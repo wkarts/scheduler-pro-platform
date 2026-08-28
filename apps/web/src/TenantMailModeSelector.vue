@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { Building2, MailCheck, RefreshCw, ServerCog } from 'lucide-vue-next'
-import { TENANT_NAVIGATION_EVENT } from './tenantNavigation'
 
 type SmtpStatus = {
   enabled:boolean;delivery_mode?:'platform'|'tenant';configured:boolean;tenant_configured?:boolean;platform_available?:boolean;
@@ -59,13 +58,11 @@ function syncFromRoute():void{
 function scheduleRouteSync():void{cancelAnimationFrame(routeRaf);routeRaf=requestAnimationFrame(syncFromRoute)}
 
 onMounted(()=>{
-  window.addEventListener(TENANT_NAVIGATION_EVENT,scheduleRouteSync)
   window.addEventListener('hashchange',scheduleRouteSync)
   window.addEventListener('popstate',scheduleRouteSync)
   scheduleRouteSync()
 })
 onUnmounted(()=>{
-  window.removeEventListener(TENANT_NAVIGATION_EVENT,scheduleRouteSync)
   window.removeEventListener('hashchange',scheduleRouteSync)
   window.removeEventListener('popstate',scheduleRouteSync)
   cancelAnimationFrame(routeRaf);requestGeneration+=1

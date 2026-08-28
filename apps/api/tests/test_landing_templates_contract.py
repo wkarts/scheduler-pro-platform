@@ -5,6 +5,7 @@ from zipfile import ZIP_DEFLATED, ZipFile
 import pytest
 
 from app.services.html_template_package_service import HtmlTemplatePackageService
+from app.services.builtin_template_package_service import OFFICIAL_TEMPLATE_KEYS, builtin_template_archive
 from app.services.landing_templates import list_templates, template_content
 
 
@@ -81,9 +82,30 @@ def test_template_package_contract_validates_real_zip_bytes() -> None:
     assert set(report["surfaces"]) == {"landing", "booking"}
 
 
-def test_template_library_does_not_require_embedded_base64_archives() -> None:
-    # A biblioteca global é alimentada pela Central de Importação do Control Plane.
-    # Templates autorais são ZIPs reais enviados pelo usuário, nunca .zip.b64
-    # acoplados ao código-fonte ou ao bootstrap da plataforma.
-    source = __import__("app.platform_bootstrap", fromlist=["bootstrap_platform"])
-    assert not hasattr(source, "bootstrap_template_library")
+EXPECTED_OFFICIAL_KEYS = {
+    "barber-shop-neo-generico",
+    "clinica-medica-generico",
+    "clinica-odontologica-generico",
+    "clinica-veterinaria-generico",
+    "martelinho-de-ouro-generico",
+    "studio-unhas-generico",
+    "tecnologia-generico-simples",
+}
+
+
+def test_seven_official_page_families_are_real_zip_packages() -> None:
+    assert set(OFFICIAL_TEMPLATE_KEYS) == EXPECTED_OFFICIAL_KEYS
+    assert len(OFFICIAL_TEMPLATE_KEYS) == 7
+    for key in OFFICIAL_TEMPLATE_KEYS:
+        archive = builtin_template_archive(key)
+        assert archive.startswith(b"PK")
+        report = HtmlTemplatePackageService.validate(archive)
+        assert report["valid"], {key: report["errors"]}
+        assert report["package"]["key"] == key
+        assert set(report["surfaces"]) == {"landing", "booking"}
+        assert report["surfaces"]["landing"]["surface"] == "LANDING"
+        assert report["surfaces"]["booking"]["surface"] == "BOOKING"
+
+
+def test_platform_bootstrap_installs_official_page_families() -> None:
+    source = __import__("app.platform_bootstrap", fromlist=["bootstrap_platform"]); assert hasattr(source, "bootstrap_template_library")

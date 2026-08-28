@@ -67,10 +67,10 @@ jobs:
         run: npm install
       - name: Validate PWA installation contract
         run: node scripts/build/validate-pwa-install.mjs
-      - name: Typecheck/build
+      - name: Typecheck/build PWA and mobile surfaces
         run: |
-          npm run typecheck --workspaces --if-present
-          npm run build --workspaces --if-present
+          npm run typecheck
+          npm run build
 
   docker:
     runs-on: ubuntu-latest

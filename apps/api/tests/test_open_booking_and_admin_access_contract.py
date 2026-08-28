@@ -53,21 +53,20 @@ def test_tenant_log_inspector_has_single_scroll_and_progressive_rendering() -> N
     assert "height:100dvh;overflow-y:auto;overflow-x:hidden" in drawer
 
 
-def test_navigation_is_event_driven_and_pwa_version_handoff_is_installed() -> None:
-    web_runtime = (ROOT / "apps/web/src/tenant-navigation-runtime.ts").read_text(encoding="utf-8")
+def test_navigation_is_route_driven_and_pwa_version_handoff_is_installed() -> None:
+    main = (ROOT / "apps/web/src/main.ts").read_text(encoding="utf-8")
+    console = (ROOT / "apps/web/src/TenantConsole.vue").read_text(encoding="utf-8")
     pwa = (ROOT / "apps/web/src/pwa.ts").read_text(encoding="utf-8")
     sw = (ROOT / "apps/web/public/sw.js").read_text(encoding="utf-8")
     mobile = (ROOT / "apps/mobile/src/navigation-refresh.ts").read_text(encoding="utf-8")
-    # O runtime web não pode voltar a clicar automaticamente em "Atualizar":
-    # isso gerou tempestades de GETs e travamento em desktop/mobile.
-    assert "refreshCurrentView" not in web_runtime
-    assert "refresh.click()" not in web_runtime
-    assert "hashchange" in web_runtime
-    assert "popstate" in web_runtime
-    assert "requestAnimationFrame" in web_runtime
+    assert "installTenantNavigationRuntime" not in main
+    assert "installTenantExtensionNavigationBridge" not in main
+    assert "window.location.hash = key" in console
+    assert "TenantWorkspaceCoordinator" not in (ROOT / "apps/web/src/App.vue").read_text(encoding="utf-8")
     assert "controllerchange" in pwa
     assert "registration.update()" in pwa
     assert "const CACHE_PREFIX = 'scheduler-pro-web-'" in sw
     assert "keys.filter(key => key.startsWith(CACHE_PREFIX) && key !== CACHE)" in sw
     assert "caches.delete(key)" in sw
     assert "scheduleRefresh" in mobile
+

@@ -1,0 +1,31 @@
+/* Scheduler Pro — rolagem funcional com acabamento discreto.
+   Não elimina overflow; reduz apenas o peso visual das barras. */
+:root {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(100,116,139,.14) transparent;
+}
+html { scrollbar-gutter: stable; }
+html, body, #app { min-height: 100%; }
+* {
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
+}
+*:hover, *:focus-within { scrollbar-color: rgba(100,116,139,.24) transparent; }
+*::-webkit-scrollbar { width: 6px; height: 6px; }
+*::-webkit-scrollbar-track { background: transparent; }
+*::-webkit-scrollbar-thumb {
+  background: transparent;
+  border-radius: 999px;
+}
+*:hover::-webkit-scrollbar-thumb, *:focus-within::-webkit-scrollbar-thumb {
+  background: rgba(100,116,139,.22);
+}
+*::-webkit-scrollbar-thumb:hover { background: rgba(71,85,105,.38); }
+*::-webkit-scrollbar-corner { background: transparent; }
+
+/* O documento é o scroller principal. Áreas internas só rolam quando têm
+   responsabilidade própria (sidebar, modal, tabela, lista ou seletor). */
+.tenant-console .main-content { overflow: visible; min-width: 0; }
+.tenant-console .sidebar { scrollbar-gutter: stable; }
+.responsive-table { overscroll-behavior-inline: contain; }
+.sp-agenda-operator, .sp-mobile-option-list, .status-box { scrollbar-gutter: stable; }

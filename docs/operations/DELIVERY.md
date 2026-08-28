@@ -1,6 +1,6 @@
 # Entrega, imagens base e distribuição
 
-O Scheduler Pro possui distribuição separada por serviço para evitar rebuilds desnecessários e facilitar rollback.
+O Scheduler Pro possui distribuição separada por serviço para evitar rebuilds desnecessários e facilitar rollback. A estratégia atual é **PWA-first**.
 
 ## Imagem base
 
@@ -34,16 +34,16 @@ As stacks incluem `pull_policy: always`, healthchecks, volumes persistentes, sto
 
 ## Artefatos
 
-O workflow `Release` gera:
+O workflow `Release` gera os pacotes de PWA/deploy e pode anexar os artefatos mobile ativos:
 
-- `scheduler-pro-web-<tag>.tar.gz`;
-- `scheduler-pro-admin-<tag>.tar.gz`;
-- `scheduler-pro-cloudpanel-deploy-<tag>.tar.gz`;
-- `scheduler-pro-dockge-deploy-<tag>.tar.gz`.
+- Web/PWA tenant;
+- Admin/PWA;
+- Android APK;
+- iOS IPA.
 
-O workflow `Desktop Artifacts` gera Tauri desktop unsigned para Windows, Linux e macOS.
+Desktop Windows/Linux/macOS não é publicado. O workflow antigo está preservado apenas como referência em `docs/legacy-workflows/desktop-artifacts.yml.disabled`.
 
-O workflow `Mobile Artifacts` gera pacote PWA instalável e, quando habilitado, build Android unsigned.
+> O uso de runner `macos` no job iOS é requisito de compilação do IPA e não habilita uma release desktop macOS.
 
 ## Comandos locais
 

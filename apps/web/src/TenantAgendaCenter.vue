@@ -17,7 +17,7 @@ import {
   Trash2,
   TrendingUp,
 } from 'lucide-vue-next'
-import { TENANT_NAVIGATION_EVENT, openAgendaOperator } from './tenantNavigation'
+import { openAgendaOperator } from './tenantNavigation'
 
 type Period='day'|'week'|'month'|'quarter'|'semester'|'year'
 type Tab='overview'|'calendar'|'reports'|'automation'
@@ -106,10 +106,8 @@ function editSchedule(item:ReportSchedule):void{scheduleForm.value=copySchedule(
 async function toggleSchedule(item:ReportSchedule):Promise<void>{const next=schedules.value.map(row=>row.period===item.period?{...copySchedule(row),enabled:!row.enabled}:copySchedule(row));try{await persistSchedules(next,item.enabled?'Automação pausada.':'Automação ativada.')}catch{/* mensagem já tratada */}}
 async function deleteSchedule(item:ReportSchedule):Promise<void>{if(!window.confirm(`Excluir a automação ${periodLabel(item.period).toLowerCase()}?`))return;const next=schedules.value.filter(row=>row.period!==item.period).map(copySchedule);try{await persistSchedules(next,'Automação excluída.');if(scheduleForm.value.period===item.period)scheduleForm.value={enabled:false,period:'month',delivery_channels:['email'],email:localStorage.getItem('scheduler_pro_email')||'',whatsapp:'',format:'link',hour:8}}catch{/* mensagem já tratada */}}
 function syncVisibility():void{visible.value=window.location.hash==='#agenda';document.body.classList.toggle('sp-agenda-center-open',visible.value);if(visible.value)void load()}
-function onNavigation():void{syncVisibility()}
-
-onMounted(()=>{window.addEventListener('hashchange',syncVisibility);window.addEventListener(TENANT_NAVIGATION_EVENT,onNavigation);syncVisibility()})
-onUnmounted(()=>{window.removeEventListener('hashchange',syncVisibility);window.removeEventListener(TENANT_NAVIGATION_EVENT,onNavigation);document.body.classList.remove('sp-agenda-center-open')})
+onMounted(()=>{window.addEventListener('hashchange',syncVisibility);syncVisibility()})
+onUnmounted(()=>{window.removeEventListener('hashchange',syncVisibility);document.body.classList.remove('sp-agenda-center-open')})
 </script>
 
 <template>

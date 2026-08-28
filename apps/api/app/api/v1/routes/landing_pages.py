@@ -90,6 +90,85 @@ async def templates(
     return success(global_templates + legacy)
 
 
+@router.get("/template-families")
+async def template_families(
+    context: TenantContext = Depends(get_tenant_context),
+    platform: AsyncSession = Depends(get_platform_session),
+) -> dict[str, Any]:
+    rows = await GlobalTemplateService(platform).list(tenant_id=context.tenant_id)
+    families: dict[str, dict[str, Any]] = {}
+    for row in rows:
+        key = str(row["key"])
+        family = families.setdefault(
+            key,
+            {
+                "key": key,
+                "name": str(row["name"]).removesuffix(" — Agendamento"),
+                "description": row.get("description"),
+                "segment": row.get("segment"),
+                "surfaces": {},
+            },
+        )
+        family["surfaces"][str(row["surface"]).lower()] = {
+            "surface": row["surface"],
+            "template_id": row["id"],
+            "version": row.get("published_version"),
+            "route": "/pagina" if row["surface"] == "LANDING" else "/agendar",
+        }
+    complete = [item for item in families.values() if {"landing", "booking"}.issubset(item["surfaces"])]
+    return success(sorted(complete, key=lambda item: (str(item.get("name") or ""), item["key"])))
+
+
+@router.post("/{slug}/template-families/{template_key}")
+async def apply_template_family(
+    slug: str,
+    template_key: str,
+    principal: AuthPrincipal = Depends(get_current_user),
+    context: TenantContext = Depends(get_tenant_context),
+    session: AsyncSession = Depends(get_tenant_session),
+    platform: AsyncSession = Depends(get_platform_session),
+) -> dict[str, Any]:
+    service = GlobalTemplateService(platform)
+    landing = await service.content(surface="LANDING", key=template_key, tenant_id=context.tenant_id)
+    booking = await service.content(surface="BOOKING", key=template_key, tenant_id=context.tenant_id)
+    landing_content = landing["version"]["content"]
+    booking_content = booking["version"]["content"]
+    HtmlTemplateContract.ensure_wrapper(landing_content, expected_surface="LANDING")
+    HtmlTemplateContract.ensure_wrapper(booking_content, expected_surface="BOOKING")
+
+    draft = await LandingPageService(session).save_draft(
+        slug,
+        landing_content,
+        created_by=principal.user_id,
+        label=f"Família global: {template_key} / LANDING",
+    )
+    settings = {
+        "booking_page_template_key": template_key,
+        "booking_page_template_version": int(booking["version"]["version_number"]),
+        "booking_page_template_content": booking_content,
+    }
+    for key, value in settings.items():
+        await session.execute(
+            text(
+                """
+                insert into tenant_settings(key,value,updated_at)
+                values(:key,cast(:value as jsonb),now())
+                on conflict(key) do update set value=excluded.value,updated_at=now()
+                """
+            ),
+            {"key": key, "value": __import__("json").dumps(value, ensure_ascii=False)},
+        )
+    await session.commit()
+    return success(
+        {
+            "template_key": template_key,
+            "landing": {"draft": draft, "version": landing["version"]["version_number"]},
+            "booking": {"saved": True, "version": booking["version"]["version_number"]},
+            "automatic_tenant_update": False,
+        }
+    )
+
+
 @router.get("/{slug}")
 async def editor_state(
     slug: str,
@@ -215,6 +294,32 @@ async def restore_version(
     data = await LandingPageService(session).restore(
         slug,
         version_id,
+        created_by=principal.user_id,
+    )
+    return success(data)
+
+
+@router.post("/{slug}/emergency-rollback")
+async def emergency_rollback(
+    slug: str,
+    principal: AuthPrincipal = Depends(get_current_user),
+    session: AsyncSession = Depends(get_tenant_session),
+) -> dict[str, Any]:
+    data = await LandingPageService(session).emergency_rollback(
+        slug,
+        created_by=principal.user_id,
+    )
+    return success(data)
+
+
+@router.post("/{slug}/emergency-blank")
+async def emergency_blank(
+    slug: str,
+    principal: AuthPrincipal = Depends(get_current_user),
+    session: AsyncSession = Depends(get_tenant_session),
+) -> dict[str, Any]:
+    data = await LandingPageService(session).emergency_blank(
+        slug,
         created_by=principal.user_id,
     )
     return success(data)

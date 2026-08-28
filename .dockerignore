@@ -15,5 +15,6 @@ node_modules
 storage
 artifacts
 *.zip
+!apps/api/resources/template-packages/*.zip
 *.tar.gz
 *.log

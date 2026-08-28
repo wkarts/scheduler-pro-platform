@@ -14,8 +14,6 @@ COPY apps/mobile/package.json apps/mobile/package.json
 COPY packages/api-client/package.json packages/api-client/package.json
 COPY packages/types/package.json packages/types/package.json
 COPY packages/visual-builder/package.json packages/visual-builder/package.json
-COPY packages/visual-builder/scripts packages/visual-builder/scripts
-COPY packages/visual-builder/release-b64 packages/visual-builder/release-b64
 
 RUN npm install
 

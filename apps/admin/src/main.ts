@@ -13,6 +13,7 @@ import './operational.css'
 import './hubfiscal-admin.css'
 import './enterprise.css'
 import './branding.css'
+import './scrollbars.css'
 import './pwa'
 
 installFrontendTelemetry()

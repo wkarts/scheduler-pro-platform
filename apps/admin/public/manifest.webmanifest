@@ -1,7 +1,7 @@
 {
   "name": "Scheduler PRO Admin",
   "short_name": "Scheduler PRO",
-  "description": "Administração da plataforma Scheduler PRO: clientes, provisionamento, domínios, integrações, builds e observabilidade.",
+  "description": "Administração da plataforma Scheduler PRO: clientes, provisionamento, domínios, integrações, PWA, mobile e observabilidade.",
   "id": "/?source=pwa-admin",
   "start_url": "/",
   "scope": "/",
@@ -9,9 +9,22 @@
   "orientation": "any",
   "background_color": "#FFFFFF",
   "theme_color": "#0B132B",
-  "categories": ["business", "productivity"],
+  "categories": [
+    "business",
+    "productivity"
+  ],
   "icons": [
-    { "src": "/icons/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" },
-    { "src": "/icons/maskable.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "maskable" }
+    {
+      "src": "/icons/icon.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icons/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
   ]
 }

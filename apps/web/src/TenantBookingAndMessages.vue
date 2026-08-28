@@ -46,7 +46,10 @@ async function initialLoad(){try{const caps=await api<Capabilities>('/settings/c
 async function loadBooking(){const [data,params]=await Promise.all([api<TenantSettings>('/settings/tenant'),api<BookingParameters>('/settings/booking')]);hostname.value=data.hostname||window.location.hostname;parameters.value=params;const p=data.preferences||{};booking.value={enabled:boolValue(p.public_booking_enabled,false),title:stringValue(p.public_booking_title,'Agende seu atendimento'),subtitle:stringValue(p.public_booking_subtitle,'Escolha o melhor horário para você.'),success_message:stringValue(p.public_booking_success_message,'Seu horário foi reservado.'),custom_html:stringValue(p.public_booking_custom_html,''),slot_minutes:numberValue(p.public_booking_slot_minutes,30),allow_any_professional:boolValue(p.public_booking_allow_any_professional,true)}}
 async function loadMessages(){templates.value=await api<NotificationTemplate[]>('/notifications/templates')}
 async function open(view:View){active.value=view;error.value='';loading.value=true;try{if(view==='booking')await loadBooking();if(view==='messages')await loadMessages()}catch(exc){error.value=exc instanceof Error?exc.message:'Não foi possível carregar esta área.'}finally{loading.value=false}}
-function close(){active.value=''}
+function close(){active.value='';if(['#agenda-publica','#mensagens'].includes(window.location.hash))window.location.hash='dashboard'}
+function routeView():View{const hash=(window.location.hash||'').replace(/^#/,'');return hash==='agenda-publica'?'booking':hash==='mensagens'?'messages':''}
+async function syncRoute(){const next=routeView();if(next&&next!==active.value)await open(next);else if(!next&&active.value)active.value=''}
+function onRouteChange(){void syncRoute()}
 async function putSetting(key:string,value:unknown){await api(`/settings/tenant/${key}`,{method:'PUT',body:JSON.stringify(value)})}
 async function saveBooking(){saving.value=true;error.value='';try{await Promise.all([putSetting('public_booking_enabled',booking.value.enabled),putSetting('public_booking_title',booking.value.title),putSetting('public_booking_subtitle',booking.value.subtitle),putSetting('public_booking_success_message',booking.value.success_message),putSetting('public_booking_custom_html',booking.value.custom_html),putSetting('public_booking_slot_minutes',Math.max(5,Math.min(240,Number(booking.value.slot_minutes)||30))),putSetting('public_booking_allow_any_professional',booking.value.allow_any_professional)]);showToast('Página de agendamento atualizada.')}catch(exc){error.value=exc instanceof Error?exc.message:'Falha ao salvar a página de agendamento.'}finally{saving.value=false}}
 async function saveTemplate(item:NotificationTemplate){saving.value=true;error.value='';try{const saved=await api<NotificationTemplate>(`/notifications/templates/${encodeURIComponent(item.key)}`,{method:'PUT',body:JSON.stringify({channel:item.channel,body:item.body,active:item.active,subject:item.subject||null})});Object.assign(item,saved);showToast(`${friendlyKey(item.key)} salva.`)}catch(exc){error.value=exc instanceof Error?exc.message:'Falha ao salvar a mensagem.'}finally{saving.value=false}}
@@ -54,12 +57,11 @@ async function copyPublicUrl(){await navigator.clipboard.writeText(publicUrl.val
 function openPublic(){window.open(publicUrl.value,'_blank','noopener')}
 function modeLabel(value?:string){return value==='DISABLED'?'Oculto':value==='OPTIONAL'?'Opcional':'Obrigatório'}
 
-onMounted(async()=>{await nextTick();portalReady.value=Boolean(document.querySelector('.tenant-console .nav-list')&&document.querySelector('.tenant-console .main-content'));await initialLoad()})
-onUnmounted(()=>document.body.classList.remove('sp-booking-message-open'))
+onMounted(async()=>{await nextTick();portalReady.value=Boolean(document.querySelector('.tenant-console .main-content'));await initialLoad();window.addEventListener('hashchange',onRouteChange);await syncRoute()})
+onUnmounted(()=>{window.removeEventListener('hashchange',onRouteChange);document.body.classList.remove('sp-booking-message-open')})
 </script>
 
 <template>
-  <Teleport v-if="portalReady" to=".tenant-console .nav-list"><button v-if="canBooking" class="nav-item sp-extension-nav" @click="open('booking')"><CalendarPlus2 :size="19"/><span>Agenda pública</span></button><button v-if="canMessages" class="nav-item sp-extension-nav" @click="open('messages')"><MessageSquareText :size="19"/><span>Mensagens</span></button></Teleport>
   <Teleport v-if="portalReady&&active" to=".tenant-console .main-content">
     <section class="sp-extension-root sp-booking-message-root">
       <header class="sp-extension-header"><div><span>Scheduler Pro</span><h1>{{active==='booking'?'Página de agendamento':'Mensagens da Agenda'}}</h1><p>{{active==='booking'?'Configure a experiência pública sem duplicar as regras do modelo de negócio da Agenda.':'Personalize, em linguagem simples, o que seus clientes recebem por WhatsApp e e-mail.'}}</p></div><button class="sp-icon-button" @click="close"><X :size="20"/></button></header>

@@ -30,6 +30,9 @@ async def _latest_release_catalog() -> dict[str, Any]:
         artifact_id = str(artifact.get("id") or "")
         artifact.pop("object_key", None)
         artifact["download_url"] = f"/api/v1/downloads/apps/{artifact_id}"
+        target = str(artifact.get("target") or "").lower()
+        if target.startswith("desktop-") or "desktop" in target:
+            continue
         artifacts.append(artifact)
     return {
         "universal": True,
@@ -56,9 +59,9 @@ async def universal_apps(
                 "slug": context.slug,
                 "hostname": context.hostname,
             },
+            "strategy": "pwa-first",
             "setup": {
-                "desktop": "No primeiro acesso, informe a URL deste tenant. Depois o Desktop abre diretamente a WebApp.",
-                "mobile": "No primeiro acesso, informe a URL deste tenant. O Mobile usa interface própria e as mesmas APIs.",
+                "mobile": "PWA é a experiência principal; APK e IPA usam interface mobile dedicada e as mesmas APIs.",
             },
         }
     )

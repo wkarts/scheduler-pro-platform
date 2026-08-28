@@ -10,6 +10,12 @@ export class HistoryStack {
   }
   canUndo() { return this.past.length > 0; }
   canRedo() { return this.future.length > 0; }
-  undo() { if (!this.canUndo()) return deepClone(this.current); this.future.push(deepClone(this.current)); this.current = this.past.pop(); return deepClone(this.current); }
-  redo() { if (!this.canRedo()) return deepClone(this.current); this.past.push(deepClone(this.current)); this.current = this.future.pop(); return deepClone(this.current); }
+  undo() {
+    if (!this.canUndo()) return deepClone(this.current);
+    this.future.push(deepClone(this.current)); this.current = this.past.pop(); return deepClone(this.current);
+  }
+  redo() {
+    if (!this.canRedo()) return deepClone(this.current);
+    this.past.push(deepClone(this.current)); this.current = this.future.pop(); return deepClone(this.current);
+  }
 }

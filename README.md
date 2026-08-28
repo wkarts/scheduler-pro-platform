@@ -1,8 +1,8 @@
 # Scheduler Pro Platform
 
-Plataforma SaaS multitenant de agendamentos construída com **FastAPI/Python 3.13**, **PostgreSQL**, **Redis**, **RabbitMQ**, **Vue 3 + Tailwind PWA** e **Tauri 2** para desktop/mobile.
+Plataforma SaaS multitenant de agendamentos construída com **FastAPI/Python 3.13**, **PostgreSQL**, **Redis**, **RabbitMQ** e **Vue 3 + Tailwind PWA**. A experiência principal é **PWA-first**; Tauri 2 permanece ativo somente para os aplicativos mobile Android/iOS.
 
-O núcleo permanece em Python/FastAPI. Tauri é usado somente para os aplicativos gerenciais desktop e mobile.
+O código desktop legado continua preservado para eventual retomada, mas não participa dos workflows, releases ou validações obrigatórias atuais.
 
 ## Estado funcional auditado
 
@@ -14,7 +14,9 @@ O núcleo permanece em Python/FastAPI. Tauri é usado somente para os aplicativo
 - Outbox/notificações/WhatsApp real: **PARTIAL/PLANNED** — incremento posterior.
 - Web/Admin operacionais completos: **PARTIAL**.
 - Provisionamento/Cloudflare real: **PARTIAL**; operações externas ficam `BLOCKED_EXTERNAL` quando faltarem credenciais.
-- Instaladores Desktop e APK/AAB finais: **PARTIAL** — fontes/PWA não são considerados artefatos nativos concluídos.
+- PWA cliente/admin: **ATIVO e prioritário**.
+- Mobile nativo: **ATIVO** para Android/APK e iOS/IPA.
+- Desktop Windows/Linux/macOS: **PRESERVADO COMO LEGADO**, fora do fluxo de build/release atual.
 
 ## Estrutura
 
@@ -23,8 +25,8 @@ apps/
   api/        FastAPI + SQLAlchemy Async
   web/        Webapp tenant PWA instalável
   admin/      Super Admin / Control Plane PWA instalável
-  desktop/    Tauri 2 Desktop
-  mobile/     Tauri 2 Mobile
+  desktop/    Tauri 2 Desktop legado (fora do pipeline ativo)
+  mobile/     Tauri 2 Mobile ativo
 packages/     contratos e SDK
 infrastructure/docker
   base/python Imagem base Python 3.13
@@ -104,9 +106,9 @@ Workflows existentes:
 - `Integration Tests`: valida Compose, bootstrap, PostgreSQL multitenant, Redis, RabbitMQ, MinIO, autenticação/RBAC, readiness e round-trip Alembic.
 - `Base Image`: publica `python-base`.
 - `Images`: publica `api`, `worker`, `web`, `admin`, `proxy` e `python-base`.
-- `Release`: fluxo legado de publicação; ainda será endurecido na fase de Build Manager/Release.
-- `Desktop Artifacts`: **PARTIAL**; presença do workflow não prova instalador final testável.
-- `Mobile Artifacts`: **PARTIAL**; PWA ou shell/fonte não é APK/AAB e não deve ser anunciado como tal.
+- `Release`: publica PWA/deploy e, quando executado, artefatos mobile Android/APK e iOS/IPA; não gera desktop.
+- `Mobile Artifacts`: gera os artefatos nativos mobile.
+- `Desktop Artifacts`: retirado do fluxo ativo e preservado somente em `docs/legacy-workflows/desktop-artifacts.yml.disabled`.
 
 ## Validação local
 

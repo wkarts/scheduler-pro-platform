@@ -1,6 +1,14 @@
-/* Tokens compartilhados do ARGWS Visual Builder. O editor principal usa Shadow DOM. */
+/*
+  Tokens externos do ARGWS Visual Builder 2.2.0.
+  O editor principal usa Shadow DOM e injeta o restante dos estilos internamente.
+*/
 :root {
-  --argws-builder-accent: #6c7cff;
-  --argws-builder-panel: #111722;
-  --argws-builder-border: #263043;
+  --argws-builder-navy: #08172b;
+  --argws-builder-cyan: #19e8ef;
+  --argws-builder-blue: #0d82ff;
+  --argws-builder-violet: #7b43ff;
+  --argws-builder-accent: #0d82ff;
+  --argws-builder-panel: #0b1729;
+  --argws-builder-border: #20334d;
+  --argws-builder-gradient: linear-gradient(135deg,#19e8ef 0%,#0d82ff 50%,#7b43ff 100%);
 }

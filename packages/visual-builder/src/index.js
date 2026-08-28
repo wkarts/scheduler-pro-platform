@@ -1,42 +1,43 @@
-import '../runtime/package/styles/builder.css'
-import * as runtime from '../runtime/package/src/index.js'
-export * from '../runtime/package/src/index.js'
+export * from './model.js';
+export * from './history.js';
+export * from './registry.js';
+export * from './sanitize.js';
+export * from './dynamic.js';
+export * from './dynamic-tags.js';
+export * from './data-sources.js';
+export * from './forms.js';
+export * from './assets.js';
+export * from './permissions.js';
+export * from './i18n.js';
+export * from './operations.js';
+export * from './project.js';
+export * from './project-package.js';
+export * from './custom-code.js';
+export * from './embeds.js';
+export * from './services.js';
+export * from './submissions.js';
+export * from './plugins.js';
+export * from './actions.js';
+export * from './library.js';
+export * from './audit.js';
+export * from './site-kit.js';
+export * from './renderer.js';
+export * from './runtime.js';
+export * from './adapters.js';
+export * from './template-packages.js';
+export * from './templates.js';
+export * from './editor.js';
+export * from './project-workspace.js';
+export * from './page-renderer.js';
 
-export const ARGWS_VISUAL_BUILDER_VERSION='2.1.0'
-export const ARGWS_VISUAL_BUILDER_DEFAULT_VERSION='2.1.0'
-export const ARGWS_VISUAL_BUILDER_SUPPORTED_VERSIONS=Object.freeze(['2.1.0'])
-export const ARGWS_VISUAL_BUILDER_RELEASES=Object.freeze([
-  Object.freeze({version:'2.1.0',label:'ARGWS Visual Builder 2.1.0',schema:'argws-visual-builder/v3',channel:'canonical',recommended:true,description:'Release canônica New-Only do editor visual responsivo do Scheduler Pro.'}),
-])
-
-export function normalizeVisualBuilderVersion(){return ARGWS_VISUAL_BUILDER_VERSION}
-export function visualBuilderRelease(){return ARGWS_VISUAL_BUILDER_RELEASES[0]}
-export function activeVisualBuilderRuntimeVersion(){return ARGWS_VISUAL_BUILDER_VERSION}
-export function resolveVisualBuilderVersionFromContent(){return ARGWS_VISUAL_BUILDER_VERSION}
-export async function loadVisualBuilderRuntime(){return runtime}
-
-function versionedPayload(document){
-  return {...runtime.toSchedulerProContent(document),builder_version:ARGWS_VISUAL_BUILDER_VERSION}
+// Aliases públicos explícitos para integrações externas e SDKs.
+export { createDocument as createPageDocument } from './model.js';
+export { toSchedulerProContent as compileSchedulerProV2 } from './renderer.js';
+import { renderDocument as _renderDocument } from './renderer.js';
+export function renderPage(input, options = {}) {
+  return _renderDocument(input, options).html;
 }
 
-export async function createSchedulerProAdapter(_versionOrOptions={},maybeOptions={}){
-  const options=typeof _versionOrOptions==='string'?maybeOptions:_versionOrOptions
-  const adapter=new runtime.SchedulerProAdapter(options)
-  adapter.saveDraft=async document=>{
-    const payload=versionedPayload(document)
-    const result=await adapter.request(`/landing-pages/${encodeURIComponent(adapter.slug)}/draft`,{method:'POST',body:JSON.stringify(payload)})
-    adapter.state={...(adapter.state||{}),draft_version_id:result.version_id}
-    return result
-  }
-  adapter.autosave=async document=>{
-    const payload=versionedPayload(document)
-    const result=await adapter.request(`/landing-pages/${encodeURIComponent(adapter.slug)}/autosave`,{method:'POST',body:JSON.stringify(payload)})
-    adapter.state={...(adapter.state||{}),draft_version_id:result.version_id}
-    return result
-  }
-  adapter.publish=async document=>{
-    await adapter.saveDraft(document)
-    return adapter.request(`/landing-pages/${encodeURIComponent(adapter.slug)}/publish`,{method:'POST',body:JSON.stringify({version_id:adapter.state?.draft_version_id||null})})
-  }
-  return {adapter,runtime,version:ARGWS_VISUAL_BUILDER_VERSION}
-}
+
+import { renderDocumentAsync as _renderDocumentAsync } from './renderer.js';
+export async function renderPageAsync(input, options = {}) { return (await _renderDocumentAsync(input, options)).html; }

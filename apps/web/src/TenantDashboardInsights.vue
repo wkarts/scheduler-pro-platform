@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { BarChart3, CalendarDays, CalendarPlus, CheckCircle2, Clock3, RefreshCw, TrendingUp, UserRound, Users, XCircle } from 'lucide-vue-next'
-import { TENANT_NAVIGATION_EVENT, openAgendaOperator } from './tenantNavigation'
+import { openAgendaOperator } from './tenantNavigation'
 
 type Appointment={id:string;starts_at:string;status:string;customer_name:string;service_name?:string|null;professional_name:string}
 type Report={synthetic:{appointments:number;unique_customers:number;completed:number;cancelled:number;no_show:number;estimated_revenue:number;completion_rate:number;no_show_rate:number};analytical:{curve:Array<{date:string;appointments:number}>;services:Array<{name:string;count:number}>;statuses:Array<{status:string;count:number}>}}
@@ -28,11 +28,10 @@ function dateTime(value:string){return new Date(value).toLocaleString('pt-BR',{d
 function status(value:string){return statusLabels[value]||value}
 async function api<T>(path:string):Promise<T>{const response=await fetch(`/api/v1${path}`,{cache:'no-store',headers:{Accept:'application/json',Authorization:`Bearer ${token()}`}});const payload=await response.json().catch(()=>({})) as Envelope<T>;if(!response.ok)throw new Error(payload.error?.message||`Falha HTTP ${response.status}`);return payload.data as T}
 async function load(){if(!visible.value||loading.value)return;loading.value=true;error.value='';try{const anchor=localKey(new Date());const [items,w,m]=await Promise.all([api<Appointment[]>('/appointments'),api<Report>(`/agenda/reports/summary?period=week&anchor=${anchor}`),api<Report>(`/agenda/reports/summary?period=month&anchor=${anchor}`)]);appointments.value=items;week.value=w;month.value=m}catch(exc){error.value=exc instanceof Error?exc.message:'Não foi possível atualizar a visão geral.'}finally{loading.value=false}}
-function goAgenda(){window.history.replaceState(null,'','#agenda');window.dispatchEvent(new CustomEvent(TENANT_NAVIGATION_EVENT,{detail:{hash:'#agenda'}}))}
+function goAgenda(){window.location.hash='agenda'}
 function sync(){visible.value=!window.location.hash||window.location.hash==='#dashboard';document.body.classList.toggle('sp-dashboard-insights-open',visible.value);if(visible.value)void load()}
-function onNavigation(){sync()}
-onMounted(()=>{window.addEventListener('hashchange',sync);window.addEventListener(TENANT_NAVIGATION_EVENT,onNavigation);sync()})
-onUnmounted(()=>{window.removeEventListener('hashchange',sync);window.removeEventListener(TENANT_NAVIGATION_EVENT,onNavigation);document.body.classList.remove('sp-dashboard-insights-open')})
+onMounted(()=>{window.addEventListener('hashchange',sync);sync()})
+onUnmounted(()=>{window.removeEventListener('hashchange',sync);document.body.classList.remove('sp-dashboard-insights-open')})
 </script>
 
 <template>
