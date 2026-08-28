@@ -20,7 +20,7 @@ import './tenantContrast.css'
 const authenticated=ref(Boolean(localStorage.getItem('scheduler_pro_access_token')))
 const activeView=ref((window.location.hash||'#dashboard').replace(/^#/,'')||'dashboard')
 const normalizedPath=window.location.pathname.replace(/\/+$/,'')||'/'
-const publicSurface=ref(['/agendar','/pagina'].includes(normalizedPath))
+const publicSurface=ref(['/agendar','/pagina','/login'].includes(normalizedPath))
 function refreshAuthState():void{authenticated.value=Boolean(localStorage.getItem('scheduler_pro_access_token'))}
 function refreshRoute():void{activeView.value=(window.location.hash||'#dashboard').replace(/^#/,'')||'dashboard'}
 function onStorage(event:StorageEvent):void{if(event.key==='scheduler_pro_access_token')refreshAuthState()}

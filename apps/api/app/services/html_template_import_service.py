@@ -9,7 +9,7 @@ from app.core.errors import APIError
 from app.services.global_template_service import GlobalTemplateService
 from app.services.html_template_contract import HtmlTemplateContract
 
-VALID_SCOPES = {"GLOBAL", "SELECTED", "EXCLUSIVE", "INTERNAL"}
+VALID_SCOPES = {"GLOBAL", "SELECTED", "EXCLUSIVE", "INTERNAL", "PLATFORM_DEFAULT"}
 
 
 class HtmlTemplateImportService:
@@ -46,6 +46,7 @@ class HtmlTemplateImportService:
         *,
         landing_html: str | None,
         booking_html: str | None,
+        login_html: str | None = None,
         name: str,
         description: str | None,
         segment: str | None,
@@ -57,24 +58,26 @@ class HtmlTemplateImportService:
         publish: bool = False,
         update_existing: bool = True,
     ) -> dict[str, Any]:
-        validation = HtmlTemplateContract.ensure_pair(
+        validation = HtmlTemplateContract.ensure_family(
             landing_html=landing_html,
             booking_html=booking_html,
+            login_html=login_html,
         )
         key = str(validation["template_key"])
         clean_name = name.strip()
         if len(clean_name) < 2 or len(clean_name) > 180:
             raise APIError("GLOBAL_TEMPLATE_NAME_INVALID", "Nome do modelo inválido.", 422)
         normalized_scope = self._scope(scope)
+        storage_scope = "GLOBAL" if normalized_scope == "PLATFORM_DEFAULT" else normalized_scope
         exclusive = str(exclusive_tenant_id or "").strip() or None
         selected = [str(item) for item in selected_tenant_ids or []]
-        if normalized_scope == "EXCLUSIVE" and not exclusive:
+        if storage_scope == "EXCLUSIVE" and not exclusive:
             raise APIError(
                 "GLOBAL_TEMPLATE_TENANT_REQUIRED",
                 "Escolha o cliente exclusivo antes de importar.",
                 422,
             )
-        if normalized_scope == "SELECTED" and not selected:
+        if storage_scope == "SELECTED" and not selected:
             raise APIError(
                 "GLOBAL_TEMPLATE_SELECTED_TENANTS_REQUIRED",
                 "Escolha ao menos um cliente para este modelo.",
@@ -86,6 +89,8 @@ class HtmlTemplateImportService:
             source.append(("LANDING", landing_html, clean_name))
         if booking_html:
             source.append(("BOOKING", booking_html, f"{clean_name} — Agendamento"))
+        if login_html:
+            source.append(("LOGIN", login_html, f"{clean_name} — Login"))
 
         results: list[dict[str, Any]] = []
         for surface, html_document, surface_name in source:
@@ -98,10 +103,10 @@ class HtmlTemplateImportService:
                 "name": surface_name,
                 "description": description.strip() if description and description.strip() else None,
                 "segment": segment.strip() if segment and segment.strip() else None,
-                "scope": normalized_scope,
+                "scope": storage_scope,
                 "default_for_new_tenants": bool(default_for_new_tenants),
-                "exclusive_tenant_id": exclusive if normalized_scope == "EXCLUSIVE" else None,
-                "selected_tenant_ids": selected if normalized_scope == "SELECTED" else [],
+                "exclusive_tenant_id": exclusive if storage_scope == "EXCLUSIVE" else None,
+                "selected_tenant_ids": selected if storage_scope == "SELECTED" else [],
             }
             changelog = "Importação HTML pelo Control Plane"
             if existing_id:
@@ -166,6 +171,7 @@ class HtmlTemplateImportService:
             "template_key": key,
             "name": clean_name,
             "scope": normalized_scope,
+            "storage_scope": storage_scope,
             "validation": validation,
             "templates": results,
             "automatic_tenant_update": False,

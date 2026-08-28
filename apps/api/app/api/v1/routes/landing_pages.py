@@ -16,6 +16,7 @@ from app.core.responses import success
 from app.core.security import AuthPrincipal
 from app.core.tenant_context import TenantContext
 from app.services.global_template_service import GlobalTemplateService
+from app.services.builtin_template_package_service import OFFICIAL_TEMPLATE_KEYS, builtin_template_package, official_template_families
 from app.services.html_template_contract import HtmlTemplateContract
 from app.services.landing_service import LandingPageService
 from app.services.template_contract import TemplateContract
@@ -67,104 +68,65 @@ async def templates(
     context: TenantContext = Depends(get_tenant_context),
     platform: AsyncSession = Depends(get_platform_session),
 ) -> dict[str, Any]:
-    legacy = [
-        {**item, "source": "builtin", "version": None}
-        for item in LandingPageService.templates()
-    ]
-    global_rows = await GlobalTemplateService(platform).list(
-        surface="LANDING",
-        tenant_id=context.tenant_id,
-    )
-    global_templates = [
-        {
-            "key": row["key"],
-            "name": row["name"],
-            "description": row.get("description") or "Modelo global da plataforma.",
-            "segment": row.get("segment") or "global",
-            "source": "global",
-            "version": row.get("published_version"),
-            "template_id": row["id"],
-        }
-        for row in global_rows
-    ]
-    return success(global_templates + legacy)
+    rows = await GlobalTemplateService(platform).list(surface="LANDING", tenant_id=context.tenant_id)
+    by_key = {str(row["key"]): row for row in rows if str(row["key"]) in OFFICIAL_TEMPLATE_KEYS}
+    result=[]
+    for family in official_template_families():
+        row=by_key.get(family["key"])
+        result.append({"key":family["key"],"name":family["name"],"description":family.get("description") or "Modelo oficial da plataforma.","segment":family.get("segment") or "global","source":"official-package","version":row.get("published_version") if row else None,"template_id":row.get("id") if row else None,"default_for_new_tenants":family.get("default_for_new_tenants",False)})
+    return success(result)
 
 
 @router.get("/template-families")
-async def template_families(
-    context: TenantContext = Depends(get_tenant_context),
-    platform: AsyncSession = Depends(get_platform_session),
-) -> dict[str, Any]:
-    rows = await GlobalTemplateService(platform).list(tenant_id=context.tenant_id)
-    families: dict[str, dict[str, Any]] = {}
-    for row in rows:
-        key = str(row["key"])
-        family = families.setdefault(
-            key,
-            {
-                "key": key,
-                "name": str(row["name"]).removesuffix(" — Agendamento"),
-                "description": row.get("description"),
-                "segment": row.get("segment"),
-                "surfaces": {},
-            },
-        )
-        family["surfaces"][str(row["surface"]).lower()] = {
-            "surface": row["surface"],
-            "template_id": row["id"],
-            "version": row.get("published_version"),
-            "route": "/pagina" if row["surface"] == "LANDING" else "/agendar",
-        }
-    complete = [item for item in families.values() if {"landing", "booking"}.issubset(item["surfaces"])]
-    return success(sorted(complete, key=lambda item: (str(item.get("name") or ""), item["key"])))
+async def template_families() -> dict[str, Any]:
+    return success(official_template_families())
 
 
-@router.post("/{slug}/template-families/{template_key}")
-async def apply_template_family(
-    slug: str,
+@router.get("/template-families/{template_key}/{surface}")
+async def template_family_surface(
     template_key: str,
-    principal: AuthPrincipal = Depends(get_current_user),
-    context: TenantContext = Depends(get_tenant_context),
-    session: AsyncSession = Depends(get_tenant_session),
-    platform: AsyncSession = Depends(get_platform_session),
+    surface: str,
 ) -> dict[str, Any]:
-    service = GlobalTemplateService(platform)
-    landing = await service.content(surface="LANDING", key=template_key, tenant_id=context.tenant_id)
-    booking = await service.content(surface="BOOKING", key=template_key, tenant_id=context.tenant_id)
-    landing_content = landing["version"]["content"]
-    booking_content = booking["version"]["content"]
-    HtmlTemplateContract.ensure_wrapper(landing_content, expected_surface="LANDING")
-    HtmlTemplateContract.ensure_wrapper(booking_content, expected_surface="BOOKING")
-
-    draft = await LandingPageService(session).save_draft(
-        slug,
-        landing_content,
-        created_by=principal.user_id,
-        label=f"Família global: {template_key} / LANDING",
-    )
-    settings = {
-        "booking_page_template_key": template_key,
-        "booking_page_template_version": int(booking["version"]["version_number"]),
-        "booking_page_template_content": booking_content,
-    }
-    for key, value in settings.items():
-        await session.execute(
-            text(
-                """
-                insert into tenant_settings(key,value,updated_at)
-                values(:key,cast(:value as jsonb),now())
-                on conflict(key) do update set value=excluded.value,updated_at=now()
-                """
-            ),
-            {"key": key, "value": __import__("json").dumps(value, ensure_ascii=False)},
+    normalized = surface.strip().upper()
+    if normalized not in {"LANDING", "BOOKING", "LOGIN"}:
+        raise APIError(
+            "TEMPLATE_SURFACE_INVALID",
+            "Área de modelo inválida.",
+            422,
         )
-    await session.commit()
+    try:
+        package = builtin_template_package(template_key)
+    except KeyError as exc:
+        raise APIError(
+            "LANDING_TEMPLATE_NOT_FOUND",
+            "Modelo oficial não encontrado.",
+            404,
+        ) from exc
+    document = package["documents"].get(normalized)
+    if not document:
+        raise APIError(
+            "TEMPLATE_SURFACE_NOT_FOUND",
+            "Esta página não existe no modelo selecionado.",
+            404,
+        )
+    surface_meta = next(
+        (
+            item
+            for item in package["surfaces"].values()
+            if item["surface"] == normalized
+        ),
+        None,
+    )
     return success(
         {
-            "template_key": template_key,
-            "landing": {"draft": draft, "version": landing["version"]["version_number"]},
-            "booking": {"saved": True, "version": booking["version"]["version_number"]},
-            "automatic_tenant_update": False,
+            "key": template_key,
+            "surface": normalized,
+            "content": HtmlTemplateContract.wrapper(
+                document,
+                expected_surface=normalized,
+            ),
+            "package": package["package"],
+            "surface_meta": surface_meta,
         }
     )
 

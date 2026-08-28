@@ -17,11 +17,12 @@ SURFACE_META_TO_INTERNAL = {
     "public-booking": "BOOKING",
     "booking": "BOOKING",
     "agendamento": "BOOKING",
+    "login": "LOGIN",
+    "sign-in": "LOGIN",
 }
 FORBIDDEN_TAGS = {"base", "object", "embed", "applet"}
 FORBIDDEN_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
     ("HTML_SERVICE_WORKER_FORBIDDEN", re.compile(r"navigator\s*\.\s*serviceWorker", re.I)),
-    ("HTML_STORAGE_ACCESS_FORBIDDEN", re.compile(r"\b(?:localStorage|sessionStorage)\b", re.I)),
     ("HTML_COOKIE_ACCESS_FORBIDDEN", re.compile(r"document\s*\.\s*cookie", re.I)),
     (
         "HTML_PARENT_ACCESS_FORBIDDEN",
@@ -89,7 +90,7 @@ class _HtmlInspection(HTMLParser):
 
 
 class HtmlTemplateContract:
-    """Contrato de autoria HTML para Landing Page e Página de Agendamento."""
+    """Contrato HTML para Landing, Agenda Pública e Login visual."""
 
     @staticmethod
     def is_html_content(content: Any) -> bool:
@@ -116,6 +117,7 @@ class HtmlTemplateContract:
             "surfaces": {
                 "landing": "Landing Page, com ou sem agenda pública habilitada.",
                 "public-booking": "Página pública de agendamento conectada ao motor do Scheduler Pro.",
+                "login": "Página visual de Login conectada à autenticação real do Scheduler Pro.",
             },
             "runtime": {
                 "sandboxed": True,
@@ -213,26 +215,28 @@ class HtmlTemplateContract:
 
         raw_version = parser.meta.get("scheduler-pro-content-version", "").strip()
         try:
-            version = int(raw_version)
+            parsed_version = float(raw_version)
+            version: int | float = int(parsed_version) if parsed_version.is_integer() else parsed_version
         except (TypeError, ValueError):
             version = 0
-        if version < 2:
+
+        declared_surface = parser.meta.get("scheduler-pro-surface", "").strip().lower()
+        surface = SURFACE_META_TO_INTERNAL.get(declared_surface, "")
+        minimum_version = 1 if surface == "LOGIN" else 2
+        if version < minimum_version:
             errors.append(
                 _issue(
                     "meta.scheduler-pro-content-version",
                     "HTML_CONTENT_VERSION_INVALID",
-                    "Use scheduler-pro-content-version igual ou superior a 2.",
+                    f"Use scheduler-pro-content-version igual ou superior a {minimum_version} para {surface or 'esta superfície'}.",
                 )
             )
-
-        declared_surface = parser.meta.get("scheduler-pro-surface", "").strip().lower()
-        surface = SURFACE_META_TO_INTERNAL.get(declared_surface, "")
         if not surface:
             errors.append(
                 _issue(
                     "meta.scheduler-pro-surface",
                     "HTML_SURFACE_INVALID",
-                    "Use scheduler-pro-surface=landing ou public-booking.",
+                    "Use scheduler-pro-surface=landing, public-booking/booking ou login.",
                 )
             )
         normalized_expected = str(expected_surface or "").strip().upper()
@@ -308,6 +312,24 @@ class HtmlTemplateContract:
                     "A Página de Agendamento precisa usar a API pública do Scheduler Pro ou declarar data-scheduler-pro-booking.",
                 )
             )
+        if surface == "LOGIN":
+            has_login_form = "id=\"loginform\"" in lowered or "id='loginform'" in lowered
+            has_auth_bridge = (
+                "schedulerproauth.login" in lowered
+                or "window.schedulerproauth" in lowered and ".login" in lowered
+                or "data-scheduler-pro-login" in lowered
+                or "data-sp-auth-binding=\"application\"" in lowered
+                or "data-sp-auth-binding='application'" in lowered
+            )
+            if not (has_login_form and has_auth_bridge):
+                errors.append(
+                    _issue(
+                        "html",
+                        "HTML_LOGIN_INTEGRATION_REQUIRED",
+                        "A página de Login precisa declarar #loginForm e usar a autenticação real via SchedulerProAuth.login.",
+                    )
+                )
+
         if surface == "LANDING" and "@media" not in lowered:
             warnings.append(
                 _issue(
@@ -384,59 +406,75 @@ class HtmlTemplateContract:
         return normalized
 
     @classmethod
+    def validate_family(
+        cls,
+        *,
+        landing_html: str | None = None,
+        booking_html: str | None = None,
+        login_html: str | None = None,
+    ) -> dict[str, Any]:
+        errors: list[dict[str, str]] = []
+        warnings: list[dict[str, str]] = []
+        reports: dict[str, dict[str, Any]] = {}
+        if not landing_html and not booking_html and not login_html:
+            errors.append(_issue("files", "HTML_TEMPLATE_FILE_REQUIRED", "Envie Landing, Agenda Pública ou Login."))
+        if landing_html:
+            reports["landing"] = cls.validate_html(landing_html, expected_surface="LANDING")
+        if booking_html:
+            reports["booking"] = cls.validate_html(booking_html, expected_surface="BOOKING")
+        if login_html:
+            reports["login"] = cls.validate_html(login_html, expected_surface="LOGIN")
+        for name, report in reports.items():
+            for item in report["errors"]:
+                errors.append({**item, "path": f"{name}.{item['path']}"})
+            for item in report["warnings"]:
+                warnings.append({**item, "path": f"{name}.{item['path']}"})
+        keys = {str(report.get("template_key") or "") for report in reports.values() if report.get("template_key")}
+        if len(keys) > 1:
+            errors.append(_issue("files", "HTML_TEMPLATE_FAMILY_KEY_MISMATCH", "Landing, Agenda Pública e Login precisam usar a mesma chave scheduler-pro-template."))
+        return {"valid": not errors, "schema": HTML_CONTRACT_SCHEMA, "template_key": next(iter(keys), ""), "errors": errors, "warnings": warnings, "surfaces": reports}
+
+    @classmethod
+    def ensure_family(
+        cls,
+        *,
+        landing_html: str | None = None,
+        booking_html: str | None = None,
+        login_html: str | None = None,
+    ) -> dict[str, Any]:
+        report = cls.validate_family(landing_html=landing_html, booking_html=booking_html, login_html=login_html)
+        if not report["valid"]:
+            raise APIError("HTML_TEMPLATE_FAMILY_INVALID", "A família HTML não atende ao padrão do Scheduler Pro.", 422, details=report)
+        return report
+
+    @classmethod
     def validate_pair(
         cls,
         *,
         landing_html: str | None = None,
         booking_html: str | None = None,
     ) -> dict[str, Any]:
-        errors: list[dict[str, str]] = []
-        warnings: list[dict[str, str]] = []
-        reports: dict[str, dict[str, Any]] = {}
-        if not landing_html and not booking_html:
-            errors.append(
-                _issue(
-                    "files",
-                    "HTML_TEMPLATE_FILE_REQUIRED",
-                    "Envie a Landing Page, a Página de Agendamento ou as duas.",
-                )
-            )
-        if landing_html:
-            reports["landing"] = cls.validate_html(
-                landing_html,
-                expected_surface="LANDING",
-            )
-        if booking_html:
-            reports["booking"] = cls.validate_html(
-                booking_html,
-                expected_surface="BOOKING",
-            )
-        for name, report in reports.items():
-            for item in report["errors"]:
-                errors.append({**item, "path": f"{name}.{item['path']}"})
-            for item in report["warnings"]:
-                warnings.append({**item, "path": f"{name}.{item['path']}"})
-        keys = {
-            str(report.get("template_key") or "")
-            for report in reports.values()
-            if report.get("template_key")
-        }
-        if len(keys) > 1:
-            errors.append(
-                _issue(
-                    "files",
-                    "HTML_TEMPLATE_PAIR_KEY_MISMATCH",
-                    "Landing Page e Página de Agendamento precisam usar o mesmo scheduler-pro-template.",
-                )
-            )
-        return {
-            "valid": not errors,
-            "schema": HTML_CONTRACT_SCHEMA,
-            "template_key": next(iter(keys), ""),
-            "errors": errors,
-            "warnings": warnings,
-            "surfaces": reports,
-        }
+        """Compatibilidade 2.3.0: mantém o código de erro histórico do par.
+
+        O contrato 2.3.1 trata LANDING/BOOKING/LOGIN como uma família, porém
+        consumidores antigos ainda verificam HTML_TEMPLATE_PAIR_KEY_MISMATCH.
+        """
+        report = cls.validate_family(
+            landing_html=landing_html,
+            booking_html=booking_html,
+        )
+        report["errors"] = [
+            {
+                **issue,
+                "code": (
+                    "HTML_TEMPLATE_PAIR_KEY_MISMATCH"
+                    if issue.get("code") == "HTML_TEMPLATE_FAMILY_KEY_MISMATCH"
+                    else issue.get("code")
+                ),
+            }
+            for issue in report["errors"]
+        ]
+        return report
 
     @classmethod
     def ensure_pair(

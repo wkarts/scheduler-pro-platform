@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { apiDelete, apiGet, apiPost, apiPut, type ApiError } from './api/client'
+import { confirmDialog, promptDialog } from './appDialog'
 
 type LoginResponse = {
   access_token: string
@@ -616,7 +617,7 @@ async function createTenant(): Promise<void> {
 }
 
 async function tenantAction(action: 'suspend' | 'restore', tenant: Tenant): Promise<void> {
-  if (!window.confirm(`${action === 'suspend' ? 'Suspender' : 'Restaurar'} ${tenant.name}?`)) return
+  if (!await confirmDialog({title:action === 'suspend' ? 'Suspender tenant' : 'Restaurar tenant',message:`${action === 'suspend' ? 'Suspender' : 'Restaurar'} ${tenant.name}?`,danger:action==='suspend',confirmLabel:action === 'suspend' ? 'Suspender' : 'Restaurar'})) return
   try {
     await apiPost(`/platform/tenants/${tenant.id}/${action}`, {}, token())
     showToast(action === 'suspend' ? 'Tenant suspenso.' : 'Tenant restaurado.')
@@ -627,7 +628,7 @@ async function tenantAction(action: 'suspend' | 'restore', tenant: Tenant): Prom
 }
 
 async function deleteTenant(tenant: Tenant): Promise<void> {
-  if (!window.confirm(`Excluir logicamente ${tenant.name}? Os recursos serão preservados para recuperação.`)) return
+  if (!await confirmDialog({title:'Excluir tenant',message:`Excluir logicamente ${tenant.name}? Os recursos serão preservados para recuperação.`,danger:true,confirmLabel:'Excluir'})) return
   try {
     await apiDelete(`/platform/tenants/${tenant.id}`, token())
     showToast('Tenant excluído logicamente.')
@@ -638,7 +639,7 @@ async function deleteTenant(tenant: Tenant): Promise<void> {
 }
 
 async function purgeTenant(tenant: Tenant): Promise<void> {
-  const confirmation = window.prompt(`EXPURGO IRREVERSÍVEL. Digite exatamente: ${tenant.slug}`)
+  const confirmation = await promptDialog({title:'Expurgo irreversível',message:`Digite exatamente ${tenant.slug} para confirmar a exclusão definitiva.`,inputLabel:'Código do tenant',placeholder:tenant.slug,danger:true,confirmLabel:'Expurgar definitivamente'})
   if (confirmation !== tenant.slug) return
   try {
     await apiPost(`/platform/tenants/${tenant.id}/purge`, { confirmation, force: false }, token())
@@ -647,7 +648,7 @@ async function purgeTenant(tenant: Tenant): Promise<void> {
     await refreshBase()
   } catch (error) {
     const apiError = error as Partial<ApiError>
-    if (apiError.code === 'TENANT_PURGE_INCOMPLETE' && window.confirm('Existem recursos externos pendentes. Forçar expurgo local mesmo assim?')) {
+    if (apiError.code === 'TENANT_PURGE_INCOMPLETE' && await confirmDialog({title:'Expurgo incompleto',message:'Existem recursos externos pendentes. Forçar expurgo local mesmo assim?',danger:true,confirmLabel:'Forçar expurgo'})) {
       try {
         await apiPost(`/platform/tenants/${tenant.id}/purge`, { confirmation, force: true }, token())
         showToast('Expurgo forçado concluído com avisos registrados na auditoria.')
@@ -818,7 +819,7 @@ async function toggleUser(user: PlatformUser): Promise<void> {
 }
 
 async function resetUserPassword(user: PlatformUser): Promise<void> {
-  if (!window.confirm(`Gerar nova senha para ${user.email}? Todas as sessões serão revogadas.`)) return
+  if (!await confirmDialog({title:'Gerar nova senha',message:`Gerar nova senha para ${user.email}? Todas as sessões serão revogadas.`,danger:true,confirmLabel:'Gerar senha'})) return
   try {
     const result = await apiPost<{ password: string }>(`/platform/access/users/${user.id}/reset-password`, {}, token())
     credentialReveal.value = { label: user.email, value: result.password }
@@ -829,7 +830,7 @@ async function resetUserPassword(user: PlatformUser): Promise<void> {
 }
 
 async function deleteUser(user: PlatformUser): Promise<void> {
-  if (!window.confirm(`Excluir definitivamente o usuário administrativo ${user.email}?`)) return
+  if (!await confirmDialog({title:'Excluir usuário administrativo',message:`Excluir definitivamente o usuário administrativo ${user.email}?`,danger:true,confirmLabel:'Excluir'})) return
   try {
     await apiDelete(`/platform/access/users/${user.id}`, token())
     showToast('Usuário excluído.')
@@ -870,7 +871,7 @@ async function saveRole(): Promise<void> {
 }
 
 async function deleteRole(role: PlatformRole): Promise<void> {
-  if (!window.confirm(`Excluir o perfil ${role.name}?`)) return
+  if (!await confirmDialog({title:'Excluir perfil',message:`Excluir o perfil ${role.name}?`,danger:true,confirmLabel:'Excluir'})) return
   try {
     await apiDelete(`/platform/access/roles/${role.id}`, token())
     showToast('Perfil excluído.')

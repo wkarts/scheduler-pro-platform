@@ -50,8 +50,4 @@ export function proConversionTemplate() {
 
 export const BUILTIN_TEMPLATES=[
   {key:'blank',name:'Em branco',description:'Comece do zero.',create:blankTemplate},
-  {key:'scheduler',name:'Scheduler Pro',description:'Serviços, profissionais, prova social e agenda.',create:schedulerTemplate},
-  {key:'business',name:'Negócio / Serviço',description:'Landing genérica com menu, benefícios e formulário.',create:genericBusinessTemplate},
-  {key:'portfolio',name:'Portfólio',description:'Hero, galeria, prova social e contato.',create:portfolioTemplate},
-  {key:'pro-conversion',name:'Conversão Pro',description:'Design system, pricing, formulário e popup de saída.',create:proConversionTemplate},
 ];

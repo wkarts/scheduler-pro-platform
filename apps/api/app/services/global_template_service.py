@@ -10,7 +10,7 @@ from app.core.errors import APIError
 from app.services.html_template_contract import HtmlTemplateContract
 from app.services.template_contract import TemplateContract
 
-SURFACES = {"LANDING", "BOOKING"}
+SURFACES = {"LANDING", "BOOKING", "LOGIN"}
 SCOPES = {"GLOBAL", "SELECTED", "EXCLUSIVE", "INTERNAL"}
 STATUSES = {"DRAFT", "PUBLISHED", "INACTIVE"}
 

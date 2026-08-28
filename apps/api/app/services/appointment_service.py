@@ -389,13 +389,29 @@ class AppointmentService:
         self,
         *,
         day: date | None = None,
+        starts_at: datetime | None = None,
+        ends_at: datetime | None = None,
         professional_id: str | None = None,
         customer_id: str | None = None,
         status: str | None = None,
     ) -> list[dict[str, Any]]:
         clauses = ["1=1"]
         params: dict[str, Any] = {}
-        if day:
+        if starts_at is not None or ends_at is not None:
+            if starts_at is None or ends_at is None:
+                raise APIError("APPOINTMENT_RANGE_INVALID", "Informe starts_at e ends_at juntos.", 422)
+            range_start = starts_at if starts_at.tzinfo else starts_at.replace(tzinfo=self.timezone)
+            range_end = ends_at if ends_at.tzinfo else ends_at.replace(tzinfo=self.timezone)
+            range_start = range_start.astimezone(UTC)
+            range_end = range_end.astimezone(UTC)
+            if range_end <= range_start:
+                raise APIError("APPOINTMENT_RANGE_INVALID", "Período de agenda inválido.", 422)
+            if range_end - range_start > timedelta(days=370):
+                raise APIError("APPOINTMENT_RANGE_TOO_LARGE", "Consulte no máximo 370 dias por vez.", 422)
+            clauses.append("a.starts_at < :range_end and a.ends_at > :range_start")
+            params["range_start"] = range_start
+            params["range_end"] = range_end
+        elif day:
             local_start = datetime.combine(day, time.min, tzinfo=self.timezone)
             local_end = local_start + timedelta(days=1)
             clauses.append("a.starts_at >= :day_start and a.starts_at < :day_end")
@@ -427,7 +443,7 @@ class AppointmentService:
                     join professionals p on p.id = a.professional_id
                     where {' and '.join(clauses)}
                     order by a.starts_at asc
-                    limit 500
+                    limit 2000
                     """
                 ),
                 params,

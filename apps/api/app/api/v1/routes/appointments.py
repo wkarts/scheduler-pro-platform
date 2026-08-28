@@ -96,6 +96,8 @@ async def _publish_realtime(
 @router.get("")
 async def list_appointments(
     day: date | None = Query(default=None),
+    starts_at: datetime | None = Query(default=None),
+    ends_at: datetime | None = Query(default=None),
     professional_id: str | None = Query(default=None),
     customer_id: str | None = Query(default=None),
     status: str | None = Query(default=None),
@@ -103,6 +105,8 @@ async def list_appointments(
 ) -> dict[str, Any]:
     data = await AppointmentService(session).list_appointments(
         day=day,
+        starts_at=starts_at,
+        ends_at=ends_at,
         professional_id=professional_id,
         customer_id=customer_id,
         status=status,

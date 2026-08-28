@@ -15,7 +15,7 @@ MAX_ARCHIVE_BYTES = 20 * 1024 * 1024
 MAX_UNCOMPRESSED_BYTES = 32 * 1024 * 1024
 MAX_FILE_BYTES = 16 * 1024 * 1024
 MAX_FILES = 64
-VALID_SCOPES = {"GLOBAL", "SELECTED", "EXCLUSIVE", "INTERNAL"}
+VALID_SCOPES = {"GLOBAL", "SELECTED", "EXCLUSIVE", "INTERNAL", "PLATFORM_DEFAULT"}
 KEY_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,118}[a-z0-9]$")
 
 
@@ -199,7 +199,7 @@ class HtmlTemplatePackageService:
                         _issue(
                             "template.json.package.scope",
                             "PACKAGE_SCOPE_INVALID",
-                            "Escopo deve ser GLOBAL, SELECTED, EXCLUSIVE ou INTERNAL.",
+                            "Escopo deve ser GLOBAL, SELECTED, EXCLUSIVE, INTERNAL ou PLATFORM_DEFAULT.",
                         )
                     )
 
@@ -219,6 +219,7 @@ class HtmlTemplatePackageService:
                 expected = {
                     "landing": ("LANDING", "/pagina"),
                     "booking": ("BOOKING", "/agendar"),
+                    "login": ("LOGIN", "/login"),
                 }
                 for manifest_key, (surface, canonical_route) in expected.items():
                     raw = surfaces.get(manifest_key)
@@ -250,12 +251,17 @@ class HtmlTemplatePackageService:
                                 "O novo padrão autoral usa renderer=HTML.",
                             )
                         )
-                    if int(raw.get("version") or 0) < 2:
+                    minimum_version = 1 if surface == "LOGIN" else 2
+                    try:
+                        surface_version = float(raw.get("version") or 0)
+                    except (TypeError, ValueError):
+                        surface_version = 0
+                    if surface_version < minimum_version:
                         errors.append(
                             _issue(
                                 f"{path}.version",
                                 "PACKAGE_SURFACE_VERSION_INVALID",
-                                "Use version 2 ou superior.",
+                                f"Use version {minimum_version} ou superior para {surface}.",
                             )
                         )
                     route = str(raw.get("route") or "").strip()
@@ -312,7 +318,7 @@ class HtmlTemplatePackageService:
                         _issue(
                             "template.json.package.surfaces",
                             "PACKAGE_SURFACE_EMPTY",
-                            "Inclua landing.html, agendamento.html ou ambos.",
+                            "Inclua landing.html, agendamento.html, login.html ou uma combinação válida.",
                         )
                     )
                 if errors:
@@ -326,9 +332,10 @@ class HtmlTemplatePackageService:
                     result["surfaces"] = summaries
                     return result
 
-                pair = HtmlTemplateContract.validate_pair(
+                pair = HtmlTemplateContract.validate_family(
                     landing_html=documents.get("LANDING"),
                     booking_html=documents.get("BOOKING"),
+                    login_html=documents.get("LOGIN"),
                 )
                 for item in pair.get("errors", []):
                     errors.append({**item, "path": f"html.{item['path']}"})
@@ -348,7 +355,7 @@ class HtmlTemplatePackageService:
                         _issue(
                             "template.json.package.surfaces",
                             "PACKAGE_PAIR_RECOMMENDED",
-                            "O pacote é válido, mas uma família completa normalmente contém Landing e Agendamento.",
+                            "O pacote é válido, mas uma família completa normalmente contém Landing, Agenda Pública e Login.",
                         )
                     )
 

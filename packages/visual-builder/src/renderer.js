@@ -157,9 +157,20 @@ function img(src, alt='Imagem', attrs='') { const url=safeUrl(src,''); return ur
 function customAttributes(node){const raw=node?.meta?.attributes;if(!raw||typeof raw!=='object'||Array.isArray(raw))return'';const allowed=/^(data-[a-z0-9_.:-]+|aria-[a-z0-9_.:-]+|title|role|tabindex|lang|dir)$/i;return Object.entries(raw).filter(([name,value])=>allowed.test(name)&&value!=null).map(([name,value])=>` ${name}="${escapeHtml(String(value))}"`).join('');}
 function interactionAttribute(node){const rows=Array.isArray(node?.interactions)?node.interactions:[];return rows.length?` data-upb-interactions="${escapeHtml(JSON.stringify(rows))}"`:'';}
 function inline(prop) { return ` data-upb-inline-prop="${escapeHtml(prop)}"`; }
-function editorImportedHtmlSource(htmlDocument) {
+function editorImportedHtmlSource(htmlDocument, context={}) {
   const source=String(htmlDocument||'');
-  const editorCss='<style data-argws-editor-surface>html{scroll-behavior:auto!important}.reveal,[data-reveal],[data-aos],.animate-on-scroll,.scroll-reveal,.fade-in{opacity:1!important;visibility:visible!important;transform:none!important;animation:none!important;transition:none!important}</style>';
+  const features=context?.features||{};
+  const booking=Boolean(features.public_booking??features.booking);
+  const login=Boolean(features.show_login??features.login);
+  const contact=features.show_contact!==false;
+  const whatsapp=features.show_whatsapp!==false;
+  const conditionalCss=[
+    !booking?'[data-booking-only],[data-booking-link],[data-action="booking"]{display:none!important}':'',
+    !login?'[data-login-link],[data-sp-role="login-link"]{display:none!important}':'',
+    !contact?'[data-contact-only],[data-section="contact"],a[href^="tel:"],a[href^="mailto:"]{display:none!important}':'',
+    !whatsapp?'[data-whatsapp-link],a[href*="wa.me"],a[href*="whatsapp"]{display:none!important}':'',
+  ].filter(Boolean).join('');
+  const editorCss=`<style data-argws-editor-surface>html{scroll-behavior:auto!important}.reveal,[data-reveal],[data-aos],.animate-on-scroll,.scroll-reveal,.fade-in{opacity:1!important;visibility:visible!important;transform:none!important;animation:none!important;transition:none!important}${conditionalCss}</style>`;
   if (/<\/head\s*>/i.test(source)) return source.replace(/<\/head\s*>/i,`${editorCss}</head>`);
   return `${editorCss}${source}`;
 }
@@ -263,7 +274,7 @@ export function renderNode(doc, node, device='desktop', context={}) {
     case 'html_surface': {
       const sandbox = context.editor ? 'allow-forms allow-same-origin' : (context.allowImportedHtmlScripts ? 'allow-forms allow-scripts allow-modals allow-popups allow-downloads' : 'allow-forms');
       const editorClass = context.editor ? ' upb-html-surface-editor' : '';
-      const htmlSource = context.editor ? editorImportedHtmlSource(p.html_document||'') : String(p.html_document||'');
+      const htmlSource = context.editor ? editorImportedHtmlSource(p.html_document||'',context) : String(p.html_document||'');
       return wrap(`<div class="upb-html-surface-frame${editorClass}"><iframe data-upb-html-surface-frame title="${escapeHtml(p.title||p.template_key||'Template HTML')}" sandbox="${sandbox}" srcdoc="${escapeHtml(htmlSource)}"></iframe></div>`);
     }
     case 'html': return wrap(conservativeHtml(p.html));
@@ -317,7 +328,7 @@ export function renderDocument(input, { device='desktop', context={}, responsive
     const sandbox=context.editor
       ? 'allow-forms allow-same-origin'
       : (context.allowImportedHtmlScripts ? 'allow-forms allow-scripts allow-modals allow-popups allow-downloads' : 'allow-forms');
-    const htmlSource=context.editor ? editorImportedHtmlSource(source) : source;
+    const htmlSource=context.editor ? editorImportedHtmlSource(source,context) : source;
     const html=`<main class="upb-page upb-html-document-page" data-upb-device="${escapeHtml(device)}" data-upb-document-mode="HTML"><div class="upb-html-document-frame${context.editor?' editor':''}"><iframe data-upb-html-document-frame data-upb-html-surface-frame title="${escapeHtml(doc.title||doc.html?.template_key||'Página HTML')}" sandbox="${sandbox}" srcdoc="${escapeHtml(htmlSource)}"></iframe></div></main>`;
     const css=`:host{display:block}.upb-page.upb-html-document-page{display:block;min-height:100%;width:100%;background:transparent}.upb-html-document-frame{width:100%;min-height:100dvh}.upb-html-document-frame iframe{display:block;width:100%;min-height:100dvh;border:0;background:#fff}.upb-html-document-frame.editor iframe{min-height:760px}`;
     return {html,css,document:doc};
