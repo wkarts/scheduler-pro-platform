@@ -1,7 +1,7 @@
 {
   "name": "ARGWS Visual Builder",
   "short_name": "AVB",
-  "version": "2.3.1",
+  "version": "2.3.2",
   "palette": {
     "deep_navy": "#0B1020",
     "charcoal": "#1E2435",
@@ -36,5 +36,10 @@
       "text": "#F7F9FC",
       "muted": "#A6B2C4"
     }
+  },
+  "logos": {
+    "light": "argws-visual-builder-logo-1600.png",
+    "dark": "argws-visual-builder-logo-dark.png",
+    "symbol": "argws-visual-builder-symbol-64.png"
   }
 }

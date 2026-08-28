@@ -1,5 +1,25 @@
 # Changelog
 
+## 2.3.2 — Logo oficial por tema (Light/Dark)
+
+- integração isolada da logo dark oficial fornecida, sem gerar ou redesenhar nenhum asset;
+- Light Mode continua usando a logo padrão existente `argws-visual-builder-logo-1600.png`;
+- Dark Mode usa exclusivamente `argws-visual-builder-logo-dark.png`, em que o nome ARGWS aparece branco conforme o arquivo fornecido;
+- troca automática da logo acompanha o tema ativo do Editor e do Project/Site Workspace;
+- a mesma regra é compartilhada pelos pontos de branding do núcleo, sem duplicar o sistema de temas;
+- em layouts compactos o AVB continua usando o símbolo existente, sem criar ícones dark;
+- favicon, ícones de menu, SVGs funcionais e demais assets permanecem inalterados;
+- schema, documentos, renderer, adapters, Plugin SDK e integração Scheduler Pro permanecem compatíveis com 2.3.1;
+- alteração restrita à camada de branding/versionamento.
+
+### Integração Scheduler Pro 2.3.2
+
+- corrige página HTML completa sendo sobrescrita pelo estado “Página vazia”;
+- Project/Site usa carregamento progressivo e documentos lazy;
+- templates oficiais são aplicados e salvos antes da abertura do editor;
+- LANDING, BOOKING e LOGIN permanecem páginas independentes;
+- regressões de save/publicação cobertas pela suíte do pacote.
+
 ## 2.3.1 — Brand Alignment seguro e Light/Dark consistente
 
 - paleta oficial AVB consolidada: Deep Navy `#0B1020`, Charcoal `#1E2435`, Cyan `#1AD5E8`, Electric Blue `#2563FF`, Violet `#7A4DFF` e Light Gray `#E9EEF5`;
@@ -13,11 +33,6 @@
 - nenhuma fonte externa obrigatória ou CDN foi adicionada;
 - schema, Project/Site Workspace, PageDocument, renderer, adapters e integrações permanecem compatíveis com 2.3.0;
 - suíte ampliada para 60 testes automatizados, incluindo branding, isolamento tipográfico e contraste Light/Dark.
-- integração Scheduler Pro desta entrega amplia o Workspace para LANDING, BOOKING e LOGIN como páginas independentes;
-- carregamento de página no host passa a recuperar edição, publicação ou fallback canônico antes de abrir o editor;
-- Preview hospedado pode abrir a rota pública real fornecida pelo host, respeitando o contexto do tenant;
-- aplicação de template é feita por superfície/página e não substitui a família inteira;
-- dialogs do Project Workspace são internos e não dependem de `prompt()`, `confirm()` ou `alert()` do navegador.
 
 ## 2.3.0 — Project / Site Workspace Universal e páginas de primeira classe
 

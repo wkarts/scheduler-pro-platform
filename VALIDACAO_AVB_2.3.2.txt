@@ -1,0 +1,29 @@
+Scheduler Pro + ARGWS Visual Builder 2.3.2 — validação final
+Data: 2026-08-28
+
+AVB VERSION: 2.3.2
+AVB TESTS: 81/81 PASS
+AVB npm run check: PASS
+AVB JS syntax: PASS
+Templates backend: 8/8 PASS
+Templates AVB importer: 8/8 PASS
+Surfaces per family: LANDING /pagina HTML | BOOKING /agendar HTML | LOGIN /login HTML
+Python compileall app+migrations+tests: PASS
+Vue/TypeScript script syntax: 45 checked, 0 failures
+Direct contract tests: 18 PASS; 1 bootstrap contract blocked locally by missing asyncpg
+Full pytest: not executed because local runtime lacks structlog/asyncpg
+
+Regression coverage includes:
+- HTML first-class page is not overwritten by “Página vazia”;
+- Project/Site initial load is lightweight;
+- Booking template saves content/key/version;
+- Landing saves and publishes without requiring prior full-page load;
+- Login saves selected HTML/key;
+- Workspace persists template before opening editor with reload=false.
+
+[Correção CI 89950161701]
+- MyPy no-any-return em builtin_template_package_service._builtin_manifest: CORRIGIDO
+- json.loads não retorna mais Any diretamente; objeto é validado e tipado explicitamente
+- 8/8 manifests oficiais: OK
+- AVB 2.3.2: 81/81 testes PASS após correção
+- npm run check: PASS após correção

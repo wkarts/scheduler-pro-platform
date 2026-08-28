@@ -85,3 +85,7 @@ export class ProjectPageAdapter implements PageAdapter {constructor(projectAdapt
 export class ArgwsVisualBuilderApp extends HTMLElement {adapter:ProjectAdapter;project:BuilderProject;load():Promise<void>;openPage(id:string):void;readonly activePage:ProjectPage|null;}
 export interface SchedulerProTemplateFamilyImportResult {project:BuilderProject;manifest:Record<string,any>;wrappers:Record<string,Record<string,any>>;pages:ProjectPage[];}
 export function importSchedulerProTemplateFamily(source:Blob|ArrayBuffer|Uint8Array,options?:{sourceName?:string;zip?:Record<string,number>}):Promise<SchedulerProTemplateFamilyImportResult>;
+
+export declare const AVB_BRAND_ASSETS: Readonly<{ lightLogo: string; darkLogo: string; symbol: string }>;
+export declare function resolveAvbBrandLogo(theme?: string): string;
+export declare const ARGWS_VISUAL_BUILDER_VERSION: string;

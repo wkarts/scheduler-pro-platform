@@ -1,8 +1,12 @@
 from __future__ import annotations
 
 from copy import deepcopy
+from functools import lru_cache
+from io import BytesIO
+import json
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
+from zipfile import ZipFile
 
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -30,28 +34,51 @@ SURFACE_SUFFIX = {
 }
 
 
+@lru_cache(maxsize=len(OFFICIAL_TEMPLATE_KEYS))
 def builtin_template_archive(key: str) -> bytes:
     if key not in OFFICIAL_TEMPLATE_KEYS:
         raise KeyError(key)
     path = RESOURCE_DIR / f"{key}.zip"
     if not path.is_file():
         raise RuntimeError(f"Pacote oficial ausente: {key}")
-    archive = path.read_bytes()
-    report = HtmlTemplatePackageService.validate(archive)
-    if not report["valid"]:
-        raise RuntimeError(f"Pacote oficial inválido: {key}: {report['errors']}")
-    return archive
+    return path.read_bytes()
 
 
+@lru_cache(maxsize=len(OFFICIAL_TEMPLATE_KEYS))
 def builtin_template_package(key: str) -> dict[str, Any]:
     return HtmlTemplatePackageService.ensure(builtin_template_archive(key))
 
 
-def official_template_families() -> list[dict[str, Any]]:
+@lru_cache(maxsize=len(OFFICIAL_TEMPLATE_KEYS))
+def _builtin_manifest(key: str) -> dict[str, Any]:
+    """Lê somente template.json para o catálogo leve.
+
+    O Workspace não precisa descompactar/validar HTMLs de vários megabytes apenas
+    para desenhar os cards. A validação completa continua em
+    ``builtin_template_package`` no bootstrap e no uso da superfície.
+    """
+    try:
+        with ZipFile(BytesIO(builtin_template_archive(key))) as archive:
+            raw = archive.read("template.json")
+        decoded: object = json.loads(raw.decode("utf-8"))
+    except Exception as exc:
+        raise RuntimeError(f"Manifesto oficial inválido: {key}") from exc
+    if not isinstance(decoded, dict):
+        raise RuntimeError(f"Manifesto oficial deve ser um objeto JSON: {key}")
+    manifest = cast(dict[str, Any], decoded)
+    if manifest.get("schema") != "scheduler-pro-template-package/v1":
+        raise RuntimeError(f"Schema oficial inválido: {key}")
+    package = manifest.get("package") or {}
+    if package.get("key") != key:
+        raise RuntimeError(f"Chave do manifesto oficial diverge: {key}")
+    return manifest
+
+
+@lru_cache(maxsize=1)
+def _official_template_families_cached() -> tuple[dict[str, Any], ...]:
     rows: list[dict[str, Any]] = []
     for key in OFFICIAL_TEMPLATE_KEYS:
-        parsed = builtin_template_package(key)
-        package = parsed["package"]
+        package = (_builtin_manifest(key).get("package") or {})
         rows.append(
             {
                 "key": key,
@@ -63,10 +90,15 @@ def official_template_families() -> list[dict[str, Any]]:
                     package.get("default_for_new_tenants")
                 )
                 or key == DEFAULT_TEMPLATE_KEY,
-                "surfaces": deepcopy(parsed["surfaces"]),
+                "surfaces": deepcopy(package.get("surfaces") or {}),
             }
         )
-    return rows
+    return tuple(rows)
+
+
+def official_template_families() -> list[dict[str, Any]]:
+    # Retorna cópia para impedir que serialização/consumidores alterem o cache canônico.
+    return deepcopy(list(_official_template_families_cached()))
 
 
 async def _template_id(
@@ -150,7 +182,7 @@ async def sync_builtin_template_packages(session: AsyncSession) -> dict[str, Any
                     existing,
                     content,
                     changelog=(
-                        "ARGWS Visual Builder 2.3.1 — pacote oficial canônico"
+                        "ARGWS Visual Builder 2.3.2 — pacote oficial canônico"
                     ),
                     actor="system:template-bootstrap",
                     publish=True,
@@ -172,7 +204,7 @@ async def sync_builtin_template_packages(session: AsyncSession) -> dict[str, Any
                     **common,
                     "content": content,
                     "changelog": (
-                        "ARGWS Visual Builder 2.3.1 — pacote oficial canônico"
+                        "ARGWS Visual Builder 2.3.2 — pacote oficial canônico"
                     ),
                 },
                 actor="system:template-bootstrap",

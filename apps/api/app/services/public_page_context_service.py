@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.tenant_context import TenantContext
 
-VISUAL_BUILDER_VERSION = "2.3.1"
+VISUAL_BUILDER_VERSION = "2.3.2"
 
 
 def _bool(value: Any, default: bool) -> bool:
