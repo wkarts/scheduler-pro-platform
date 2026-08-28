@@ -14,6 +14,7 @@ import { auditDocument } from './audit.js';
 import { EDITOR_CSS } from './editor-styles.js';
 import { documentFromHtmlSurface, importSchedulerProTemplateFamily, importSchedulerProTemplatePackage } from './template-packages.js';
 import { can, createEditorPolicy } from './permissions.js';
+import { AVB_BRAND_ASSETS, resolveAvbBrandLogo } from './branding.js';
 
 function esc(value){return escapeHtml(value);}
 function download(name, content, type='application/json'){
@@ -24,7 +25,6 @@ function safeJson(value,fallback){try{return JSON.parse(value);}catch{return fal
 function variablesToText(value={}){return Object.entries(value||{}).map(([k,v])=>`${k} = ${v}`).join('\n');}
 function variablesFromText(value){const result={};for(const line of String(value||'').split(/\r?\n/)){const i=line.indexOf('=');if(i<=0)continue;const key=line.slice(0,i).trim().replace(/[^a-zA-Z0-9_-]/g,'');if(key)result[key]=line.slice(i+1).trim();}return result;}
 
-const BRAND_MARK_URL = new URL('../assets/brand/argws-visual-builder-symbol-64.png', import.meta.url).href;
 const ICONS = {
   page:'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h8l4 4v14H6z"/><path d="M14 3v5h5"/><path d="M9 13h6M9 17h6"/></svg>',
   sun:'<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>',
@@ -79,7 +79,7 @@ export class ArgwsVisualBuilder extends HTMLElementBase {
     this.shadowRoot.innerHTML=`<style>${EDITOR_CSS}</style><div class="shell">
       <header class="topbar">
         <div class="topbar-start">
-          <div class="brand" title="ARGWS Visual Builder"><img class="brand-image" src="${BRAND_MARK_URL}" alt=""><span class="brand-text">ARGWS Visual Builder</span></div>
+          <div class="brand" title="ARGWS Visual Builder"><img class="brand-logo" src="${resolveAvbBrandLogo(this._editorTheme)}" alt="ARGWS Visual Builder"><img class="brand-symbol" src="${AVB_BRAND_ASSETS.symbol}" alt="" aria-hidden="true"></div>
           ${projectButton}
           ${iconButton('page-settings','page','Configurações da página')}
           ${iconButton('theme-toggle','sun','Alternar tema do editor')}
@@ -155,7 +155,7 @@ export class ArgwsVisualBuilder extends HTMLElementBase {
   _renderAll(){if(!this._connected)return;this._renderToolbar();this._renderLeft();this._renderCanvas();this._renderInspector();}
   _renderToolbar(){
     const root=this.shadowRoot,shell=root.querySelector('.shell');shell.classList.toggle('mobile-left',this._mobileDrawer==='left');shell.classList.toggle('mobile-right',this._mobileDrawer==='right');
-    this.dataset.editorTheme=this._editorTheme;for(const themeButton of root.querySelectorAll('[data-action=theme-toggle]')){themeButton.innerHTML=icon(this._editorTheme==='light'?'moon':'sun');themeButton.title=this._editorTheme==='light'?'Usar tema escuro':'Usar tema claro';themeButton.setAttribute('aria-label',themeButton.title);}
+    this.dataset.editorTheme=this._editorTheme;const brandLogo=root.querySelector('.brand-logo');if(brandLogo)brandLogo.src=resolveAvbBrandLogo(this._editorTheme);for(const themeButton of root.querySelectorAll('[data-action=theme-toggle]')){themeButton.innerHTML=icon(this._editorTheme==='light'?'moon':'sun');themeButton.title=this._editorTheme==='light'?'Usar tema escuro':'Usar tema claro';themeButton.setAttribute('aria-label',themeButton.title);}
     root.getElementById('device-actions').innerHTML=this._breakpoints().map(bp=>`<button class="btn icon device-btn ${bp.id===this._device?'active':''}" data-device="${esc(bp.id)}" title="${esc(bp.label)}" aria-label="${esc(bp.label)}">${deviceIcon(bp.id)}</button>`).join('');
     root.querySelector('[data-action=undo]').disabled=!this._history.canUndo()||!this._allowed('content.edit');root.querySelector('[data-action=redo]').disabled=!this._history.canRedo()||!this._allowed('content.edit');root.querySelector('[data-action=save]').disabled=this._saving||!this._dirty||!this._allowed('page.save');root.querySelector('[data-action=publish]').disabled=this._publishing||!this._allowed('page.publish');
     root.querySelector('[data-action=import]').disabled=!this._allowed('page.import');root.querySelector('[data-action=export-json]').disabled=!this._allowed('page.export');root.querySelector('[data-action=export-html]').disabled=!this._allowed('page.export');for(const el of root.querySelectorAll('[data-recovery-top]'))el.hidden=!this._adapter?.emergencyRollback;
@@ -182,13 +182,13 @@ export class ArgwsVisualBuilder extends HTMLElementBase {
   _scheduleCanvasRender(){if(this._canvasRaf)cancelAnimationFrame(this._canvasRaf);this._canvasRaf=requestAnimationFrame(()=>{this._canvasRaf=null;this._renderCanvas();});}
   _renderCanvas(){
     const preview=this.shadowRoot.getElementById('page-preview'),rendered=renderDocument(this._document,{device:this._device,context:{...this._context,editor:true},responsive:false});preview.innerHTML=`<style>${rendered.css}</style>${rendered.html}`;
-    if(!this._document.builder.root_ids.length)preview.innerHTML=`<style>${baseRenderCss(this._document.global_styles,this._document.settings,this._document.design_system)}</style><div class="empty-canvas"><div><strong>Página vazia</strong>Arraste um elemento da esquerda, toque em um widget ou aplique um modelo.</div></div>`;
+    if(!isHtmlDocument(this._document)&&!this._document.builder.root_ids.length)preview.innerHTML=`<style>${baseRenderCss(this._document.global_styles,this._document.settings,this._document.design_system)}</style><div class="empty-canvas"><div><strong>Página vazia</strong>Arraste um elemento da esquerda, toque em um widget ou aplique um modelo.</div></div>`;
     for(const el of preview.querySelectorAll('[data-upb-node]')){const id=el.getAttribute('data-upb-node');el.setAttribute('draggable','true');if(id===this._selected)el.classList.add('selected');const badge=document.createElement('span');badge.className='node-badge';badge.textContent=widgetDefinition(getNode(this._document,id)?.type||'').label;el.prepend(badge);}
     this._syncHtmlSurfaceFrames(preview);
     this.dispatchEvent(new CustomEvent('upb-preview-rendered',{detail:{root:preview,document:this.document,device:this._device},bubbles:true,composed:true}));
   }
   _syncHtmlSurfaceFrames(preview){
-    for(const frame of preview.querySelectorAll('.upb-html-surface-editor iframe')){
+    for(const frame of preview.querySelectorAll('.upb-html-surface-editor iframe,.upb-html-document-frame.editor iframe')){
       const resize=()=>{try{const doc=frame.contentDocument;if(!doc)return;const body=doc.body,html=doc.documentElement;const height=Math.max(760,body?.scrollHeight||0,body?.offsetHeight||0,html?.scrollHeight||0,html?.offsetHeight||0);if(height)frame.style.height=`${Math.min(height,24000)}px`;}catch{}};
       frame.addEventListener('load',()=>{resize();setTimeout(resize,80);setTimeout(resize,350);},{once:true});
       resize();
@@ -239,8 +239,8 @@ export class ArgwsVisualBuilder extends HTMLElementBase {
     const seo=this._document.seo||{},settings=this._document.settings||{},project=this._document.project||{};
     const pkg=project.integrations?.scheduler_pro_package;
     const packageInfo=pkg?`<div class="section"><h4>Família de template</h4><div class="responsive-note"><strong>${esc(pkg.name||pkg.key||'Template')}</strong><br>${esc(pkg.description||'')}<br><small>${esc(pkg.schema||'scheduler-pro-template-package/v1')} · ${esc(pkg.segment||'')}</small></div></div>`:'';
-    const htmlInfo=isHtmlDocument(this._document)?`<div class="section"><h4>Página HTML</h4><div class="responsive-note">Este conteúdo é um <strong>documento de página de primeira classe</strong>, não um elemento HTML dentro de outra página.</div><div class="field"><label>Contrato</label><input value="${esc(this._document.html?.contract||'generic-html-page/v1')}" readonly></div><div class="field"><label>Chave do template</label><input value="${esc(this._document.html?.template_key||'')}" readonly></div><div class="field"><label>Tamanho</label><input value="${esc(new Blob([this._document.html?.document||'']).size)} bytes" readonly></div></div>`:'';
-    return `<div class="page-settings"><div class="section"><h4>Documento</h4><div class="field"><label>Título interno</label><input data-document-title value="${esc(this._document.title||'')}"></div><div class="field"><label>Modo</label><input value="${esc(this._document.mode||'VISUAL')}" readonly></div><div class="field"><label>Superfície</label><select data-document-surface>${['PAGE','LANDING','BOOKING','HEADER','FOOTER','POPUP','SINGLE','ARCHIVE'].map(v=>`<option value="${v}" ${this._document.surface===v?'selected':''}>${v}</option>`).join('')}</select></div><div class="field"><label>Largura do conteúdo</label><input type="number" data-setting="content_width" value="${esc(settings.content_width||1180)}"></div></div>${htmlInfo}
+    const htmlInfo=isHtmlDocument(this._document)?`<div class="section"><h4>Página HTML</h4><div class="responsive-note">Este conteúdo é um <strong>documento de página de primeira classe</strong>, não um elemento HTML dentro de outra página.</div><div class="field"><label>Editor</label><input value="ARGWS Visual Builder 2.3.2" readonly></div><div class="field"><label>Contrato Scheduler Pro (compatível)</label><input value="${esc(this._document.html?.contract||'generic-html-page/v1')}" readonly></div><div class="field"><label>Chave do template</label><input value="${esc(this._document.html?.template_key||'')}" readonly></div><div class="field"><label>Tamanho</label><input value="${esc(new Blob([this._document.html?.document||'']).size)} bytes" readonly></div></div>`:'';
+    return `<div class="page-settings"><div class="section"><h4>Documento</h4><div class="field"><label>Título interno</label><input data-document-title value="${esc(this._document.title||'')}"></div><div class="field"><label>Modo</label><input value="${esc(this._document.mode||'VISUAL')}" readonly></div><div class="field"><label>Superfície</label><select data-document-surface>${['PAGE','LANDING','BOOKING','LOGIN','HEADER','FOOTER','POPUP','SINGLE','ARCHIVE'].map(v=>`<option value="${v}" ${this._document.surface===v?'selected':''}>${v}</option>`).join('')}</select></div><div class="field"><label>Largura do conteúdo</label><input type="number" data-setting="content_width" value="${esc(settings.content_width||1180)}"></div></div>${htmlInfo}
       ${packageInfo}<div class="section"><h4>SEO</h4><div class="field"><label>Título</label><input data-seo="title" value="${esc(seo.title||'')}"></div><div class="field"><label>Descrição</label><textarea data-seo="description">${esc(seo.description||'')}</textarea></div><div class="field"><label>Imagem de compartilhamento</label><input data-seo="share_image" value="${esc(seo.share_image||'')}"></div><div class="field"><label>Canonical</label><input data-seo="canonical" value="${esc(seo.canonical||'')}"></div><div class="field"><label>Robots</label><input data-seo="robots" value="${esc(seo.robots||'index,follow')}"></div><div class="field"><label>Open Graph JSON</label><textarea class="code" data-seo-json="open_graph">${esc(JSON.stringify(seo.open_graph||{},null,2))}</textarea></div><div class="field"><label>Twitter JSON</label><textarea class="code" data-seo-json="twitter">${esc(JSON.stringify(seo.twitter||{},null,2))}</textarea></div><div class="field"><label>JSON-LD</label><textarea class="code" data-seo-json="structured_data">${esc(JSON.stringify(seo.structured_data||[],null,2))}</textarea></div><button class="btn" data-action="audit">Executar auditoria</button></div></div>`;
   }
   _pageStyleSettingsHtml(){

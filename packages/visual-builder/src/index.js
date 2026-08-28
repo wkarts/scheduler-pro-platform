@@ -7,6 +7,7 @@ export * from './dynamic-tags.js';
 export * from './data-sources.js';
 export * from './forms.js';
 export * from './assets.js';
+export * from './branding.js';
 export * from './permissions.js';
 export * from './i18n.js';
 export * from './operations.js';
@@ -42,4 +43,4 @@ export function renderPage(input, options = {}) {
 import { renderDocumentAsync as _renderDocumentAsync } from './renderer.js';
 export async function renderPageAsync(input, options = {}) { return (await _renderDocumentAsync(input, options)).html; }
 
-export const ARGWS_VISUAL_BUILDER_VERSION='2.3.1';
+export const ARGWS_VISUAL_BUILDER_VERSION='2.3.2';

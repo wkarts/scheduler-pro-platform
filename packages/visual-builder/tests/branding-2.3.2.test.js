@@ -10,6 +10,7 @@ const editorCssSource = fs.readFileSync(path.join(root, 'src/editor-styles.js'),
 const projectWorkspaceSource = fs.readFileSync(path.join(root, 'src/project-workspace.js'), 'utf8');
 const rendererSource = fs.readFileSync(path.join(root, 'src/renderer.js'), 'utf8');
 const pageRendererSource = fs.readFileSync(path.join(root, 'src/page-renderer.js'), 'utf8');
+const brandingSource = fs.readFileSync(path.join(root, 'src/branding.js'), 'utf8');
 const brandTokens = JSON.parse(fs.readFileSync(path.join(root, 'assets/brand/brand-tokens.json'), 'utf8'));
 
 function rgb(hex) {
@@ -25,7 +26,7 @@ function contrast(a, b) {
   return (l1 + 0.05) / (l2 + 0.05);
 }
 
-test('2.3.2 preserva a paleta oficial AVB herdada da 2.3.1', () => {
+test('2.3.2 preserva exatamente a paleta oficial AVB', () => {
   assert.equal(brandTokens.version, '2.3.2');
   assert.deepEqual(brandTokens.palette, {
     deep_navy: '#0B1020',
@@ -85,4 +86,42 @@ test('UI AVB não usa pesos tipográficos acima de 700', () => {
   const weights = [...combined.matchAll(/font-weight:(\d{3})/g)].map(match => Number(match[1]));
   assert.ok(weights.length > 0);
   assert.ok(Math.max(...weights) <= 700, `peso máximo encontrado: ${Math.max(...weights)}`);
+});
+
+
+test('2.3.2 distribui somente a logo dark oficial como novo asset dark', async () => {
+  const fsPromises = await import('node:fs/promises');
+  const files = await fsPromises.readdir(new URL('../assets/brand/', import.meta.url));
+  const darkFiles = files.filter(name => name.toLowerCase().includes('dark'));
+  assert.deepEqual(darkFiles, ['argws-visual-builder-logo-dark.png']);
+  const data = await fsPromises.readFile(new URL('../assets/brand/argws-visual-builder-logo-dark.png', import.meta.url));
+  assert.ok(data.length > 500_000);
+  assert.deepEqual([...data.subarray(0, 8)], [137,80,78,71,13,10,26,10]);
+});
+
+test('seleção de wordmark é centralizada no módulo de branding', () => {
+  assert.match(brandingSource, /argws-visual-builder-logo-1600\.png/);
+  assert.match(brandingSource, /argws-visual-builder-logo-dark\.png/);
+  assert.match(brandingSource, /argws-visual-builder-symbol-64\.png/);
+  assert.match(brandingSource, /toLowerCase\(\) === 'dark'/);
+});
+
+test('Editor seleciona wordmark light/dark pelo helper compartilhado sem alterar ícones', () => {
+  const editorSource = fs.readFileSync(path.join(root, 'src/editor.js'), 'utf8');
+  assert.match(editorSource, /resolveAvbBrandLogo\(this\._editorTheme\)/);
+  assert.match(editorSource, /brandLogo\.src=resolveAvbBrandLogo\(this\._editorTheme\)/);
+  assert.match(editorSource, /AVB_BRAND_ASSETS\.symbol/);
+});
+
+test('Project Workspace usa a mesma regra compartilhada de wordmark por tema', () => {
+  assert.match(projectWorkspaceSource, /resolveAvbBrandLogo\(this\._theme\)/);
+  assert.match(projectWorkspaceSource, /AVB_BRAND_ASSETS\.symbol/);
+});
+
+test('tokens oficiais declaram logos Light/Dark e símbolo inalterado', () => {
+  assert.deepEqual(brandTokens.logos, {
+    light: 'argws-visual-builder-logo-1600.png',
+    dark: 'argws-visual-builder-logo-dark.png',
+    symbol: 'argws-visual-builder-symbol-64.png',
+  });
 });

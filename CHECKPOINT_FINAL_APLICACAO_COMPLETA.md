@@ -1,14 +1,14 @@
-# Checkpoint — Scheduler Pro + ARGWS Visual Builder 2.3.1
+# Checkpoint — Scheduler Pro + ARGWS Visual Builder 2.3.2
 
 Data: 2026-08-28
 
 ## Base
 
-Atualização aplicada sobre a `main` atual fornecida nesta rodada.
+Atualização incremental aplicada sobre a base canônica 2.3.1 Runtime Fix, originada da `main` atual fornecida pelo usuário. Nenhuma publicação remota foi executada.
 
 ## Estado canônico
 
-- ARGWS Visual Builder: **2.3.1**;
+- ARGWS Visual Builder: **2.3.2**;
 - PWA: experiência principal;
 - Android/APK: ativo;
 - iOS/IPA: ativo;
@@ -16,48 +16,57 @@ Atualização aplicada sobre a `main` atual fornecida nesta rodada.
 
 ## Páginas públicas
 
-- Landing Page `/pagina`;
-- Agenda Pública `/agendar`;
-- Login `/login`.
+- Landing Page `/pagina` — `LANDING`;
+- Agenda Pública `/agendar` — `BOOKING`;
+- Login `/login` — `LOGIN`.
 
-As três superfícies são páginas independentes e editáveis.
+As três superfícies permanecem páginas completas e independentes.
 
-## Biblioteca de templates
+## Correções centrais 2.3.2
 
-Oito famílias oficiais estão versionadas como ZIPs reais em `apps/api/resources/template-packages/`. O modelo `scheduler-pro-padrao-generico` é fallback e padrão para ausência de personalização.
+1. **Editor HTML não fica mais vazio**: documento `mode=HTML` não é confundido com uma página visual sem `builder.root_ids`.
+2. **Workspace rápido**: Project/Site carrega primeiro settings + contexto e cria as três páginas imediatamente; HTML completo é buscado somente ao editar.
+3. **Catálogo progressivo e cacheado**: as 8 famílias oficiais carregam em segundo plano e a validação/descompactação dos ZIPs é memoizada no backend.
+4. **Aplicar template persiste antes de abrir**: LANDING, BOOKING ou LOGIN são salvos como rascunho/configuração antes de entrar no editor; a abertura usa `reload:false` para não restaurar o documento anterior.
+5. **Salvar/Publicar**: Landing salva versão de rascunho e publica pelo Landing Service; Booking/Login persistem `content`, `key` e `version` nas configurações do tenant usadas pelas páginas públicas.
+6. **Inspector 2.3.2**: mostra `ARGWS Visual Builder 2.3.2` e separa explicitamente a versão do editor do contrato Scheduler Pro compatível.
+7. **Superfície LOGIN**: disponível também no inspector e no importador de famílias.
+8. **Branding 2.3.2**: suporte à logo oficial por tema preservado.
 
-O bootstrap sincroniza somente a biblioteca global. Ele não substitui automaticamente páginas já personalizadas de tenants.
+## Templates oficiais
 
-## Correções 2.3.1
+Oito famílias reais estão em `apps/api/resources/template-packages/`:
 
-- página publicada pode ser recuperada para edição quando o rascunho estiver ausente/inválido;
-- Preview real abre a rota pública da superfície e respeita parâmetros do tenant;
-- canvas HTML do editor respeita flags condicionais sem executar scripts importados;
-- Agenda Pública offline não renderiza como online;
-- Login público pode ser ativado/desativado;
-- Login na Landing, Agendamento na Landing, Contato e WhatsApp usam flags centrais;
-- Login personalizado usa a autenticação real através de `SchedulerProAuth.login`;
-- dialogs, confirmações e prompts de Web/Admin/AVB usam UI interna;
-- calendário consulta intervalo visível, usa timezone do tenant e reage a eventos realtime e às mutações do Operador da Agenda;
-- aplicar template afeta somente a superfície selecionada;
-- modelos internos antigos do AVB foram removidos da lista, permanecendo apenas “Em branco”.
+1. Scheduler Pro — Padrão Genérico;
+2. Barber Shop — Neo Genérico;
+3. Clínica Médica — Genérico;
+4. Clínica Odontológica — Genérico;
+5. Clínica Veterinária — Genérico;
+6. Martelinho de Ouro — Genérico;
+7. Studio de Unhas — Genérico;
+8. Tecnologia — Genérico Simples.
 
-## Validações executadas neste ambiente
+Cada ZIP foi validado e importado como:
 
-- 8/8 pacotes oficiais validados pelo `HtmlTemplatePackageService`;
-- LANDING + BOOKING + LOGIN presentes nas oito famílias;
-- `python -m compileall`: OK;
-- testes do ARGWS Visual Builder: 60/60 aprovados;
-- scripts Vue/TypeScript verificados sintaticamente com TypeScript;
-- nenhum `alert()`, `confirm()` ou `prompt()` nativo de aplicação encontrado no AVB/Web/Admin; chamadas `.prompt()` restantes são exclusivamente o contrato `beforeinstallprompt` do PWA.
+```text
+LANDING /pagina  HTML
+BOOKING /agendar HTML
+LOGIN   /login   HTML
+```
 
-## Limitação do ambiente de validação
+O Template Genérico é fallback; não substitui automaticamente personalizações existentes.
 
-A suíte Python completa e o build Vue completo não puderam ser executados aqui porque este runtime não possui todas as dependências do projeto e não tem acesso de rede para instalá-las. A validação completa deve ser repetida no GitHub Actions/ambiente de desenvolvimento com as dependências oficiais.
+## Validações executadas
 
-## Correção pós-CI — 2026-08-28
+- ARGWS Visual Builder: **81/81 testes aprovados**;
+- `npm run check` do AVB: **OK**;
+- importador AVB: **8/8 famílias**, três páginas por família;
+- `HtmlTemplatePackageService`: **8/8 pacotes válidos**;
+- `python -m compileall app migrations tests`: **OK**;
+- sintaxe de scripts TypeScript/Vue em Web + Admin: **45 arquivos, 0 falhas**;
+- sintaxe JavaScript do AVB: **OK**;
+- contratos Python executáveis sem fixtures de infraestrutura: **18 passaram**; um contrato de bootstrap não pôde ser importado localmente porque o runtime não possui `asyncpg`.
 
-- Ruff corrigido em `landing_pages.py`;
-- `sqlalchemy.text` importado em `public.py`;
-- head canônico da plataforma atualizado para `platform_0012_login_surface`;
-- readiness e testes de integração alinhados à migração 0012 de Login.
+## Limitação do runtime local
+
+A suíte `pytest` completa não inicia neste ambiente porque faltam dependências de produção/teste como `structlog` e `asyncpg`. Essas dependências não foram removidas do projeto; a suíte completa deve rodar no GitHub Actions/ambiente oficial, onde as dependências são instaladas.

@@ -26,13 +26,13 @@ def _read(path: str) -> str:
     return candidate.read_text(encoding="utf-8") if candidate.is_file() else ""
 
 
-def test_visual_builder_2_3_1_is_the_canonical_page_workspace() -> None:
+def test_visual_builder_2_3_2_is_the_canonical_page_workspace() -> None:
     raw = _read("packages/visual-builder/package.json")
     if not raw:
         return
     package = json.loads(raw)
     assert package["name"] == "@argws/visual-builder"
-    assert package["version"] == "2.3.1"
+    assert package["version"] == "2.3.2"
     assert "project-workspace.js" in package["scripts"]["check"]
     assert "release-b64" not in json.dumps(package)
     assert "materialize" not in package["scripts"]
@@ -58,7 +58,7 @@ def test_old_materialized_visual_builder_runtime_is_physically_removed() -> None
     assert not _path("packages/visual-builder/scripts/materialize-release.mjs").exists()
 
 
-def test_scheduler_pro_uses_visual_builder_2_3_1_project_adapter() -> None:
+def test_scheduler_pro_uses_visual_builder_2_3_2_project_adapter() -> None:
     app = _read("apps/web/src/App.vue")
     host = _read("apps/web/src/TenantVisualPageBuilder.vue")
     package = _read("apps/web/package.json")
@@ -68,7 +68,7 @@ def test_scheduler_pro_uses_visual_builder_2_3_1_project_adapter() -> None:
     assert "SchedulerProProjectAdapter" in host
     assert "argws-visual-builder-app" in host
     assert "#visual-builder" in host
-    assert json.loads(package)["dependencies"]["@argws/visual-builder"] == "2.3.1"
+    assert json.loads(package)["dependencies"]["@argws/visual-builder"] == "2.3.2"
 
 
 def test_public_pages_use_real_context_and_login_surface() -> None:

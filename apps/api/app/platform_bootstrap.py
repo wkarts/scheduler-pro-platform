@@ -75,7 +75,7 @@ async def bootstrap_template_library() -> None:
     async with PlatformSession() as session:
         result = await sync_builtin_template_packages(session)
     changed = sum(1 for item in result["templates"] if item.get("updated"))
-    print(f"Scheduler Pro official template library 2.3.1 ready: {changed} surface(s) synchronized")
+    print(f"Scheduler Pro official template library 2.3.2 ready: {changed} surface(s) synchronized")
 
 
 async def bootstrap_platform() -> None:

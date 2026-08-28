@@ -169,7 +169,7 @@ test('identidade visual AVB é distribuída junto do pacote', async()=>{
   }
 });
 
-test('instalador Scheduler Pro 2.3.1 copia assets de branding e Project Workspace', async()=>{
+test('instalador Scheduler Pro 2.3.2 copia assets de branding e Project Workspace', async()=>{
   const fs=await import('node:fs/promises');
   const source=await fs.readFile(new URL('../integrations/scheduler-pro/install.py',import.meta.url),'utf8');
   assert.match(source,/\['src', 'styles', 'assets'\]/);

@@ -1,11 +1,26 @@
-# ARGWS Visual Builder Universal 2.3.1
+# ARGWS Visual Builder Universal 2.3.2
 
+
+> **2.3.2 — Logo oficial por tema:** atualização incremental e isolada. O Light Mode mantém a logo padrão existente; o Dark Mode usa exatamente a logo dark oficial fornecida, sem recoloração, redesenho ou geração de variantes. Ícones e favicon não são alterados.
+
+## Logo Light/Dark 2.3.2
+
+A seleção de marca usa o mesmo estado de tema já existente no AVB:
+
+```text
+theme = light → argws-visual-builder-logo-1600.png
+theme = dark  → argws-visual-builder-logo-dark.png
+```
+
+A troca ocorre automaticamente no **Visual Editor** e no **Project/Site Workspace**. Em larguras compactas, a interface continua usando o símbolo AVB existente para preservar espaço; esse símbolo não possui variante dark e não foi alterado.
+
+Esta patch **não altera** Project Schema, PageDocument, renderer público, adapters, Plugin SDK, imports, Scheduler Pro ou páginas do usuário. Veja [Dark Logo 2.3.2](docs/DARK_LOGO_2.3.2.md).
 
 > **2.3.1 — Brand Alignment seguro:** alinha Light/Dark Mode à identidade oficial AVB (`#0B1020`, `#1E2435`, `#1AD5E8`, `#2563FF`, `#7A4DFF`, `#E9EEF5`), usa **Space Grotesk somente nos headings da interface do produto** e mantém **Inter** em interface/body. O conteúdo da página editada continua totalmente independente do tema/tipografia do AVB.
 
 ## Alinhamento visual 2.3.1
 
-A 2.3.1 preserva schema, PageDocument, Plugin SDK e compatibilidade do renderer. Nesta distribuição do Scheduler Pro, a camada de integração foi ampliada de forma compatível para reconhecer `LANDING`, `BOOKING` e `LOGIN` como páginas independentes, carregar fallback/publicação quando necessário e receber o contexto real do tenant no Preview.
+A 2.3.1 é deliberadamente incremental: **não altera schema, documentos, renderer público, adapters, Plugin SDK nem integração Scheduler Pro**. O ajuste fica na camada de Design System do próprio builder.
 
 - Light e Dark Mode usam tokens derivados da identidade oficial;
 - o Project/Site Workspace agora também respeita o mesmo tema persistido do editor;
@@ -160,7 +175,7 @@ npm install @argws/visual-builder
 ou pelo TGZ da release:
 
 ```bash
-npm install ./argws-visual-builder-2.3.1.tgz
+npm install ./argws-visual-builder-2.3.2.tgz
 ```
 
 ```js
@@ -308,7 +323,7 @@ npm run check
 npm test
 ```
 
-A release 2.3.1 preserva a validação funcional da 2.3 e acrescenta testes específicos de branding, contraste Light/Dark, isolamento tipográfico e sincronização de tema entre Project Workspace e Editor. Veja `docs/RELEASE_VALIDATION.md`.
+A release 2.3.2 preserva toda a validação funcional da 2.3.1 e acrescenta testes específicos da seleção automática da logo Light/Dark, distribuição do asset dark oficial e preservação dos ícones. Veja `docs/RELEASE_VALIDATION.md`.
 
 ## Documentação
 

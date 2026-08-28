@@ -4,9 +4,11 @@ Plataforma SaaS multitenant de agendamentos construída com **FastAPI/Python 3.1
 
 O código desktop legado continua preservado para eventual retomada, mas não participa dos workflows, releases ou validações obrigatórias atuais.
 
-## ARGWS Visual Builder 2.3.1
+## ARGWS Visual Builder 2.3.2
 
-A versão canônica integrada nesta entrega é **ARGWS Visual Builder 2.3.1**. O Scheduler Pro trabalha com três páginas públicas de primeira classe: Landing (`/pagina`), Agenda Pública (`/agendar`) e Login (`/login`). O template `scheduler-pro-padrao-generico` é o fallback seguro quando não existe personalização válida. Preview/publicação usam o contexto real do tenant e as flags de disponibilidade da aplicação.
+A versão canônica integrada nesta entrega é **ARGWS Visual Builder 2.3.2**. O Scheduler Pro trabalha com três páginas públicas de primeira classe: Landing (`/pagina`), Agenda Pública (`/agendar`) e Login (`/login`). O template `scheduler-pro-padrao-generico` é o fallback seguro quando não existe personalização válida.
+
+A integração 2.3.2 corrige o caso em que uma página HTML completa era renderizada e logo em seguida substituída pelo estado “Página vazia”, acelera o Project/Site Workspace com carregamento progressivo, mantém o catálogo oficial em cache e persiste o template selecionado antes de abrir o editor. Preview/publicação continuam usando o contexto real do tenant e as flags da aplicação.
 
 ## Estado funcional auditado
 
