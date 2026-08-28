@@ -1,3 +1,30 @@
+# CHECKPOINT — AVB 2.3.2 Interaction/Performance Fix — 2026-08-28
+
+Esta é a rodada corretiva posterior à build/release 2.3.2 observada em produção.
+
+## Correções principais
+
+- ShadowRoot usa `addEventListener()` real no lifecycle, em vez de `shadowRoot.onclick`.
+- Tema, Importar, Nova página, Fechar, Editar, toggles e Aplicar template voltam a receber eventos.
+- Aplicar template exige confirmação interna e executa aplicação atômica no backend.
+- Importação ZIP/Project Package persiste LANDING + BOOKING + LOGIN no Scheduler Pro.
+- `/settings/tenant/compact` evita transferir HTMLs de ~1,6 MB no bootstrap.
+- `/settings/tenant/value/{key}` carrega conteúdo pesado somente ao editar a superfície.
+- `/landing-pages/{slug}/document` carrega somente o documento efetivo da Landing.
+- `LandingPageService.versions()` não carrega mais o campo `content` completo de até 100 versões.
+- Cache PWA: `avb-2.3.2-interactionfix-v3`.
+
+## Validação
+
+- AVB: 85/85 PASS
+- `npm run check`: PASS
+- 8/8 templates: PASS
+- Vue/TypeScript: 45 arquivos / 0 falhas sintáticas
+- Python `compileall`: PASS
+- pytest completo local: bloqueado apenas pela ausência de `structlog` no runtime local.
+
+---
+
 # Checkpoint — Scheduler Pro + ARGWS Visual Builder 2.3.2
 
 Data: 2026-08-28

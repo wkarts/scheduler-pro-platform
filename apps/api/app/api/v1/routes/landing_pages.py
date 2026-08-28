@@ -1,3 +1,4 @@
+import json
 from typing import Any
 
 from fastapi import APIRouter, Body, Depends
@@ -129,6 +130,85 @@ async def template_family_surface(
             "surface_meta": surface_meta,
         }
     )
+
+
+async def _store_template_setting(
+    session: AsyncSession,
+    key: str,
+    value: Any,
+) -> None:
+    await session.execute(
+        text(
+            """
+            insert into tenant_settings(key, value, updated_at)
+            values(:key, cast(:value as jsonb), now())
+            on conflict(key) do update set value=excluded.value, updated_at=now()
+            """
+        ),
+        {"key": key, "value": json.dumps(value, ensure_ascii=False, default=str)},
+    )
+
+
+@router.post("/template-families/{template_key}/{surface}/apply")
+async def apply_template_family_surface(
+    template_key: str,
+    surface: str,
+    principal: AuthPrincipal = Depends(get_current_user),
+    session: AsyncSession = Depends(get_tenant_session),
+) -> dict[str, Any]:
+    normalized = surface.strip().upper()
+    if normalized not in {"LANDING", "BOOKING", "LOGIN"}:
+        raise APIError("TEMPLATE_SURFACE_INVALID", "Área de modelo inválida.", 422)
+    try:
+        package = builtin_template_package(template_key)
+    except KeyError as exc:
+        raise APIError("LANDING_TEMPLATE_NOT_FOUND", "Modelo oficial não encontrado.", 404) from exc
+    html_document = package["documents"].get(normalized)
+    if not html_document:
+        raise APIError("TEMPLATE_SURFACE_NOT_FOUND", "Esta página não existe no modelo selecionado.", 404)
+    content = HtmlTemplateContract.wrapper(html_document, expected_surface=normalized)
+    HtmlTemplateContract.ensure_wrapper(content, expected_surface=normalized)
+
+    if normalized == "LANDING":
+        saved = await LandingPageService(session).save_draft(
+            "home",
+            content,
+            created_by=principal.user_id,
+            label=f"Template oficial: {template_key}",
+        )
+        return success(
+            {
+                "key": template_key,
+                "surface": normalized,
+                "content": content,
+                "saved": True,
+                "draft": saved,
+            }
+        )
+
+    prefix = "booking" if normalized == "BOOKING" else "login"
+    version = content.get("content_version") or (2 if normalized == "BOOKING" else 1)
+    await _store_template_setting(session, f"{prefix}_page_template_content", content)
+    await _store_template_setting(session, f"{prefix}_page_template_key", template_key)
+    await _store_template_setting(session, f"{prefix}_page_template_version", version)
+    await session.commit()
+    return success(
+        {
+            "key": template_key,
+            "surface": normalized,
+            "content": content,
+            "saved": True,
+            "version": version,
+        }
+    )
+
+
+@router.get("/{slug}/document")
+async def editor_document(
+    slug: str,
+    session: AsyncSession = Depends(get_tenant_session),
+) -> dict[str, Any]:
+    return success(await LandingPageService(session).editor_document(slug))
 
 
 @router.get("/{slug}")

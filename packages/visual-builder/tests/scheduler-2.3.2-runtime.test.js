@@ -120,11 +120,35 @@ test('LOGIN salva o template selecionado como documento HTML completo do tenant'
 });
 
 
-test('Workspace não acumula listeners de clique em cada renderização',()=>{
+test('Workspace liga eventos do ShadowRoot uma única vez no lifecycle',()=>{
   const source=fs.readFileSync(path.join(root,'src/project-workspace.js'),'utf8');
-  const start=source.indexOf('_bindProject(){');
-  const end=source.indexOf('_projectClick(',start);
-  const body=source.slice(start,end);
-  assert.match(body,/shadowRoot\.onclick=/);
-  assert.doesNotMatch(body,/addEventListener\(['"]click/);
+  assert.match(source,/connectedCallback\(\).*shadowRoot\.addEventListener\('click',this\._boundProjectClick,true\)/s);
+  assert.match(source,/disconnectedCallback\(\).*shadowRoot\.removeEventListener\('click',this\._boundProjectClick,true\)/s);
+  assert.doesNotMatch(source,/shadowRoot\.onclick=/);
+  assert.match(source,/event\.composedPath\?\.\(\)/);
+});
+
+test('Workspace confirma template e usa aplicação atômica no backend',()=>{
+  const source=fs.readFileSync(path.join(root,'src/project-workspace.js'),'utf8');
+  assert.match(source,/_internalConfirm\('Aplicar template'/);
+  assert.match(source,/applyTemplateSurface\?await this\._adapter\.applyTemplateSurface/);
+});
+
+test('Adapter carrega settings compactos e conteúdo pesado somente ao editar',()=>{
+  const source=fs.readFileSync(path.join(root,'src/adapters.js'),'utf8');
+  assert.match(source,/settings\/tenant\/compact/);
+  assert.match(source,/settings\/tenant\/value\/\$\{encodeURIComponent\(key\)\}/);
+});
+
+test('Editor usa delegação robusta via composedPath e listener único',()=>{
+  const source=fs.readFileSync(path.join(root,'src/editor.js'),'utf8');
+  assert.match(source,/root\.addEventListener\('click',this\._boundClick,true\)/);
+  assert.match(source,/const path=event\.composedPath\?\.\(\)\|\|\[\]/);
+  assert.match(source,/if\(this\._eventsBound\)return/);
+});
+
+test('Importação Scheduler Pro persiste páginas canônicas no backend',()=>{
+  const source=fs.readFileSync(path.join(root,'src/project-workspace.js'),'utf8');
+  assert.match(source,/await this\._adapter\.savePageDraft\(target\)/);
+  assert.match(source,/\['LANDING','BOOKING','LOGIN'\]/);
 });

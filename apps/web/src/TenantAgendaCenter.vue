@@ -85,7 +85,7 @@ async function api<T>(path:string,init:RequestInit={}):Promise<T>{
   return payload.data as T
 }
 async function fetchReport(target:Period,targetAnchor=anchor.value):Promise<Report>{return api<Report>(`/agenda/reports/summary?period=${target}&anchor=${encodeURIComponent(targetAnchor)}`)}
-async function loadTenantContext():Promise<void>{const settings=await api<{timezone?:string}>('/settings/tenant').catch(()=>({timezone:tenantTimezone.value}));if(settings?.timezone)tenantTimezone.value=settings.timezone}
+async function loadTenantContext():Promise<void>{const settings=await api<{timezone?:string}>('/settings/tenant/compact').catch(()=>({timezone:tenantTimezone.value}));if(settings?.timezone)tenantTimezone.value=settings.timezone}
 function calendarRange():{startsAt:string;endsAt:string}{const first=startOfMonth(monthCursor.value);const gridStart=new Date(first);gridStart.setDate(first.getDate()-first.getDay());const gridEnd=new Date(gridStart);gridEnd.setDate(gridStart.getDate()+42);const key=(d:Date)=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;return{startsAt:`${key(gridStart)}T00:00:00`,endsAt:`${key(gridEnd)}T00:00:00`}}
 async function loadBase():Promise<void>{const range=calendarRange();appointments.value=await api<Appointment[]>(`/appointments?starts_at=${encodeURIComponent(range.startsAt)}&ends_at=${encodeURIComponent(range.endsAt)}`)}
 async function loadOverview():Promise<void>{const [week,month]=await Promise.all([fetchReport('week',todayKey()),fetchReport('month',todayKey())]);overviewWeek.value=week;overviewMonth.value=month}

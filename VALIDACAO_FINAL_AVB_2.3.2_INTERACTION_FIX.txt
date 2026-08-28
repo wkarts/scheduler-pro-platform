@@ -1,0 +1,15 @@
+ARGWS Visual Builder 2.3.2 — Interaction/Performance Fix
+
+AVB tests: 85/85 PASS
+AVB npm run check: PASS
+Templates: 8/8 PASS
+Template surfaces: LANDING + BOOKING + LOGIN
+Python compileall: PASS
+Vue/TypeScript syntax: 45 checked / 0 failures
+Workspace ShadowRoot events: addEventListener lifecycle binding
+Template apply: internal confirmation + atomic backend apply
+Import: canonical pages persisted in backend
+Settings bootstrap: compact endpoint; HTML deferred
+Landing editor: document endpoint; history content no longer eagerly loaded
+PWA cache: avb-2.3.2-interactionfix-v3
+Full pytest local: unavailable because runtime lacks structlog

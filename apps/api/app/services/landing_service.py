@@ -329,12 +329,18 @@ class LandingPageService:
             return []
         rows = (
             await self.session.execute(
-                select(LandingPageVersion)
+                select(
+                    LandingPageVersion.id,
+                    LandingPageVersion.version_number,
+                    LandingPageVersion.label,
+                    LandingPageVersion.source_version_id,
+                    LandingPageVersion.created_at,
+                )
                 .where(LandingPageVersion.landing_page_id == page.id)
                 .order_by(desc(LandingPageVersion.version_number))
                 .limit(max(1, min(200, limit)))
             )
-        ).scalars().all()
+        ).all()
         return [
             {
                 "id": str(item.id),
@@ -556,6 +562,63 @@ class LandingPageService:
             "slug": new_slug,
             "draft_version_id": str(version.id),
             "version_number": version.version_number,
+        }
+
+    async def editor_document(self, slug: str) -> dict[str, Any]:
+        """Documento efetivo para o editor sem carregar histórico nem conteúdo duplicado."""
+        page = await self._page(slug)
+        if page is None:
+            return {
+                "slug": slug,
+                "status": "NEW",
+                "template_key": None,
+                "content": {"version": 2, "blocks": []},
+                "version_number": None,
+                "source": "empty",
+            }
+
+        version = None
+        source = "draft"
+        if page.draft_version_id:
+            version = (
+                await self.session.execute(
+                    select(LandingPageVersion).where(
+                        LandingPageVersion.id == page.draft_version_id,
+                        LandingPageVersion.landing_page_id == page.id,
+                    )
+                )
+            ).scalar_one_or_none()
+        if version is None and page.current_version_id:
+            source = "published"
+            version = (
+                await self.session.execute(
+                    select(LandingPageVersion).where(
+                        LandingPageVersion.id == page.current_version_id,
+                        LandingPageVersion.landing_page_id == page.id,
+                    )
+                )
+            ).scalar_one_or_none()
+        if version is None:
+            source = "latest"
+            version = (
+                await self.session.execute(
+                    select(LandingPageVersion)
+                    .where(LandingPageVersion.landing_page_id == page.id)
+                    .order_by(desc(LandingPageVersion.version_number))
+                    .limit(1)
+                )
+            ).scalar_one_or_none()
+
+        return {
+            "id": str(page.id),
+            "slug": page.slug,
+            "status": page.status,
+            "template_key": page.template_key,
+            "current_version_id": str(page.current_version_id) if page.current_version_id else None,
+            "draft_version_id": str(page.draft_version_id) if page.draft_version_id else None,
+            "version_number": version.version_number if version else None,
+            "content": deepcopy(version.content) if version else {"version": 2, "blocks": []},
+            "source": source,
         }
 
     async def editor_state(self, slug: str) -> dict[str, Any]:
