@@ -1,3 +1,5 @@
+> **Atualização 2026-08-28 — AVB 2.3.2 Interaction/Performance Fix:** corrige eventos do ShadowRoot, tema/importar/fechar/editar, aplicação atômica de templates, importação persistente e elimina payloads pesados de settings/histórico no bootstrap do tenant. Consulte `CORRECAO_INTERACOES_AVB_2.3.2_20260828.md`.
+
 # Scheduler Pro Platform
 
 Plataforma SaaS multitenant de agendamentos construída com **FastAPI/Python 3.13**, **PostgreSQL**, **Redis**, **RabbitMQ** e **Vue 3 + Tailwind PWA**. A experiência principal é **PWA-first**; Tauri 2 permanece ativo somente para os aplicativos mobile Android/iOS.

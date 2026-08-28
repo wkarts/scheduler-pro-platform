@@ -41,9 +41,24 @@ class PublicPageContextService:
         self.platform_session = platform_session
 
     async def build(self) -> dict[str, Any]:
+        public_setting_keys = [
+            "landing_page_enabled",
+            "public_booking_enabled",
+            "public_login_enabled",
+            "show_login_on_landing",
+            "show_booking_on_landing",
+            "show_contact_on_landing",
+            "show_whatsapp_on_landing",
+            "booking_page_template_key",
+            "login_page_template_key",
+        ]
         setting_rows = (
             await self.tenant_session.execute(
-                text("select key, value from tenant_settings order by key")
+                text(
+                    "select key, value from tenant_settings "
+                    "where key = any(cast(:keys as text[])) order by key"
+                ),
+                {"keys": public_setting_keys},
             )
         ).mappings().all()
         preferences = {str(row["key"]): row["value"] for row in setting_rows}

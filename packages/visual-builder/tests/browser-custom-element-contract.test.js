@@ -11,5 +11,5 @@ test('project workspace custom element constructor does not add attributes',()=>
   const match=source.match(/export class ArgwsVisualBuilderApp[\s\S]*?constructor\(\)\{([\s\S]*?)\}\n  set adapter/);
   assert.ok(match,'constructor do workspace precisa existir');
   assert.doesNotMatch(match[1],/dataset\.|setAttribute\(|className\s*=|classList\./);
-  assert.match(source,/connectedCallback\(\).*dataset\.projectTheme/);
+  assert.match(source,/connectedCallback\(\).*setAttribute\('data-project-theme',this\._theme\)/);
 });

@@ -1,0 +1,11 @@
+ARGWS Visual Builder 2.3.2 — Interaction Fix
+
+AVB tests: 85/85 PASS
+AVB npm run check: PASS
+Templates backend: 8/8 PASS
+Surfaces: LANDING + BOOKING + LOGIN
+Python compileall: PASS
+Vue/TypeScript syntax: 45 checked / 0 failures
+API source contracts: PASS
+pytest completo local: bloqueado por ModuleNotFoundError: structlog no runtime local
+PWA cache: avb-2.3.2-interactionfix-v3

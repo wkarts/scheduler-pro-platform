@@ -421,7 +421,7 @@ async function syncAll(): Promise<void> {
   }
 
   await load('Configurações', async () => {
-    tenantSettings.value = await api<TenantSettings>('/settings/tenant')
+    tenantSettings.value = await api<TenantSettings>('/settings/tenant/compact')
     hydratePreferences()
   })
   await load('Recursos liberados', async () => { capabilities.value = await api<TenantCapabilities>('/settings/capabilities') })
@@ -583,7 +583,7 @@ function openBlockedPeriod(): void { editorKind.value = 'blocked-period'; editin
 async function saveBlockedPeriod(): Promise<void> { try { await api('/schedule/blocked-periods', { method: 'POST', body: JSON.stringify({ professional_id: blockedPeriodForm.value.professional_id || null, starts_at: new Date(blockedPeriodForm.value.starts_at).toISOString(), ends_at: new Date(blockedPeriodForm.value.ends_at).toISOString(), reason: blockedPeriodForm.value.reason || null }) }); blockedPeriods.value = await api('/schedule/blocked-periods'); closeEditor(); showToast('Bloqueio cadastrado.') } catch (error) { actionError.value = error instanceof Error ? error.message : 'Falha ao criar bloqueio.' } }
 async function deleteBlockedPeriod(item: BlockedPeriod): Promise<void> { if (!await confirmDialog({title:'Remover bloqueio',message:'Remover este bloqueio?',danger:true,confirmLabel:'Remover'})) return; try { await api(`/schedule/blocked-periods/${item.id}`, { method: 'DELETE' }); blockedPeriods.value = await api('/schedule/blocked-periods') } catch (error) { actionError.value = error instanceof Error ? error.message : 'Falha ao remover bloqueio.' } }
 
-async function loadLanding(): Promise<void> { if (!token.value || !hasCapability('landing_pages')) return; const state = await api<LandingState>('/landing-pages/home'); landingState.value = state; const sections = Array.isArray(state.content?.sections) ? state.content?.sections || [] : []; const hero = sections.find((item) => item.type === 'hero') || {}; landingForm.value = { title: String(hero.title || 'Agende seu atendimento'), subtitle: String(hero.subtitle || 'Escolha o melhor horário para você.'), cta: String(hero.cta || 'Agendar agora') } }
+async function loadLanding(): Promise<void> { if (!token.value || !hasCapability('landing_pages')) return; const state = await api<LandingState>('/landing-pages/home/document'); landingState.value = state; const sections = Array.isArray(state.content?.sections) ? state.content?.sections || [] : []; const hero = sections.find((item) => item.type === 'hero') || {}; landingForm.value = { title: String(hero.title || 'Agende seu atendimento'), subtitle: String(hero.subtitle || 'Escolha o melhor horário para você.'), cta: String(hero.cta || 'Agendar agora') } }
 async function saveLanding(publish = false): Promise<void> { try { const version = Number(landingState.value?.version_number || landingState.value?.content?.version || 0) + 1; await api('/landing-pages/home/draft', { method: 'POST', body: JSON.stringify({ version, sections: [{ type: 'hero', title: landingForm.value.title, subtitle: landingForm.value.subtitle, cta: landingForm.value.cta }, { type: 'booking', enabled: true }] }) }); if (publish) await api('/landing-pages/home/publish', { method: 'POST', body: '{}' }); await loadLanding(); showToast(publish ? 'Landing publicada.' : 'Rascunho salvo.') } catch (error) { actionError.value = error instanceof Error ? error.message : 'Falha na landing.' } }
 
 async function loadWhatsAppStatus(): Promise<void> { if (!token.value || !hasCapability('whatsapp')) return; whatsapp.value = await api<WhatsAppState>('/integrations/whatsapp/status') }
@@ -596,7 +596,7 @@ async function loadDistribution(): Promise<void> { if (!token.value || !hasCapab
 async function saveObjectSettings(values: Record<string, unknown>, message: string): Promise<void> {
   try {
     for (const [key, value] of Object.entries(values)) await api(`/settings/tenant/${encodeURIComponent(key)}`, { method: 'PUT', body: JSON.stringify(value) })
-    tenantSettings.value = await api('/settings/tenant')
+    tenantSettings.value = await api('/settings/tenant/compact')
     hydratePreferences()
     showToast(message)
   } catch (error) { actionError.value = error instanceof Error ? error.message : 'Falha ao salvar configurações.' }

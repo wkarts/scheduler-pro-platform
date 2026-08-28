@@ -60,7 +60,7 @@ export class ArgwsVisualBuilder extends HTMLElementBase {
     this._library=new LocalComponentLibrary(); this._selected=null; this._device='desktop'; this._styleState='base'; this._mobileDrawer=null;
     this._leftTab='elements'; this._rightTab='content'; this._dirty=false; this._loading=false; this._saving=false; this._publishing=false; this._search='';
     this._remoteTemplates=[]; this._remoteVersions=[]; this._autosaveTimer=null; this._canvasRaf=null; this._connected=false; this._context={editor:true}; this._clipboard=null; this._auditReport=null;
-    this._policy=createEditorPolicy(); this._editorTheme='dark'; this._keyboard=this._onKeyboard.bind(this); this._beforeUnload=this._onBeforeUnload.bind(this);
+    this._policy=createEditorPolicy(); this._editorTheme='dark'; this._keyboard=this._onKeyboard.bind(this); this._beforeUnload=this._onBeforeUnload.bind(this); this._eventsBound=false; this._boundClick=event=>this._onClick(event); this._boundInput=event=>this._onInput(event); this._boundChange=event=>this._onChange(event); this._boundDblClick=event=>this._onDoubleClick(event); this._boundFocusOut=event=>this._onFocusOut(event); this._boundDragStart=event=>this._onDragStart(event); this._boundDragEnd=()=>this.shadowRoot.getElementById('canvas-frame')?.classList.remove('dragging'); this._boundDragOver=event=>this._onDragOver(event); this._boundDrop=event=>this._onDrop(event);
   }
   set adapter(value){this._adapter=value||new MemoryAdapter();}
   get adapter(){return this._adapter;}
@@ -125,9 +125,8 @@ export class ArgwsVisualBuilder extends HTMLElementBase {
       </div><div class="mobile-backdrop" data-action="mobile-close"></div><div id="notice-host"></div></div>`;
   }
   _bind(){
-    const root=this.shadowRoot; root.addEventListener('click',event=>this._onClick(event)); root.addEventListener('input',event=>this._onInput(event)); root.addEventListener('change',event=>this._onChange(event));
-    root.addEventListener('dblclick',event=>this._onDoubleClick(event)); root.addEventListener('focusout',event=>this._onFocusOut(event)); root.addEventListener('dragstart',event=>this._onDragStart(event)); root.addEventListener('dragend',()=>this.shadowRoot.getElementById('canvas-frame').classList.remove('dragging'));
-    root.addEventListener('dragover',event=>this._onDragOver(event)); root.addEventListener('drop',event=>this._onDrop(event)); root.getElementById('import-file').addEventListener('change',event=>void this._importFile(event));
+    if(this._eventsBound)return;this._eventsBound=true;const root=this.shadowRoot;
+    root.addEventListener('click',this._boundClick,true);root.addEventListener('input',this._boundInput);root.addEventListener('change',this._boundChange,true);root.addEventListener('dblclick',this._boundDblClick);root.addEventListener('focusout',this._boundFocusOut);root.addEventListener('dragstart',this._boundDragStart);root.addEventListener('dragend',this._boundDragEnd);root.addEventListener('dragover',this._boundDragOver);root.addEventListener('drop',this._boundDrop);
   }
 
   async load(){
@@ -263,7 +262,7 @@ export class ArgwsVisualBuilder extends HTMLElementBase {
   _colorValue(value,fallback){const raw=String(value||'');return /^#[0-9a-f]{6}$/i.test(raw)?raw:fallback;}
 
   _onClick(event){
-    const t=event.target.closest?.('button,[data-select-node],[data-upb-node],[data-widget-type],[data-action],[data-style-state]');if(!t)return;
+    const path=event.composedPath?.()||[];const selector='button,[data-select-node],[data-upb-node],[data-widget-type],[data-action],[data-style-state]';const t=path.find(node=>node?.matches?.(selector))||event.target?.closest?.(selector);if(!t)return;
     if(t.dataset.widgetType){this._insertWidget(t.dataset.widgetType);return;}if(t.dataset.device){this._device=t.dataset.device;this._renderAll();return;}if(t.dataset.left){this._leftTab=t.dataset.left;this._renderAll();return;}if(t.dataset.right){this._rightTab=t.dataset.right;if(this._rightTab==='history')void this._loadVersions();this._renderAll();return;}if(t.dataset.styleState){this._styleState=t.dataset.styleState;this._renderInspector();return;}
     if(t.dataset.selectNode){this._selected=t.dataset.selectNode;this._rightTab='content';if(globalThis.innerWidth<=980)this._mobileDrawer='right';this._renderAll();return;}if(t.matches('[data-upb-node]')||t.closest('[data-upb-node]')){const nodeEl=t.matches('[data-upb-node]')?t:t.closest('[data-upb-node]');this._selected=nodeEl.dataset.upbNode;this._rightTab='content';if(globalThis.innerWidth<=980)this._mobileDrawer='right';this._renderAll();return;}
     const a=t.dataset.action;if(a){this.shadowRoot.querySelector('.top-overflow')?.removeAttribute('open');if(a==='undo')this._undo();else if(a==='redo')this._redo();else if(a==='save')void this.save();else if(a==='publish')void this.publish();else if(a==='project-home')this.dispatchEvent(new CustomEvent('avb-project-home',{bubbles:true,composed:true}));else if(a==='page-settings'){this._selected=null;this._rightTab='content';if(globalThis.innerWidth<=980)this._mobileDrawer='right';this._renderAll();this._scrollPanelTop('right');}else if(a==='elements-panel'){this._leftTab='elements';if(globalThis.innerWidth<=980)this._mobileDrawer='left';this._renderAll();this._focusElementSearch();}else if(a==='properties-panel'){this._rightTab='content';if(globalThis.innerWidth<=980)this._mobileDrawer='right';this._renderAll();this._scrollPanelTop('right');}else if(a==='theme-toggle'){this._toggleEditorTheme();}else if(a==='emergency-rollback'){void this._emergencyRollback();}else if(a==='emergency-blank'){void this._emergencyBlank();}else if(a==='import')this.shadowRoot.getElementById('import-file').click();else if(a==='export-json')download(`${this._slugName()}.json`,JSON.stringify(this.document,null,2));else if(a==='export-html')download(`${this._slugName()}.html`,exportStandaloneHtml(this.document),'text/html');else if(a==='preview')this._previewWindow();else if(a==='audit'){this._auditReport=auditDocument(this.document);this._selected=null;this._rightTab='advanced';if(globalThis.innerWidth<=980)this._mobileDrawer='right';this._renderAll();queueMicrotask(()=>this.shadowRoot.querySelector('.audit-score')?.scrollIntoView({block:'nearest'}));this._notice(`Auditoria concluída: ${this._auditReport.score}/100.`);}else if(a==='mobile-close'){this._mobileDrawer=null;this._renderToolbar();}else if(a==='add-breakpoint')this._addBreakpoint();else if(a==='refresh-versions')void this._loadVersions(true);else if(a==='close')this.dispatchEvent(new CustomEvent('upb-close',{bubbles:true,composed:true}));return;}
@@ -275,7 +274,7 @@ export class ArgwsVisualBuilder extends HTMLElementBase {
   _scrollPanelTop(side){const el=this.shadowRoot.getElementById(side==='left'?'left-panel':'right-panel');if(el)el.scrollTop=0;}
   _focusElementSearch(){queueMicrotask(()=>{const input=this.shadowRoot.querySelector('[data-role="widget-search"]');input?.focus?.({preventScroll:true});});}
   _onInput(event){const el=event.target;if(el.dataset.role==='widget-search'){this._search=el.value;this._renderLeft();return;}this._applyField(el,false);}
-  _onChange(event){const el=event.target;if(el.matches('[data-upload-image]')){void this._uploadImage(el);return;}this._applyField(el,true);}
+  _onChange(event){const el=event.target;if(el?.id==='import-file'){void this._importFile(event);return;}if(el.matches?.('[data-upload-image]')){void this._uploadImage(el);return;}this._applyField(el,true);}
   _applyField(el,commit){
     const node=this._selected?getNode(this._document,this._selected):null;let changed=false;
     if(node&&el.dataset.prop&&!this._allowed('content.edit'))return;

@@ -74,6 +74,56 @@ async def tenant_settings(
     )
 
 
+@router.get("/tenant/compact")
+async def tenant_settings_compact(
+    context: TenantContext = Depends(get_tenant_context),
+    session: AsyncSession = Depends(get_tenant_session),
+) -> dict[str, Any]:
+    heavy_keys = {"booking_page_template_content", "login_page_template_content"}
+    rows = (
+        await session.execute(
+            text(
+                "select key, value, updated_at from tenant_settings "
+                "where key not in ('booking_page_template_content','login_page_template_content') "
+                "order by key"
+            ),
+        )
+    ).mappings().all()
+    return success(
+        {
+            "tenant_id": context.tenant_id,
+            "slug": context.slug,
+            "hostname": context.hostname,
+            "timezone": context.timezone,
+            "preferences": {row["key"]: row["value"] for row in rows},
+            "page_content_deferred": sorted(heavy_keys),
+        }
+    )
+
+
+@router.get("/tenant/value/{key}")
+async def tenant_setting_value(
+    key: str,
+    context: TenantContext = Depends(get_tenant_context),
+    session: AsyncSession = Depends(get_tenant_session),
+) -> dict[str, Any]:
+    clean_key = key.strip().lower().replace(" ", "_")
+    row = (
+        await session.execute(
+            text("select key, value, updated_at from tenant_settings where key=:key limit 1"),
+            {"key": clean_key},
+        )
+    ).mappings().first()
+    return success(
+        {
+            "tenant_id": context.tenant_id,
+            "key": clean_key,
+            "value": row["value"] if row else None,
+            "updated_at": row["updated_at"] if row else None,
+        }
+    )
+
+
 @router.get("/booking")
 async def booking_parameters(
     session: AsyncSession = Depends(get_tenant_session),
