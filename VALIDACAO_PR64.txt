@@ -1,0 +1,29 @@
+Scheduler Pro — PR #64 — validação corretiva
+Data: 2026-08-28
+
+Causa raiz confirmada no GitHub Actions:
+- .gitignore ignorava *.zip;
+- os 7 pacotes oficiais reais não foram versionados pelo GitHub Desktop;
+- a tentativa Base64 posterior ficou truncada em 63.634 caracteres;
+- payload decodificado: 47.725 bytes;
+- SHA-256 do payload truncado: e641b768e8ddb18c3139e5c50a89f0fbf3412f76f464f5926a258a70576c3155;
+- gzip inválido: CRC check failed.
+
+Correção deste pacote:
+- .gitignore libera apps/api/resources/template-packages/*.zip;
+- .dockerignore já libera os mesmos pacotes;
+- removido o uso de template-catalog/release-b64;
+- builtin_template_package_service.py usa os ZIPs reais;
+- 7/7 pacotes validados pelo HtmlTemplatePackageService;
+- LANDING + BOOKING presentes nas sete famílias;
+- correção Web do polling ARGWS WhatsApp preservada;
+- correção Ruff do contrato de bootstrap preservada.
+
+Validação local disponível neste ambiente:
+VALIDATION_OK=7/7
+NO_STALE_TEMPLATE_CATALOG=true
+GITIGNORE_ZIP_EXCEPTION=true
+Python py_compile: OK
+
+Observação:
+A suíte pytest completa não foi executada localmente porque o ambiente atual não possui structlog instalado. No GitHub Actions, antes do erro de catálogo, Compile Python, Ruff e MyPy já estavam passando.

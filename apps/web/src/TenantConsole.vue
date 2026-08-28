@@ -612,10 +612,10 @@ onMounted(async () => {
   window.addEventListener('hashchange', onHashChange)
   window.addEventListener('beforeinstallprompt', onBeforeInstallPrompt)
   whatsappPoll = window.setInterval(() => {
-  if (logged.value && hasCapability('whatsapp') && whatsappStatus.value !== 'CONNECTED') {
-    void loadWhatsAppStatus().catch(() => undefined)
-  }
-}, 5000)
+    if (logged.value && hasCapability('whatsapp') && whatsappStatus.value !== 'CONNECTED') {
+      void loadWhatsAppStatus().catch(() => undefined)
+    }
+  }, 5000)
   if (token.value) await syncAll()
 })
 onUnmounted(() => { stopRealtimeConnection(); window.removeEventListener('hashchange', onHashChange); window.removeEventListener('beforeinstallprompt', onBeforeInstallPrompt); if (whatsappPoll !== undefined) window.clearInterval(whatsappPoll) })
