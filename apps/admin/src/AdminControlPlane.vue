@@ -366,6 +366,7 @@ const dockerTail = ref(500)
 const logAutoRefresh = ref(false)
 const logFilters = ref({ source: '', service: '', level: '', integration: '', search: '' })
 let logTimer: number | undefined
+let logRefreshInFlight = false
 
 const isAuthenticated = computed(() => Boolean(session.value?.accessToken))
 const profileInitial = computed(() => (principal.value?.email || session.value?.userEmail || 'A').charAt(0).toUpperCase())
@@ -905,7 +906,7 @@ async function toggleCapability(capability: Capability): Promise<void> {
 
 function logQuery(extra: Record<string, string> = {}): string {
   const params = new URLSearchParams()
-  params.set('limit', '1000')
+  params.set('limit', '300')
   for (const [key, value] of Object.entries({ ...logFilters.value, ...extra })) {
     if (value) params.set(key, value)
   }
@@ -953,11 +954,11 @@ async function loadLogView(): Promise<void> {
     if (logTab.value === 'integrations') await loadPlatformStructured({ source: 'integration' })
     if (logTab.value === 'tenant') await loadTenantStructured()
     if (logTab.value === 'audit') {
-      logAudit.value = await apiGet('/platform/audit?limit=1000', token())
+      logAudit.value = await apiGet('/platform/audit?limit=300', token())
     }
     if (logTab.value === 'tenant-audit') {
       logAudit.value = tenantContext.value
-        ? await apiGet(`/platform/observability/tenant/${tenantContext.value}/audit?limit=1000`, token())
+        ? await apiGet(`/platform/observability/tenant/${tenantContext.value}/audit?limit=300`, token())
         : []
     }
     if (logTab.value === 'docker') {
@@ -1021,10 +1022,11 @@ onMounted(async () => {
   updateInstallState()
   window.addEventListener('scheduler-pro-admin-install-state', updateInstallState)
   logTimer = window.setInterval(() => {
-    if (isAuthenticated.value && activeModule.value === 'logs' && logAutoRefresh.value) {
-      void loadLogView()
+    if (isAuthenticated.value && activeModule.value === 'logs' && logAutoRefresh.value && !logRefreshInFlight && document.visibilityState === 'visible') {
+      logRefreshInFlight = true
+      void loadLogView().finally(() => { logRefreshInFlight = false })
     }
-  }, 5000)
+  }, 15000)
   if (token()) {
     try {
       await loadPrincipal()
@@ -1289,7 +1291,7 @@ onUnmounted(() => {
                 <select v-if="logTab === 'docker'" v-model="dockerContainer" @change="loadDockerLogs"><option v-for="container in dockerContainers" :key="container.container_id" :value="container.service || container.name">{{ container.service || container.name }} — {{ container.status }}</option></select>
                 <select v-if="logTab === 'docker'" v-model.number="dockerTail" @change="loadDockerLogs"><option :value="100">100 linhas</option><option :value="500">500 linhas</option><option :value="1000">1.000 linhas</option><option :value="5000">5.000 linhas</option></select>
                 <button class="btn primary" @click="loadLogView">Consultar</button>
-                <label class="checkbox-line"><input v-model="logAutoRefresh" type="checkbox" /> Atualizar a cada 5s</label>
+                <label class="checkbox-line"><input v-model="logAutoRefresh" type="checkbox" /> Atualizar a cada 15s</label>
               </div>
             </article>
 

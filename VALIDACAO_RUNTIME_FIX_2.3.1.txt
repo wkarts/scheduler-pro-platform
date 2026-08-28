@@ -1,0 +1,25 @@
+Scheduler Pro / ARGWS Visual Builder 2.3.1 — Runtime Fix
+
+Diagnóstico corrigido:
+- NotSupportedError em document.createElement('argws-visual-builder-app')
+- mount do AVB deixando overlay ativo após exceção
+- renderizações redundantes do ArgwsPageRenderer antes de conexão ao DOM
+- compatibilidade de metadados HTML legados ao salvar/republicar
+- Control Plane carregando até 1000 logs (~1 MB) por refresh
+- auto-refresh de logs a cada 5 segundos
+- polling WhatsApp concorrendo com o Visual Builder
+- cache PWA anterior
+
+Validações executadas:
+- ARGWS Visual Builder: 62/62 testes PASS
+- teste novo de contrato do Custom Element: PASS
+- 8/8 famílias oficiais: válidas, LANDING + BOOKING + LOGIN
+- migração de HTML legado no compilador: PASS
+- Vue/TypeScript script syntax: 28 arquivos, 0 falhas
+- Node --check nos módulos AVB alterados: PASS
+- Python compileall: PASS
+
+Pytest completo da API não iniciou neste runtime porque `structlog` não está instalado localmente. Isso não altera os arquivos de dependência do projeto.
+
+Observação:
+Os erros de storage associados a spa-maker.js / wrapper-cuponomia-ads.js / notifications.js são de extensões do navegador, não de arquivos do Scheduler Pro.
