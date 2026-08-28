@@ -20,3 +20,10 @@ Regression coverage includes:
 - Landing saves and publishes without requiring prior full-page load;
 - Login saves selected HTML/key;
 - Workspace persists template before opening editor with reload=false.
+
+[Correção CI 89950161701]
+- MyPy no-any-return em builtin_template_package_service._builtin_manifest: CORRIGIDO
+- json.loads não retorna mais Any diretamente; objeto é validado e tipado explicitamente
+- 8/8 manifests oficiais: OK
+- AVB 2.3.2: 81/81 testes PASS após correção
+- npm run check: PASS após correção

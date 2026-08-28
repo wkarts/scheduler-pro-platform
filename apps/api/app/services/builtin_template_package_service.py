@@ -5,7 +5,7 @@ from functools import lru_cache
 from io import BytesIO
 import json
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 from zipfile import ZipFile
 
 from sqlalchemy import text
@@ -60,9 +60,12 @@ def _builtin_manifest(key: str) -> dict[str, Any]:
     try:
         with ZipFile(BytesIO(builtin_template_archive(key))) as archive:
             raw = archive.read("template.json")
-        manifest = json.loads(raw.decode("utf-8"))
+        decoded: object = json.loads(raw.decode("utf-8"))
     except Exception as exc:
         raise RuntimeError(f"Manifesto oficial inválido: {key}") from exc
+    if not isinstance(decoded, dict):
+        raise RuntimeError(f"Manifesto oficial deve ser um objeto JSON: {key}")
+    manifest = cast(dict[str, Any], decoded)
     if manifest.get("schema") != "scheduler-pro-template-package/v1":
         raise RuntimeError(f"Schema oficial inválido: {key}")
     package = manifest.get("package") or {}
