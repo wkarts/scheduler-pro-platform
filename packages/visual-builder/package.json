@@ -1,25 +1,55 @@
 {
   "name": "@argws/visual-builder",
-  "version": "2.1.0",
-  "description": "ARGWS Visual Builder Editor canônico 2.1.0 para o Scheduler Pro.",
+  "version": "2.3.0",
+  "description": "ARGWS Visual Builder Universal 2.3.0: Project/Site Workspace universal, páginas de primeira classe e templates multi-página sem html_surface como widget.",
   "type": "module",
   "main": "./src/index.js",
   "module": "./src/index.js",
   "types": "./src/index.d.ts",
   "exports": {
-    ".": { "types": "./src/index.d.ts", "import": "./src/index.js" },
-    "./styles.css": "./runtime/package/styles/builder.css"
+    ".": {
+      "types": "./src/index.d.ts",
+      "import": "./src/index.js"
+    },
+    "./styles.css": "./styles/builder.css",
+    "./assets/*": "./assets/*"
   },
-  "files": ["src", "release-b64", "runtime", "scripts", "LICENSE", "README.md"],
+  "files": [
+    "src",
+    "styles",
+    "assets",
+    "LICENSE",
+    "README.md",
+    "VERSION"
+  ],
   "scripts": {
-    "materialize": "node scripts/materialize-release.mjs",
-    "test": "npm run check",
-    "check": "npm run materialize && node --check src/index.js && node --check runtime/package/src/index.js && node --check runtime/package/src/template-packages.js",
-    "typecheck": "npm run check",
-    "build": "npm run check"
+    "test": "node --test tests/*.test.js",
+    "check": "node --check src/model.js && node --check src/registry.js && node --check src/history.js && node --check src/sanitize.js && node --check src/dynamic.js && node --check src/dynamic-tags.js && node --check src/data-sources.js && node --check src/actions.js && node --check src/plugins.js && node --check src/services.js && node --check src/submissions.js && node --check src/forms.js && node --check src/library.js && node --check src/assets.js && node --check src/permissions.js && node --check src/i18n.js && node --check src/operations.js && node --check src/project-package.js && node --check src/custom-code.js && node --check src/embeds.js && node --check src/audit.js && node --check src/site-kit.js && node --check src/runtime.js && node --check src/renderer.js && node --check src/template-packages.js && node --check src/adapters.js && node --check src/editor.js && node --check src/page-renderer.js && node --check src/templates.js && node --check src/index.js && node --check src/project.js && node --check src/project-workspace.js"
   },
-  "keywords": ["page-builder", "landing-page", "visual-editor", "responsive", "scheduler-pro", "argws"],
+  "keywords": [
+    "page-builder",
+    "landing-page",
+    "web-component",
+    "visual-editor",
+    "responsive",
+    "dynamic-content",
+    "popup-builder",
+    "form-builder",
+    "scheduler-pro",
+    "blade",
+    "laravel",
+    "fastapi",
+    "php",
+    "python",
+    "vue",
+    "react",
+    "svelte",
+    "query-builder",
+    "dynamic-tags",
+    "site-builder"
+  ],
   "license": "MIT",
-  "engines": { "node": ">=20" },
-  "private": true
+  "engines": {
+    "node": ">=20"
+  }
 }

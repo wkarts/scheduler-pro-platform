@@ -63,18 +63,16 @@ def test_public_surfaces_are_separated_and_editor_uses_canonical_visual_builder(
     assert "PublicSitePage" in app
     assert "TenantVisualPageBuilder" in app
     assert "TenantPublicPageEditorV2" not in app
-    assert "TenantWorkspaceCoordinator" in app
+    assert "TenantWorkspaceCoordinator" not in app
     assert "'/agendar'" in app and "'/pagina'" in app
     assert "landingMode" in site
     assert "PublicVisualLandingRenderer" in site
-    assert "createSchedulerProAdapter" in editor
-    assert "ARGWS_VISUAL_BUILDER_VERSION" in editor
-    assert "argws-visual-builder" in editor
-    assert "editor?.remove()" in editor
+    assert "SchedulerProProjectAdapter" in editor
+    assert "argws-visual-builder-app" in editor
+    assert "#visual-builder" in editor
     assert "MutationObserver" not in editor
-    assert "loadVisualBuilderRuntime" in renderer
     assert "argws-page-renderer" in renderer
-    assert "requestAnimationFrame" in renderer
+    assert "PageDocument" in renderer
 
 
 def test_smtp_selector_has_single_flight_guard_and_no_character_data_observer() -> None:

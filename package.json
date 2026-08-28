@@ -15,17 +15,23 @@
     "packages/visual-builder"
   ],
   "scripts": {
-    "postinstall": "npm --workspace packages/visual-builder run materialize",
-    "lint": "npm run lint --workspaces --if-present",
-    "typecheck": "npm run typecheck --workspaces --if-present",
-    "build": "npm run build --workspaces --if-present",
+    "lint": "npm --workspace apps/web run lint && npm --workspace apps/admin run lint && npm --workspace apps/mobile run lint --if-present && npm --workspace apps/admin-mobile run lint --if-present",
+    "typecheck": "npm --workspace packages/visual-builder run check && npm --workspace apps/web run typecheck && npm --workspace apps/admin run typecheck && npm --workspace apps/mobile run typecheck && npm --workspace apps/admin-mobile run typecheck",
+    "build": "npm --workspace packages/visual-builder run check && npm --workspace apps/web run build && npm --workspace apps/admin run build && npm --workspace apps/mobile run build && npm --workspace apps/admin-mobile run build",
     "dev:web": "npm --workspace apps/web run dev",
     "dev:admin": "npm --workspace apps/admin run dev",
     "dev:desktop": "npm --workspace apps/desktop run tauri:dev",
     "dev:mobile": "npm --workspace apps/mobile run dev",
     "dev:admin-desktop": "npm --workspace apps/admin-desktop run tauri:dev",
-    "dev:admin-mobile": "npm --workspace apps/admin-mobile run dev"
+    "dev:admin-mobile": "npm --workspace apps/admin-mobile run dev",
+    "typecheck:desktop:legacy": "npm --workspace apps/desktop run typecheck && npm --workspace apps/admin-desktop run typecheck"
   },
-  "engines": { "node": ">=22" },
-  "overrides": { "typescript": "5.5.4", "vue-tsc": "2.1.10", "tailwindcss": "3.4.17" }
+  "engines": {
+    "node": ">=22"
+  },
+  "overrides": {
+    "typescript": "5.5.4",
+    "vue-tsc": "2.1.10",
+    "tailwindcss": "3.4.17"
+  }
 }

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { nextTick, onMounted, ref } from 'vue'
+import { nextTick, onMounted, onUnmounted, ref } from 'vue'
 import { CalendarClock, MapPin, MessageCircle, Save, Settings, ShieldCheck, X } from 'lucide-vue-next'
 
 type Tab='agenda'|'phone'|'security'|'whatsapp'
@@ -28,8 +28,9 @@ function failure(exc:unknown,fallback:string){errorMessage.value=exc instanceof 
 function whatsStatusLabel(status?:string|null){return({DISCONNECTED:'Desconectado',CONNECTING:'Conectando',CONNECTED:'Conectado',RECONNECTING:'Reconectando',FAILED:'Falha'} as Record<string,string>)[String(status||'').toUpperCase()]||'Desconhecido'}
 function modeHelp(mode:FieldMode){return mode==='DISABLED'?'O campo desaparece do Operador e da página pública.':mode==='OPTIONAL'?'O campo aparece, mas pode ficar vazio.':'O campo aparece e deve ser preenchido.'}
 async function loadBase(){loading.value=true;errorMessage.value='';try{const[booking,security,capabilities]=await Promise.all([api<BookingParameters>('/settings/booking'),api<TwoFactorState>('/auth/2fa/state'),api<Capabilities>('/settings/capabilities')]);params.value=booking;twoFactor.value=security;whatsEnabled.value=(capabilities.enabled||[]).includes('whatsapp');if(whatsEnabled.value)await loadWhatsStatus(false)}catch(exc){failure(exc,'Não foi possível carregar as configurações.')}finally{loading.value=false}}
-async function open(){active.value=true;await loadBase()}
-function close(){active.value=false;enrollment.value=null;pairingCode.value='';errorMessage.value=''}
+async function open(){if(active.value)return;active.value=true;await loadBase()}
+function close(){active.value=false;enrollment.value=null;pairingCode.value='';errorMessage.value='';if(window.location.hash==='#configuracoes')window.location.hash='dashboard'}
+function syncRoute(){const next=window.location.hash==='#configuracoes';if(next&&!active.value)void open();else if(!next&&active.value){active.value=false;enrollment.value=null;pairingCode.value='';errorMessage.value=''}}
 async function saveBooking(){saving.value=true;errorMessage.value='';try{params.value=await api<BookingParameters>('/settings/booking',{method:'PUT',body:JSON.stringify(params.value)});toast('Modelo de negócio da Agenda salvo.');window.dispatchEvent(new CustomEvent('scheduler-pro-revalidate-current-view'))}catch(exc){failure(exc,'Falha ao salvar parâmetros.')}finally{saving.value=false}}
 async function beginTwoFactor(){saving.value=true;errorMessage.value='';try{enrollment.value=await api<Enrollment>('/auth/2fa/setup',{method:'POST',body:'{}'})}catch(exc){failure(exc,'Não foi possível iniciar a configuração de segurança.')}finally{saving.value=false}}
 async function confirmTwoFactor(){saving.value=true;errorMessage.value='';try{await api('/auth/2fa/confirm',{method:'POST',body:JSON.stringify({code:twoFactorCode.value})});twoFactor.value=await api<TwoFactorState>('/auth/2fa/state');enrollment.value=null;twoFactorCode.value='';toast('Verificação em duas etapas ativada.')}catch(exc){failure(exc,'Código inválido.')}finally{saving.value=false}}
@@ -40,11 +41,11 @@ async function connectPairing(){saving.value=true;errorMessage.value='';try{cons
 async function reconnectWhats(){saving.value=true;errorMessage.value='';try{whats.value=await api<WhatsStatus>('/integrations/whatsapp/reconnect',{method:'POST',body:'{}'})}catch(exc){failure(exc,'Não foi possível reconectar.')}finally{saving.value=false}}
 async function disconnectWhats(){saving.value=true;errorMessage.value='';try{whats.value=await api<WhatsStatus>('/integrations/whatsapp/disconnect',{method:'POST',body:'{}'});pairingCode.value='';toast('WhatsApp desconectado.')}catch(exc){failure(exc,'Não foi possível desconectar.')}finally{saving.value=false}}
 async function testWhats(){saving.value=true;errorMessage.value='';try{await api('/integrations/whatsapp/test',{method:'POST',body:JSON.stringify({phone:testPhone.value,message:testMessage.value})});toast('Mensagem de teste aceita para envio.')}catch(exc){failure(exc,'Não foi possível enviar o teste.')}finally{saving.value=false}}
-onMounted(async()=>{await nextTick();window.requestAnimationFrame(()=>{portalReady.value=Boolean(document.querySelector('.tenant-console .nav-list')&&document.querySelector('.tenant-console .main-content'))})})
+onMounted(async()=>{await nextTick();portalReady.value=Boolean(document.querySelector('.tenant-console .main-content'));window.addEventListener('hashchange',syncRoute);syncRoute()})
+onUnmounted(()=>window.removeEventListener('hashchange',syncRoute))
 </script>
 
 <template>
-  <Teleport v-if="portalReady" to=".tenant-console .nav-list"><button class="nav-item sp-config-nav" @click="open"><Settings :size="19"/><span>Configurações</span></button></Teleport>
   <Teleport v-if="portalReady&&active" to=".tenant-console .main-content">
     <section class="sp-config-root">
       <header class="sp-config-header"><div><span>Scheduler Pro</span><h1>Configurações</h1><p>Modelo de negócio da Agenda, telefones, segurança e comunicação.</p></div><button class="icon" aria-label="Fechar" @click="close"><X :size="20"/></button></header>

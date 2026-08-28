@@ -38,6 +38,7 @@ Thumbs.db
 *.keystore
 *.mobileprovision
 *.zip
+!apps/api/resources/template-packages/*.zip
 *.tar.gz
 artifacts/
 storage/

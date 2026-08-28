@@ -20,15 +20,16 @@ def _read(path: str) -> str:
     return ""
 
 
-def test_navigation_runtime_does_not_watch_the_entire_dom_or_auto_refresh_views() -> None:
-    source = _read("apps/web/src/tenant-navigation-runtime.ts")
-    if not source:
+def test_navigation_is_not_driven_by_dom_mutation_or_click_bridges() -> None:
+    main = _read("apps/web/src/main.ts")
+    app = _read("apps/web/src/App.vue")
+    console = _read("apps/web/src/TenantConsole.vue")
+    if not main:
         return
-    assert "new MutationObserver" not in source
-    assert "observer.observe(document.body" not in source
-    assert "refreshCurrentView" not in source
-    assert "refresh.click()" not in source
-    assert "installed = false" in source
+    assert "installTenantNavigationRuntime" not in main
+    assert "installTenantExtensionNavigationBridge" not in main
+    assert "TenantWorkspaceCoordinator" not in app
+    assert "window.location.hash = key" in console
 
 
 def test_global_fetch_shares_identical_inflight_reads() -> None:
@@ -41,12 +42,16 @@ def test_global_fetch_shares_identical_inflight_reads() -> None:
     assert "isRealtimeOrStreaming" in source
 
 
-def test_auxiliary_tenant_surfaces_are_event_driven_not_dom_observers() -> None:
+def test_auxiliary_tenant_surfaces_are_route_driven_not_dom_observers() -> None:
     smtp = _read("apps/web/src/TenantMailModeSelector.vue")
-    coordinator = _read("apps/web/src/TenantWorkspaceCoordinator.vue")
+    config = _read("apps/web/src/TenantConfigurationCenter.vue")
+    booking = _read("apps/web/src/TenantBookingAndMessages.vue")
     if smtp:
         assert "MutationObserver" not in smtp
-        assert "TENANT_NAVIGATION_EVENT" in smtp
-    if coordinator:
-        assert "MutationObserver" not in coordinator
-        assert "TENANT_NAVIGATION_EVENT" in coordinator
+        assert "hashchange" in smtp
+    if config:
+        assert "MutationObserver" not in config
+        assert "#configuracoes" in config
+    if booking:
+        assert "MutationObserver" not in booking
+        assert "#agenda-publica" in booking

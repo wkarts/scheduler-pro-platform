@@ -73,7 +73,7 @@ jobs:
         run: |
           set -euo pipefail
           TAG="${SCHEDULER_PRO_RELEASE_TAG}"
-          NOTES='Release controlada do Scheduler Pro. Android publica APK debug ARM64 assinado para instalação direta em homologação. Desktop publica instaladores Windows MSI/NSIS, Linux DEB e macOS DMG. iOS publica IPA ARM64 não assinado; para instalar em aparelho físico é necessário assinar com identidade/provisionamento Apple.'
+          NOTES='Release PWA-first do Scheduler Pro. Web/Admin PWA são a experiência principal. Android publica APK ARM64 para homologação e iOS publica IPA ARM64; não são gerados instaladores desktop.'
           if gh release view "$TAG" >/dev/null 2>&1; then
             gh release upload "$TAG" artifacts/* --clobber
           else
@@ -85,70 +85,6 @@ jobs:
           path: artifacts/*
           if-no-files-found: error
 
-  desktop-installers:
-    name: Desktop installer ${{ matrix.app_name }} / ${{ matrix.label }}
-    needs: prepare-release
-    runs-on: ${{ matrix.os }}
-    timeout-minutes: 120
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - { os: ubuntu-24.04, label: linux, app_path: apps/desktop, app_name: client, bundles: deb }
-          - { os: windows-latest, label: windows, app_path: apps/desktop, app_name: client, bundles: 'msi,nsis' }
-          - { os: macos-15, label: macos, app_path: apps/desktop, app_name: client, bundles: dmg }
-          - { os: ubuntu-24.04, label: linux, app_path: apps/admin-desktop, app_name: admin, bundles: deb }
-          - { os: windows-latest, label: windows, app_path: apps/admin-desktop, app_name: admin, bundles: 'msi,nsis' }
-          - { os: macos-15, label: macos, app_path: apps/admin-desktop, app_name: admin, bundles: dmg }
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with: { node-version: '${{ env.NODE_VERSION }}', cache: npm }
-      - uses: dtolnay/rust-toolchain@stable
-      - name: Linux Tauri dependencies
-        if: matrix.label == 'linux'
-        run: sudo apt-get update && sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf
-      - name: Install JS deps
-        run: npm install
-      - name: Generate official Tauri desktop icons
-        run: npx tauri icon packages/branding/scheduler-pro/brand-symbol.svg --output ${{ matrix.app_path }}/src-tauri/icons
-      - name: Validate bundled local desktop frontend
-        run: node scripts/build/validate-desktop-local.mjs "${{ matrix.app_path }}"
-      - name: Normalize Windows installer version for MSI
-        if: matrix.label == 'windows'
-        shell: bash
-        run: |
-          set -euo pipefail
-          node scripts/build/normalize-tauri-windows-version.mjs \
-            "${{ matrix.app_path }}" \
-            "src-tauri/tauri.conf.json" \
-            "${{ needs.prepare-release.outputs.tag }}"
-      - name: Build installable desktop app
-        working-directory: ${{ matrix.app_path }}
-        run: npm run tauri:build -- --bundles ${{ matrix.bundles }}
-      - name: Collect installers only
-        shell: bash
-        run: |
-          set -euo pipefail
-          TAG="${{ needs.prepare-release.outputs.tag }}"
-          mkdir -p artifacts desktop-installers
-          find "${{ matrix.app_path }}/src-tauri/target/release/bundle" -type f \( -name '*.msi' -o -name '*setup*.exe' -o -name '*Setup*.exe' -o -name '*.dmg' -o -name '*.deb' -o -name '*.rpm' \) -print0 | while IFS= read -r -d '' file; do cp "$file" desktop-installers/; done
-          if [ -z "$(find desktop-installers -type f -print -quit)" ]; then
-            echo "Nenhum instalador final foi gerado." >&2
-            find "${{ matrix.app_path }}/src-tauri/target/release" -maxdepth 5 -type f | sed -n '1,160p'
-            exit 1
-          fi
-          tar -C desktop-installers -czf "artifacts/scheduler-pro-${{ matrix.app_name }}-desktop-${{ matrix.label }}-${TAG}.tar.gz" .
-          (cd artifacts && sha256sum * > "scheduler-pro-${{ matrix.app_name }}-desktop-${{ matrix.label }}-${TAG}.sha256")
-      - uses: actions/upload-artifact@v4
-        with:
-          name: scheduler-pro-${{ matrix.app_name }}-desktop-${{ matrix.label }}-${{ needs.prepare-release.outputs.tag }}
-          path: artifacts/*
-          if-no-files-found: error
-      - name: Attach desktop artifact to release
-        env: { GH_TOKEN: '${{ secrets.GITHUB_TOKEN }}' }
-        shell: bash
-        run: gh release upload "${{ needs.prepare-release.outputs.tag }}" artifacts/* --clobber
 
   android-debug-apks:
     name: Android debug installable ${{ matrix.app_name }}

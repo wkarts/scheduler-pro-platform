@@ -6,6 +6,7 @@ from app.cli import migrate_all_tenants
 from app.core.config import settings
 from app.core.security import hash_password
 from app.db.session import PlatformSession
+from app.services.builtin_template_package_service import sync_builtin_template_packages
 
 
 async def bootstrap_platform_admin() -> None:
@@ -70,6 +71,13 @@ async def bootstrap_platform_admin() -> None:
     print(f"Scheduler Pro platform admin ready: {normalized_email}")
 
 
+async def bootstrap_template_library() -> None:
+    async with PlatformSession() as session:
+        result = await sync_builtin_template_packages(session)
+    installed = sum(1 for item in result["templates"] if item.get("installed"))
+    print(f"Scheduler Pro official page-template families ready: {installed} installed/updated")
+
+
 async def bootstrap_platform() -> None:
     # Mantém compatibilidade com deployments antigos que ainda não possuam o
     # serviço one-shot scheduler-tenant-migrate no Compose. Em deployments atuais
@@ -77,6 +85,7 @@ async def bootstrap_platform() -> None:
     # contra tenant databases sem o Alembic head esperado pela imagem nova.
     await migrate_all_tenants()
     await bootstrap_platform_admin()
+    await bootstrap_template_library()
 
 
 if __name__ == "__main__":

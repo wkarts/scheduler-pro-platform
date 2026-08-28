@@ -26,82 +26,69 @@ def _read(path: str) -> str:
     return candidate.read_text(encoding="utf-8") if candidate.is_file() else ""
 
 
-def test_visual_builder_2_1_0_is_the_only_canonical_workspace_release() -> None:
+def test_visual_builder_2_3_0_is_the_canonical_page_workspace() -> None:
     raw = _read("packages/visual-builder/package.json")
     if not raw:
         return
     package = json.loads(raw)
     assert package["name"] == "@argws/visual-builder"
-    assert package["version"] == "2.1.0"
-    assert not package.get("dependencies")
-    assert "materialize" in package["scripts"]
-    assert "release-b64" in json.dumps(package)
-    assert "typecheck" in package["scripts"]
-    assert "build" in package["scripts"]
+    assert package["version"] == "2.3.0"
+    assert "project-workspace.js" in package["scripts"]["check"]
+    assert "release-b64" not in json.dumps(package)
+    assert "materialize" not in package["scripts"]
 
 
-def test_release_registry_exposes_only_2_1_0() -> None:
-    source = _read("packages/visual-builder/src/index.js")
-    if not source:
-        return
-    assert "ARGWS_VISUAL_BUILDER_VERSION='2.1.0'" in source
-    assert "ARGWS_VISUAL_BUILDER_DEFAULT_VERSION='2.1.0'" in source
-    assert "Object.freeze(['2.1.0'])" in source
-    assert "builder_version:ARGWS_VISUAL_BUILDER_VERSION" in source
-    assert "loadVisualBuilderRuntime" in source
-    for obsolete in ("1.0.0", "2.0.0", "2.0.1"):
-        assert f"releases/{obsolete}" not in source
+def test_visual_builder_uses_pages_first_class_and_scheduler_families() -> None:
+    project = _read("packages/visual-builder/src/project.js")
+    workspace = _read("packages/visual-builder/src/project-workspace.js")
+    templates = _read("packages/visual-builder/src/template-packages.js")
+    assert "createProjectPage" in project
+    assert "Projeto / Site" in workspace
+    assert "Modelos oficiais" in workspace
+    assert "importSchedulerProTemplateFamily" in templates
+    assert "landing.html e agendamento.html viram páginas independentes" in templates
+    assert "html_surface" not in workspace
 
 
-def test_old_visual_builder_release_directories_are_physically_removed() -> None:
-    for obsolete in ("1.0.0", "2.0.0", "2.0.1"):
-        assert not _path(f"packages/visual-builder/releases/{obsolete}").exists()
-    parts = _path("packages/visual-builder/release-b64/2.1.0")
-    assert parts.is_dir()
-    assert list(parts.glob("part-*.b64"))
-    materializer = _read("packages/visual-builder/scripts/materialize-release.mjs")
-    assert "const VERSION = '2.1.0'" in materializer
-    assert "EXPECTED_SHA256" in materializer
-    assert "template-packages.js" in materializer
+def test_old_materialized_visual_builder_runtime_is_physically_removed() -> None:
+    assert not _path("packages/visual-builder/release-b64").exists()
+    assert not _path("packages/visual-builder/runtime").exists()
+    assert not _path("packages/visual-builder/scripts/materialize-release.mjs").exists()
 
 
-def test_scheduler_pro_uses_visual_builder_2_1_0_without_old_editor_fallback() -> None:
-    source = _read("apps/web/src/App.vue")
+def test_scheduler_pro_uses_visual_builder_2_3_0_project_adapter() -> None:
+    app = _read("apps/web/src/App.vue")
+    host = _read("apps/web/src/TenantVisualPageBuilder.vue")
     package = _read("apps/web/package.json")
-    if not source or not package:
+    if not app or not package:
         return
-    assert "TenantVisualPageBuilder" in source
-    assert "<TenantVisualPageBuilder/>" in source
-    assert "TenantPublicPageEditorV2" not in source
-    assert "VITE_VISUAL_PAGE_BUILDER" not in source
-    assert json.loads(package)["dependencies"]["@argws/visual-builder"] == "2.1.0"
+    assert "TenantVisualPageBuilder" in app
+    assert "SchedulerProProjectAdapter" in host
+    assert "argws-visual-builder-app" in host
+    assert "#visual-builder" in host
+    assert json.loads(package)["dependencies"]["@argws/visual-builder"] == "2.3.0"
 
 
-def test_public_landing_uses_single_canonical_runtime() -> None:
+def test_public_pages_use_first_class_page_renderer() -> None:
     page = _read("apps/web/src/PublicSitePage.vue")
     renderer = _read("apps/web/src/PublicVisualLandingRenderer.vue")
     if not page or not renderer:
         return
     assert "PublicVisualLandingRenderer" in page
-    assert "builder_version" in page
-    assert "loadVisualBuilderRuntime" in renderer
     assert "argws-page-renderer" in renderer
-    assert "deep:true" not in renderer
-    assert "deep: true" not in renderer
-    assert "requestAnimationFrame" in renderer
+    assert "PageDocument" in renderer
+    assert "MutationObserver" not in renderer
 
 
-def test_builder_host_is_lazy_disposable_and_has_no_request_storm_observer() -> None:
+def test_builder_host_is_route_driven_and_disposable() -> None:
     source = _read("apps/web/src/TenantVisualPageBuilder.vue")
     if not source:
         return
-    assert "createSchedulerProAdapter" in source
-    assert "ARGWS_VISUAL_BUILDER_VERSION" in source
-    assert "document.createElement('argws-visual-builder')" in source
-    assert "editor?.remove()" in source
-    assert "await editor.load()" in source
+    assert "SchedulerProProjectAdapter" in source
+    assert "document.createElement('argws-visual-builder-app')" in source
+    assert "app?.remove()" in source
+    assert "hashchange" in source
     assert "MutationObserver" not in source
-    assert "TenantPublicPageEditorV2" not in source
 
 
 def test_control_plane_does_not_mount_obsolete_release_manager() -> None:

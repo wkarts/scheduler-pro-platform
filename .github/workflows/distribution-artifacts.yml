@@ -41,8 +41,6 @@ jobs:
           npm --workspace apps/admin run build
           npm --workspace apps/mobile run build
           npm --workspace apps/admin-mobile run build
-          npm --workspace apps/desktop run build
-          npm --workspace apps/admin-desktop run build
       - name: Pack artifacts
         run: |
           set -euo pipefail
@@ -57,9 +55,11 @@ jobs:
           {
             "product": "Scheduler Pro",
             "source_sha": "${GITHUB_SHA}",
-            "desktop_architecture": "bundled-vue-api-client",
+            "delivery_strategy": "pwa-first",
+            "web_architecture": "installable-pwa",
             "mobile_architecture": "dedicated-api-client",
-            "desktop_installers": "Desktop Artifacts workflow"
+            "native_targets": ["android", "ios"],
+            "desktop_installers": null
           }
           JSON
           sha256sum artifacts/apps/*.tar.gz artifacts/deploy/*.tar.gz > artifacts/SHA256SUMS.txt

@@ -9,14 +9,39 @@
   "orientation": "any",
   "background_color": "#FFFFFF",
   "theme_color": "#0B132B",
-  "categories": ["business", "productivity"],
+  "categories": [
+    "business",
+    "productivity"
+  ],
   "icons": [
-    { "src": "/icons/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" },
-    { "src": "/icons/maskable.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "maskable" }
+    {
+      "src": "/icons/icon.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icons/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
   ],
   "shortcuts": [
-    { "name": "Agenda", "short_name": "Agenda", "url": "/#agenda" },
-    { "name": "Clientes", "short_name": "Clientes", "url": "/#clientes" },
-    { "name": "WhatsApp", "short_name": "WhatsApp", "url": "/#whatsapp" }
+    {
+      "name": "Agenda",
+      "short_name": "Agenda",
+      "url": "/#agenda"
+    },
+    {
+      "name": "Clientes",
+      "short_name": "Clientes",
+      "url": "/#clientes"
+    },
+    {
+      "name": "Páginas públicas",
+      "short_name": "Páginas",
+      "url": "/#visual-builder"
+    }
   ]
 }

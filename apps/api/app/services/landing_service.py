@@ -285,15 +285,42 @@ class LandingPageService:
                 "Versão da página pública não encontrada.",
                 404,
             )
+        previous_published_id = page.current_version_id
+        if previous_published_id and str(previous_published_id) != str(version.id):
+            previous_published = (
+                await self.session.execute(
+                    select(LandingPageVersion).where(
+                        LandingPageVersion.id == previous_published_id,
+                        LandingPageVersion.landing_page_id == page.id,
+                    )
+                )
+            ).scalar_one_or_none()
+            if previous_published is not None and not str(previous_published.label or "").startswith(
+                ("Publicação da versão ", "Publicação anterior preservada da versão ", "Rollback de emergência para versão ", "Página em branco — emergência")
+            ):
+                await self._create_version(
+                    page,
+                    deepcopy(previous_published.content),
+                    label=f"Publicação anterior preservada da versão {previous_published.version_number}",
+                    source_version_id=str(previous_published.id),
+                )
+
+        published_snapshot = await self._create_version(
+            page,
+            deepcopy(version.content),
+            label=f"Publicação da versão {version.version_number}",
+            source_version_id=str(version.id),
+        )
         page.status = LandingPageStatus.published.value
-        page.current_version_id = version.id
-        page.draft_version_id = version.id
+        page.current_version_id = published_snapshot.id
+        page.draft_version_id = published_snapshot.id
         await self.session.commit()
         return {
             "id": str(page.id),
             "status": page.status,
             "current_version_id": str(page.current_version_id),
-            "version_number": version.version_number,
+            "version_number": published_snapshot.version_number,
+            "source_version_id": str(version.id),
         }
 
     async def versions(self, slug: str, *, limit: int = 100) -> list[dict[str, Any]]:
@@ -355,6 +382,135 @@ class LandingPageService:
             "version_number": restored.version_number,
             "source_version_id": str(source.id),
             "published_version_id": str(page.current_version_id) if page.current_version_id else None,
+        }
+
+    async def emergency_rollback(
+        self,
+        slug: str,
+        *,
+        created_by: str | None = None,
+    ) -> dict[str, object]:
+        # Publica novamente a última versão segura anterior à publicação atual.
+        await self._lock_page(slug)
+        page = await self._page(slug)
+        if page is None or not page.current_version_id:
+            raise APIError(
+                "LANDING_PUBLISHED_VERSION_NOT_FOUND",
+                "Não existe publicação para desfazer.",
+                409,
+            )
+
+        current = (
+            await self.session.execute(
+                select(LandingPageVersion).where(
+                    LandingPageVersion.id == page.current_version_id,
+                    LandingPageVersion.landing_page_id == page.id,
+                )
+            )
+        ).scalar_one_or_none()
+        if current is None:
+            raise APIError(
+                "LANDING_PUBLISHED_VERSION_NOT_FOUND",
+                "A versão publicada atual não foi encontrada.",
+                409,
+            )
+
+        rows = (
+            await self.session.execute(
+                select(LandingPageVersion)
+                .where(
+                    LandingPageVersion.landing_page_id == page.id,
+                    LandingPageVersion.version_number < current.version_number,
+                )
+                .order_by(desc(LandingPageVersion.version_number))
+                .limit(200)
+            )
+        ).scalars().all()
+        if not rows:
+            raise APIError(
+                "LANDING_ROLLBACK_NOT_AVAILABLE",
+                "Não existe uma versão anterior para restaurar.",
+                409,
+            )
+
+        publication_prefixes = (
+            "Publicação da versão ",
+            "Publicação anterior preservada da versão ",
+            "Rollback de emergência para versão ",
+            "Página em branco — emergência",
+        )
+        source = next(
+            (
+                item
+                for item in rows
+                if str(item.label or "").startswith(publication_prefixes)
+            ),
+            rows[0],
+        )
+        restored = await self._create_version(
+            page,
+            deepcopy(source.content),
+            created_by=created_by,
+            label=f"Rollback de emergência para versão {source.version_number}",
+            source_version_id=str(source.id),
+        )
+        page.status = LandingPageStatus.published.value
+        page.current_version_id = restored.id
+        page.draft_version_id = restored.id
+        await self.session.commit()
+        return {
+            "id": str(page.id),
+            "status": page.status,
+            "current_version_id": str(restored.id),
+            "version_number": restored.version_number,
+            "restored_from_version_id": str(source.id),
+            "restored_from_version_number": source.version_number,
+        }
+
+    async def emergency_blank(
+        self,
+        slug: str,
+        *,
+        created_by: str | None = None,
+    ) -> dict[str, object]:
+        # Publica HTML realmente vazio, preservando versões anteriores.
+        await self._lock_page(slug)
+        page = await self._page(slug, create=True)
+        assert page is not None
+        blank_html = (
+            '<!doctype html>\n'
+            '<html lang="pt-BR">\n<head>\n'
+            '<meta charset="utf-8">\n'
+            '<meta name="viewport" content="width=device-width,initial-scale=1">\n'
+            '<meta name="scheduler-pro-template" content="emergency-blank">\n'
+            '<meta name="scheduler-pro-content-version" content="2">\n'
+            '<meta name="scheduler-pro-surface" content="landing">\n'
+            '<title>Página em branco</title>\n'
+            '<style>html,body{margin:0;min-height:100%;background:#fff}'
+            '@media(max-width:680px){body{min-height:100dvh}}</style>\n'
+            '</head>\n<body></body>\n</html>'
+        )
+        content = HtmlTemplateContract.wrapper(
+            blank_html,
+            expected_surface="LANDING",
+        )
+        version = await self._create_version(
+            page,
+            content,
+            created_by=created_by,
+            label="Página em branco — emergência",
+        )
+        page.status = LandingPageStatus.published.value
+        page.current_version_id = version.id
+        page.draft_version_id = version.id
+        page.template_key = "emergency-blank"
+        await self.session.commit()
+        return {
+            "id": str(page.id),
+            "status": page.status,
+            "current_version_id": str(version.id),
+            "version_number": version.version_number,
+            "blank": True,
         }
 
     async def duplicate(

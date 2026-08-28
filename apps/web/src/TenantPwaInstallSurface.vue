@@ -15,7 +15,7 @@ const consoleTarget = ref(false)
 const showHelp = ref(false)
 const busy = ref(false)
 const message = ref('')
-let observer: MutationObserver | undefined
+let targetRaf=0
 
 function refreshTargets(): void {
   loginTarget.value = Boolean(document.querySelector('.tenant-login-card'))
@@ -23,9 +23,10 @@ function refreshTargets(): void {
   consoleTarget.value = Boolean(topbar && !topbar.querySelector('.install-top'))
 }
 
+function scheduleTargets():void{cancelAnimationFrame(targetRaf);targetRaf=requestAnimationFrame(refreshTargets)}
 function refreshState(): void {
   state.value = getPwaInstallState()
-  refreshTargets()
+  scheduleTargets()
 }
 
 function buttonLabel(): string {
@@ -62,15 +63,19 @@ function onState(): void { refreshState() }
 
 onMounted(async () => {
   await nextTick()
-  window.requestAnimationFrame(refreshTargets)
+  scheduleTargets()
   window.addEventListener(PWA_INSTALL_STATE_EVENT, onState)
-  observer = new MutationObserver(refreshTargets)
-  observer.observe(document.body, { subtree: true, childList: true })
+  window.addEventListener('scheduler-pro-auth-changed', scheduleTargets)
+  window.addEventListener('hashchange', scheduleTargets)
+  window.addEventListener('resize', scheduleTargets)
 })
 
 onUnmounted(() => {
   window.removeEventListener(PWA_INSTALL_STATE_EVENT, onState)
-  observer?.disconnect()
+  window.removeEventListener('scheduler-pro-auth-changed', scheduleTargets)
+  window.removeEventListener('hashchange', scheduleTargets)
+  window.removeEventListener('resize', scheduleTargets)
+  cancelAnimationFrame(targetRaf)
 })
 </script>
 

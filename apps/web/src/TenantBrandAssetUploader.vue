@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue'
 import { ImageUp, Upload } from 'lucide-vue-next'
 
 type AssetKind = 'logo' | 'icon' | 'favicon'
@@ -10,7 +10,6 @@ const busy = ref<AssetKind | ''>('')
 const message = ref('')
 const error = ref('')
 const storage = ref<StorageState | null>(null)
-let observer: MutationObserver | undefined
 let detectRaf = 0
 
 const storageLabel = computed(() => {
@@ -25,11 +24,17 @@ function formatBytes(value:number):string {
 }
 
 function syncTarget(): void {
-  const root = document.querySelector('.tenant-console .main-content > .sp-extension-root')
-  const heading = root?.querySelector('.sp-extension-header h1')?.textContent?.trim() || ''
-  brandingOpen.value = Boolean(root && heading === 'Personalização do tenant')
+  const route=(window.location.hash||'').replace(/^#/,'')
+  if(route!=='personalizacao'){brandingOpen.value=false;return}
+  // A extensão de Personalização é montada pela mesma rota. Esperamos apenas o
+  // próximo frame para o alvo do Teleport existir, sem observar o DOM inteiro.
+  cancelAnimationFrame(detectRaf)
+  detectRaf=requestAnimationFrame(()=>{
+    brandingOpen.value=Boolean(document.querySelector('.tenant-console .main-content > .sp-extension-root'))
+  })
 }
-function scheduleSync():void { cancelAnimationFrame(detectRaf); detectRaf=requestAnimationFrame(syncTarget) }
+function scheduleSync():void { void nextTick().then(syncTarget) }
+
 
 async function upload(kind: AssetKind, event: Event): Promise<void> {
   const input = event.target as HTMLInputElement
@@ -69,11 +74,15 @@ async function upload(kind: AssetKind, event: Event): Promise<void> {
 }
 
 onMounted(() => {
-  syncTarget()
-  observer = new MutationObserver(scheduleSync)
-  observer.observe(document.body, { childList: true, subtree: true })
+  window.addEventListener('hashchange', scheduleSync)
+  window.addEventListener('popstate', scheduleSync)
+  scheduleSync()
 })
-onUnmounted(() => { observer?.disconnect(); cancelAnimationFrame(detectRaf) })
+onUnmounted(() => {
+  window.removeEventListener('hashchange', scheduleSync)
+  window.removeEventListener('popstate', scheduleSync)
+  cancelAnimationFrame(detectRaf)
+})
 </script>
 
 <template>

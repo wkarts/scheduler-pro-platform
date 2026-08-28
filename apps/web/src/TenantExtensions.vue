@@ -103,7 +103,20 @@ async function open(view:ExtensionView):Promise<void> {
   } catch(exc) { error.value=exc instanceof Error?exc.message:'Não foi possível carregar esta área.' }
   finally { loading.value=false }
 }
-function close():void { active.value='' }
+function close():void { active.value=''; if(['#personalizacao','#smtp'].includes(window.location.hash)) window.location.hash='dashboard' }
+function routeView():ExtensionView {
+  const hash=(window.location.hash||'').replace(/^#/,'')
+  if(hash==='personalizacao') return 'branding'
+  if(hash==='smtp') return 'smtp'
+  return ''
+}
+async function syncRoute():Promise<void> {
+  const next=routeView()
+  if(next && next!==active.value) await open(next)
+  else if(!next && active.value) active.value=''
+}
+function onRouteChange(){void syncRoute()}
+
 function moveMonth(delta:number):void { monthCursor.value=new Date(monthCursor.value.getFullYear(),monthCursor.value.getMonth()+delta,1) }
 function selectCalendarDay(key:string):void { selectedDay.value=key }
 
@@ -139,16 +152,11 @@ async function testSmtp():Promise<void> {
 }
 
 watch(active,(value)=>document.body.classList.toggle('sp-extension-open',Boolean(value)))
-onMounted(async()=>{ await nextTick(); window.requestAnimationFrame(()=>{portalReady.value=Boolean(document.querySelector('.tenant-console .nav-list')&&document.querySelector('.tenant-console .main-content'))}); await initialLoad() })
-onUnmounted(()=>document.body.classList.remove('sp-extension-open'))
+onMounted(async()=>{ await nextTick(); portalReady.value=Boolean(document.querySelector('.tenant-console .main-content')); await initialLoad(); window.addEventListener('hashchange',onRouteChange); await syncRoute() })
+onUnmounted(()=>{document.body.classList.remove('sp-extension-open');window.removeEventListener('hashchange',onRouteChange)})
 </script>
 
 <template>
-  <Teleport v-if="portalReady" to=".tenant-console .nav-list">
-    <button v-if="canCalendar" class="nav-item sp-extension-nav" @click="open('calendar')"><CalendarDays :size="19"/><span>Calendário</span></button>
-    <button v-if="canBranding" class="nav-item sp-extension-nav" @click="open('branding')"><Palette :size="19"/><span>Personalização</span></button>
-    <button v-if="canSmtp" class="nav-item sp-extension-nav" @click="open('smtp')"><Mail :size="19"/><span>E-mail SMTP</span></button>
-  </Teleport>
   <Teleport v-if="portalReady && manifest?.assets.logo_url" to=".tenant-console .sidebar .brand">
     <img class="sp-sidebar-logo" :src="manifest.assets.logo_url" :alt="manifest.app.public_name" />
   </Teleport>
