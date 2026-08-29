@@ -47,16 +47,12 @@ function applySidebarBranding(manifest: BrandingManifest): void {
   const customDark = Boolean(darkLogo && !PLATFORM_LOGOS.has(darkLogo))
   const customLogo = customPrimary || customDark
 
-  // Desktop usa a variante apropriada para a sidebar escura. Quando o tenant não
-  // possui logo_dark própria, a logo principal do próprio tenant tem prioridade.
   const desktopLogo = customDark
     ? darkLogo
     : customPrimary
       ? primaryLogo
       : darkLogo || '/branding/scheduler-pro-logo-dark.png'
 
-  // Mobile usa fundo claro. Se não houver marca própria, usa o ícone da identidade
-  // acompanhado do nome do tenant, evitando duplicar o wordmark Scheduler Pro.
   const mobileLogo = customPrimary
     ? primaryLogo
     : customDark
@@ -81,7 +77,11 @@ export function applyBranding(manifest: BrandingManifest): void {
   root.style.setProperty('--sp-text', manifest.theme.colors.text)
   root.style.setProperty('--sp-radius', manifest.theme.border_radius)
   root.style.setProperty('--sp-font', manifest.theme.font_family)
-  document.title = manifest.app.public_name || manifest.app.name
+
+  // A identidade do tenant personaliza a experiência visual, mas não renomeia
+  // o produto hospedeiro. Landing/Booking podem definir seus próprios títulos
+  // depois desta etapa; o shell nativo permanece Scheduler Pro.
+  document.title = 'Scheduler Pro'
   root.dataset.tenantTheme = manifest.theme.mode || 'system'
   applySidebarBranding(manifest)
 
