@@ -44,6 +44,16 @@ def test_tenant_visual_builder_autoloads_and_handles_close_event() -> None:
     assert "scheduler_pro_public_pages_last_surface" in source
 
 
+def test_public_pages_workspace_recovers_from_same_hash_and_stuck_loading() -> None:
+    app = _source("apps/web/src/App.vue")
+    assert "publicPagesEpoch" in app
+    assert 'document.addEventListener(\'click\',onPublicPagesNavCapture,true)' in app
+    assert "window.location.hash==='#visual-builder'" in app
+    assert "publicPagesWatchdog" in app
+    assert "now-publicPagesLoadingSince>15000" in app
+    assert '<TenantVisualPageBuilder :key="publicPagesEpoch"/>' in app
+
+
 def test_control_plane_importer_accepts_experience_v2() -> None:
     source = _source("apps/admin/src/AdminHtmlTemplateImportOverlay.vue")
     service = _source("apps/api/app/services/html_template_package_service.py")
@@ -66,3 +76,14 @@ def test_mobile_drawer_is_topmost_versioned_and_tenant_branded() -> None:
     assert "display: none !important" in css
     assert "background-image: var(--sp-sidebar-logo-desktop" in css
     assert "background-image: var(--sp-sidebar-logo-mobile" in css
+
+
+def test_desktop_sidebar_branding_keeps_tenant_name_and_version_proportional() -> None:
+    app = _source("apps/web/src/App.vue")
+    desktop = _source("apps/web/src/tenant-shell-desktop-branding-fix.css")
+    assert "tenant-shell-desktop-branding-fix.css" in app
+    assert "@media (min-width: 901px)" in desktop
+    assert "grid-template-columns: 52px minmax(0, 1fr)" in desktop
+    assert "font-size: 14px !important" in desktop
+    assert "font-size: 10px !important" in desktop
+    assert "text-overflow: ellipsis !important" in desktop
