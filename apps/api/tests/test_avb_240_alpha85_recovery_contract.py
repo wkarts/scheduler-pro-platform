@@ -76,3 +76,14 @@ def test_mobile_drawer_is_topmost_versioned_and_tenant_branded() -> None:
     assert "display: none !important" in css
     assert "background-image: var(--sp-sidebar-logo-desktop" in css
     assert "background-image: var(--sp-sidebar-logo-mobile" in css
+
+
+def test_desktop_sidebar_branding_keeps_tenant_name_and_version_proportional() -> None:
+    app = _source("apps/web/src/App.vue")
+    desktop = _source("apps/web/src/tenant-shell-desktop-branding-fix.css")
+    assert "tenant-shell-desktop-branding-fix.css" in app
+    assert "@media (min-width: 901px)" in desktop
+    assert "grid-template-columns: 52px minmax(0, 1fr)" in desktop
+    assert "font-size: 14px !important" in desktop
+    assert "font-size: 10px !important" in desktop
+    assert "text-overflow: ellipsis !important" in desktop
