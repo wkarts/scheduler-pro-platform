@@ -22,11 +22,11 @@ const activeView=ref((window.location.hash||'#dashboard').replace(/^#/,'')||'das
 const normalizedPath=window.location.pathname.replace(/\/+$/,'')||'/'
 const initialHash=window.location.hash.replace(/^#/,'')
 const sourcePwa=new URLSearchParams(window.location.search).get('source')==='pwa'
-const publicLogin=ref(normalizedPath==='/login')
+const publicLogin=computed(()=>normalizedPath==='/login'&&!authenticated.value)
 const pwaOpenMode=ref('AUTO')
 const publicRoot=computed(()=>normalizedPath==='/'&&!initialHash&&(!sourcePwa||pwaOpenMode.value==='LANDING'))
 const publicSurface=computed(()=>['/agendar','/pagina'].includes(normalizedPath)||publicRoot.value)
-const forcePwaLogin=computed(()=>sourcePwa&&pwaOpenMode.value==='LOGIN')
+const forcePwaLogin=computed(()=>sourcePwa&&pwaOpenMode.value==='LOGIN'&&!authenticated.value)
 function refreshAuthState():void{authenticated.value=Boolean(localStorage.getItem('scheduler_pro_access_token'))}
 function refreshRoute():void{activeView.value=(window.location.hash||'#dashboard').replace(/^#/,'')||'dashboard'}
 function onStorage(event:StorageEvent):void{if(event.key==='scheduler_pro_access_token')refreshAuthState()}
@@ -45,7 +45,8 @@ onUnmounted(()=>{window.removeEventListener('storage',onStorage);window.removeEv
       <TenantAgendaCenter v-if="activeView==='agenda'"/>
       <TenantExtensions v-if="activeView==='personalizacao'||activeView==='smtp'"/>
       <TenantConfigurationCenter v-if="activeView==='configuracoes'"/>
-      <TenantVisualPageBuilder v-if="activeView==='visual-builder'"/>
+      <!-- PR63_FINAL_RUNTIME_FIX: permanece montado; o componente sincroniza o hash internamente. -->
+      <TenantVisualPageBuilder/>
       <TenantBookingAndMessages v-if="activeView==='agenda-publica'||activeView==='mensagens'"/>
       <TenantMailModeSelector v-if="activeView==='smtp'"/>
       <TenantBrandAssetUploader v-if="activeView==='personalizacao'"/>

@@ -90,10 +90,10 @@ async def tenant_pwa_manifest(
         icons = [{"src": f"{icon_url}{version_suffix}", "sizes": "any", "type": "image/png", "purpose": "any maskable"}]
     else:
         icons = [
-            {"src": "/icons/icon-192.png?v=avb240-brand-v2", "sizes": "192x192", "type": "image/png", "purpose": "any"},
-            {"src": "/icons/icon-512.png?v=avb240-brand-v2", "sizes": "512x512", "type": "image/png", "purpose": "any"},
-            {"src": "/icons/maskable-192.png?v=avb240-brand-v2", "sizes": "192x192", "type": "image/png", "purpose": "maskable"},
-            {"src": "/icons/maskable-512.png?v=avb240-brand-v2", "sizes": "512x512", "type": "image/png", "purpose": "maskable"},
+            {"src": "/icons/icon-192.png?v=avb240-brand-v3", "sizes": "192x192", "type": "image/png", "purpose": "any"},
+            {"src": "/icons/icon-512.png?v=avb240-brand-v3", "sizes": "512x512", "type": "image/png", "purpose": "any"},
+            {"src": "/icons/maskable-192.png?v=avb240-brand-v3", "sizes": "192x192", "type": "image/png", "purpose": "maskable"},
+            {"src": "/icons/maskable-512.png?v=avb240-brand-v3", "sizes": "512x512", "type": "image/png", "purpose": "maskable"},
         ]
     payload = {
         "id": f"/{context.slug}",

@@ -62,7 +62,15 @@ async function handleRuntime(data:BridgeMessage):Promise<void>{
     respond(false,null,'Ação não suportada pelo host Scheduler Pro.')
   }catch(error){respond(false,null,error instanceof Error?error.message:'Falha no Template Runtime SDK.')}
 }
-function localNavigation(href:string):void{if(['/agendar','/pagina','/login'].some(path=>href===path||href.startsWith(path+'?')))window.location.assign(href)}
+// PR63_FINAL_RUNTIME_FIX: Login sempre resolvido pelo host nativo.
+function localNavigation(href:string):void{
+  if(href==='/login'||href.startsWith('/login?')){
+    const authenticated=Boolean(localStorage.getItem('scheduler_pro_access_token'))
+    window.location.assign(authenticated?'/#dashboard':href)
+    return
+  }
+  if(['/agendar','/pagina'].some(path=>href===path||href.startsWith(path+'?')))window.location.assign(href)
+}
 function onMessage(event:MessageEvent):void{if(event.source!==frame.value?.contentWindow)return;const data=event.data as BridgeMessage|null;if(!data||typeof data!=='object')return;if(data.type==='scheduler-pro-html-api-request')void handleApi(data);if(data.type==='argws-runtime-request')void handleRuntime(data);if(data.type==='scheduler-pro-auth-login')void handleLogin(data);if(data.type==='scheduler-pro-html-navigate'&&data.href)localNavigation(data.href);if(data.type==='scheduler-pro-analytics-track')window.dispatchEvent(new CustomEvent('scheduler-pro-analytics-event',{detail:{name:(data as any).name||'',payload:(data as any).payload||{}}}));if(data.type==='scheduler-pro-html-height'){const next=Math.max(480,Math.min(20000,Number(data.height||0)));if(Number.isFinite(next))frameHeight.value=next}}
 function pushContext():void{frame.value?.contentWindow?.postMessage({type:'scheduler-pro-context',context:props.context||{}},'*')}
 onMounted(()=>window.addEventListener('message',onMessage));onUnmounted(()=>window.removeEventListener('message',onMessage))

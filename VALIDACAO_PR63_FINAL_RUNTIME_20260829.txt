@@ -1,0 +1,31 @@
+Scheduler Pro — Validação PR63 Final Runtime
+Data: 2026-08-29
+
+BASE
+- Release: v0.1.0-alpha.83
+- Commit: 9f710d6ecdd9420fdaa1d66eb2e79c0074446083
+- Fonte: artefato oficial scheduler-pro-release-v0.1.0-alpha.83 / scheduler-pro-source-v0.1.0-alpha.83.tar.gz
+
+RESULTADOS
+[PASS] verify_update.py
+[PASS] Python compileall: apps/api/app + teste regressivo PR63
+[PASS] ARGWS Visual Builder 2.4.0 npm run check
+[PASS] ARGWS Visual Builder 2.4.0 npm test — 72/72
+[PASS] Booking visual incompatível não derruba motor público
+[PASS] Assets Landing/Booking com mesmo SHA preservam caminhos independentes
+[PASS] Alias legado landing-* <-> booking-*
+[PASS] Bindings de imagem não imprimem URL como texto
+[PASS] Login nativo fora do PublicSitePage
+[PASS] TenantVisualPageBuilder permanece montado
+[PASS] Manifest PWA avb240-brand-v3
+[PASS] Service Worker avb-2.4.0-pr63-final-runtime-v6
+[PASS] PWA icon-192/icon-512/maskable com transparência
+[PASS] Workflow integration-tests.yml preservado byte a byte
+
+WORKFLOW CANÔNICO
+SHA-256 original : 8e7ae47d34275e0e2340c8fbf335fac6af2c34c77ce96bc7465643b35a8fdf72
+SHA-256 atualizado: 8e7ae47d34275e0e2340c8fbf335fac6af2c34c77ce96bc7465643b35a8fdf72
+
+LIMITAÇÃO DO RUNTIME LOCAL
+O pytest completo da API não pôde ser iniciado porque `structlog` não está instalado no ambiente de validação e é importado por tests/conftest.py.
+GitHub Actions deve reconfirmar Ruff, MyPy, pytest completo, builds Vue/TypeScript e integração.

@@ -92,17 +92,28 @@ def _safe_booking_html(value: str) -> str:
     )
 
 
-def _apply_booking_template_copy(config: dict[str, Any]) -> None:
+def _apply_booking_template_copy(config: dict[str, Any]) -> bool:
+    """Aplica somente a cópia visual de um template compatível.
+
+    PR63_FINAL_RUNTIME_FIX: template visual inválido não derruba Booking.
+    O motor público continua disponível e o chamador pode aplicar o fallback canônico.
+    """
     template = config.get("booking_template")
     if not isinstance(template, dict):
-        return
+        config.pop("booking_template", None)
+        return False
     content = template.get("content")
     if not isinstance(content, dict):
-        return
-    TemplateContract.ensure_content("BOOKING", content, strict=False)
+        config.pop("booking_template", None)
+        return False
+    try:
+        TemplateContract.ensure_content("BOOKING", content, strict=False)
+    except APIError:
+        config.pop("booking_template", None)
+        return False
     copy = content.get("copy")
     if not isinstance(copy, dict):
-        return
+        return True
     title = str(copy.get("title") or "").strip()
     subtitle = str(copy.get("subtitle") or "").strip()
     success_message = str(copy.get("success") or "").strip()
@@ -112,6 +123,7 @@ def _apply_booking_template_copy(config: dict[str, Any]) -> None:
         config["subtitle"] = subtitle
     if success_message:
         config["success_message"] = success_message
+    return True
 
 
 def _stream(body: Any) -> Iterator[bytes]:
@@ -148,6 +160,42 @@ async def public_experience_page(
     return success({"surface": normalized, "page": result["page"], "version": result["version"], "branding": branding, "context": runtime})
 
 
+# PR63_FINAL_RUNTIME_FIX: alias Landing/Booking para assets já migrados
+def _legacy_experience_asset_alias(key: str) -> str | None:
+    if not key.startswith(PUBLIC_EXPERIENCE_ASSET_PREFIX):
+        return None
+    directory, separator, filename = key.rpartition("/")
+    if not separator:
+        return None
+    if filename.startswith("landing-"):
+        alternate = "booking-" + filename[len("landing-") :]
+    elif filename.startswith("booking-"):
+        alternate = "landing-" + filename[len("booking-") :]
+    else:
+        return None
+    return f"{directory}/{alternate}"
+
+
+async def _get_public_asset_with_legacy_alias(
+    context: TenantContext, key: str
+) -> dict[str, Any]:
+    service = TenantFileService(context)
+    try:
+        return await service.get_object(key)
+    except APIError as original:
+        if original.code != "FILE_NOT_FOUND":
+            raise
+        alternate = _legacy_experience_asset_alias(key)
+        if alternate is None:
+            raise
+        try:
+            return await service.get_object(alternate)
+        except APIError as fallback_error:
+            if fallback_error.code == "FILE_NOT_FOUND":
+                raise original
+            raise
+
+
 @router.get("/assets/{key:path}")
 async def public_landing_asset(
     key: str,
@@ -160,7 +208,7 @@ async def public_landing_asset(
     ):
         raise APIError("PUBLIC_ASSET_NOT_FOUND", "Arquivo público não encontrado.", 404)
 
-    result = await TenantFileService(context).get_object(normalized)
+    result = await _get_public_asset_with_legacy_alias(context, normalized)
     content_type = str(result.get("ContentType") or "application/octet-stream").lower()
     if content_type not in PUBLIC_ASSET_TYPES:
         try:
@@ -225,73 +273,13 @@ async def public_login_page(
     tenant_session: AsyncSession = Depends(get_tenant_session),
     platform_session: AsyncSession = Depends(get_platform_session),
 ) -> dict[str, Any]:
+    # PR63_FINAL_RUNTIME_FIX: Login é superfície nativa. Este endpoint existe apenas
+    # como descriptor para templates/integrações antigas e nunca entrega login.html.
     runtime = await PublicPageContextService(
         context=context,
         tenant_session=tenant_session,
         platform_session=platform_session,
     ).build()
-    if not runtime["pages"]["login"]["enabled"]:
-        raise APIError(
-            "PUBLIC_LOGIN_DISABLED",
-            "O Login público está desativado para esta empresa.",
-            404,
-        )
-
-    preferences = runtime.get("preferences", {})
-    key = str(preferences.get("login_page_template_key") or DEFAULT_TEMPLATE_KEY)
-    custom_content = await tenant_session.scalar(
-        text("select value from tenant_settings where key='login_page_template_content'")
-    )
-    custom_version = await tenant_session.scalar(
-        text("select value from tenant_settings where key='login_page_template_version'")
-    )
-    content: dict[str, Any] | None = None
-    version_number: int | float | str | None = None
-    status = "PUBLISHED"
-
-    if isinstance(custom_content, dict) and HtmlTemplateContract.is_html_content(
-        custom_content
-    ):
-        try:
-            HtmlTemplateContract.ensure_wrapper(
-                custom_content,
-                expected_surface="LOGIN",
-            )
-        except APIError:
-            custom_content = None
-        else:
-            content = custom_content
-            version_number = custom_version if custom_version is not None else 1
-            status = "CUSTOM"
-
-    if content is None:
-        service = GlobalTemplateService(platform_session)
-        try:
-            template = await service.content(
-                surface="LOGIN",
-                key=key,
-                tenant_id=context.tenant_id,
-            )
-        except APIError as exc:
-            if exc.code != "GLOBAL_TEMPLATE_NOT_FOUND" or key == DEFAULT_TEMPLATE_KEY:
-                raise
-            key = DEFAULT_TEMPLATE_KEY
-            template = await service.content(
-                surface="LOGIN",
-                key=key,
-                tenant_id=context.tenant_id,
-            )
-        content = template["version"]["content"]
-        version_number = template["version"]["version_number"]
-        if not isinstance(content, dict) or not HtmlTemplateContract.is_html_content(
-            content
-        ):
-            raise APIError(
-                "PUBLIC_LOGIN_TEMPLATE_INVALID",
-                "A página de Login configurada é incompatível.",
-                409,
-            )
-
     branding = await BrandingService(platform_session).manifest_for_context(context)
     return success(
         {
@@ -299,10 +287,9 @@ async def public_login_page(
             "branding": branding,
             "context": runtime,
             "login_page": {
-                "status": status,
-                "template_key": key,
-                "version_number": version_number,
-                "content": content,
+                "native": True,
+                "route": "/login",
+                "template": None,
             },
         }
     )
@@ -372,7 +359,8 @@ async def public_booking_catalog(
         timezone=context.timezone,
     )
     catalog = await service.catalog()
-    if not catalog["config"].get("booking_template"):
+    template_valid = _apply_booking_template_copy(catalog["config"])
+    if not template_valid:
         fallback = await GlobalTemplateService(platform_session).content(
             surface="BOOKING",
             key=DEFAULT_TEMPLATE_KEY,
@@ -384,7 +372,7 @@ async def public_booking_catalog(
             "content": fallback["version"]["content"],
             "fallback": True,
         }
-    _apply_booking_template_copy(catalog["config"])
+        _apply_booking_template_copy(catalog["config"])
     catalog["config"]["custom_html"] = _safe_booking_html(
         str(catalog["config"].get("custom_html") or "")
     )

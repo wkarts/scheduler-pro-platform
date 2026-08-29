@@ -1,6 +1,9 @@
 export const BINDINGS_SCHEMA='argws-bindings/v1';
 export const BINDING_TYPES=Object.freeze(['text','richtext','image','color','phone','url','boolean','section','list','number','select']);
 const isObject=v=>Boolean(v&&typeof v==='object'&&!Array.isArray(v));
+// PR63_FINAL_RUNTIME_FIX: bindings de imagem persistidos como text continuam visuais.
+const semanticImageKey=key=>/(?:^|\.)(?:logo(?:_dark)?|image|photo|avatar)(?:$|\.)/i.test(String(key||''));
+function normalizedBindingType(key,type){const candidate=BINDING_TYPES.includes(type)?type:'text';return candidate==='text'&&semanticImageKey(key)?'image':candidate;}
 
 export function normalizeBindingsManifest(input={}){
   const source=isObject(input)?input:{};
@@ -10,7 +13,7 @@ export function normalizeBindingsManifest(input={}){
     if(key==='schema'||key==='version') continue;
     const definition=isObject(value)?value:{};
     bindings[key]={
-      type:BINDING_TYPES.includes(definition.type)?definition.type:'text',
+      type:normalizedBindingType(key,definition.type),
       label:String(definition.label||key),
       group:String(definition.group||'Conteúdo'),
       default:definition.default??null,
@@ -47,8 +50,9 @@ export function applyBindingsToHtml(html,values={},definitions={}){
   let output=String(html??'');
   output=output.replace(/(<[^>]+\bdata-sp-bind=["']([^"']+)["'][^>]*>)([\s\S]*?)(<\/[^>]+>)/gi,(all,open,key,current,close)=>{
     if(!(key in values)) return all;
-    const type=definitions?.[key]?.type||'text';
+    const type=normalizedBindingType(key,definitions?.[key]?.type||'text');
     const value=values[key];
+    if(type==='image') return `${open}<img src="${escAttr(value)}" alt="">${close}`;
     if(type==='richtext') return `${open}${String(value??'')}${close}`;
     if(type==='boolean'||type==='section') return value?all:'';
     return `${open}${escText(value)}${close}`;

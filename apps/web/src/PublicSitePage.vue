@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, type CSSProperties } from 'vue'
-import { CalendarDays, LoaderCircle, LogIn } from 'lucide-vue-next'
+import { CalendarDays, LoaderCircle } from 'lucide-vue-next'
 import { applyBindingsToHtml, createThemeTokens, normalizeBindingsManifest, themeTokensToCss } from '@argws/visual-builder'
 import { applyBranding, type BrandingManifest } from './branding'
 import HtmlTemplateFrame from './HtmlTemplateFrame.vue'
@@ -26,15 +26,14 @@ type BlockPageContent={version:number;schema?:string;builder_version?:string;glo
 type PageContent=BlockPageContent|HtmlContent
 type LandingPage={status:string;template_key?:string|null;content:PageContent}
 type LandingPayload={branding:BrandingManifest;landing_page:LandingPage;context?:RuntimeContext}
-type LoginPayload={branding:BrandingManifest;login_page:{content:HtmlContent;template_key:string};context:RuntimeContext}
 type ExperiencePayload={surface:'LANDING'|'BOOKING';page:{template_key?:string|null};version:{html:string;metadata?:Record<string,any>;bindings_values?:Record<string,any>;theme?:Record<string,any>};branding:BrandingManifest;context:RuntimeContext}
 type Envelope<T>={data?:T;error?:{message?:string}}
 
 const path=window.location.pathname.replace(/\/+$/,'')||'/'
 const landingMode=computed(()=>path==='/pagina')
-const loginMode=computed(()=>path==='/login')
-const bookingMode=computed(()=>!landingMode.value&&!loginMode.value)
-const catalog=ref<Catalog|null>(null),landing=ref<LandingPage|null>(null),loginPage=ref<HtmlContent|null>(null),branding=ref<BrandingManifest|null>(null),runtimeContext=ref<RuntimeContext>({})
+// PR63_FINAL_RUNTIME_FIX: PublicSitePage não renderiza Login; /login pertence ao host nativo.
+const bookingMode=computed(()=>!landingMode.value)
+const catalog=ref<Catalog|null>(null),landing=ref<LandingPage|null>(null),branding=ref<BrandingManifest|null>(null),runtimeContext=ref<RuntimeContext>({})
 const loading=ref(true),error=ref(''),experienceHtml=ref('')
 let analyticsConfig:ReturnType<typeof installPublicAnalytics>={}
 function isHtmlContent(value:unknown):value is HtmlContent{return Boolean(value&&typeof value==='object'&&(value as HtmlContent).render_mode==='HTML'&&typeof (value as HtmlContent).html_document==='string')}
@@ -42,7 +41,6 @@ function blockContent(value:PageContent):BlockPageContent{return value as BlockP
 function widgetTemplate(template:BookingTemplate|null|undefined):WidgetBookingTemplate|null{if(!template||isHtmlContent(template.content))return null;return{key:template.key,version:template.version,content:template.content}}
 const landingHtml=computed(()=>landing.value&&isHtmlContent(landing.value.content)?landing.value.content.html_document:'')
 const bookingHtml=computed(()=>{const content=catalog.value?.config.booking_template?.content;return isHtmlContent(content)?content.html_document:''})
-const loginHtml=computed(()=>loginPage.value?.html_document||'')
 const templateGlobals=computed<Record<string,unknown>>(()=>{const content=catalog.value?.config.booking_template?.content;return content&&!isHtmlContent(content)?content.global_styles||{}:{}})
 const widgetCatalog=computed<WidgetCatalog|null>(()=>{const current=catalog.value;if(!current)return null;return{config:{...current.config,booking_template:widgetTemplate(current.config.booking_template)},services:current.services,professionals:current.professionals}})
 const visualLandingContent=computed<BlockPageContent>(()=>landing.value?blockContent(landing.value.content):({version:3,blocks:[]} as BlockPageContent))
@@ -96,14 +94,13 @@ async function loadExperience(surface:'LANDING'|'BOOKING'):Promise<boolean>{
 }
 async function loadLanding():Promise<void>{if(await loadExperience('LANDING'))return;const result=await request<LandingPayload>('/landing?slug=home');landing.value=result.landing_page;branding.value=result.branding;runtimeContext.value={...(result.context||await request<RuntimeContext>('/context').catch(()=>({}))),branding:result.branding} as RuntimeContext;applyBranding(result.branding);analyticsConfig=installPublicAnalytics((runtimeContext.value.preferences?.marketing_analytics||{}) as Record<string,unknown>);trackPublicEvent('page_view',{surface:'landing'},analyticsConfig);applyMetadata(result.landing_page);if(runtimeContext.value.features?.public_booking){catalog.value=await request<Catalog>('/booking').catch(()=>null)}}
 async function loadBooking():Promise<void>{if(await loadExperience('BOOKING'))return;const result=await request<Catalog>('/booking');catalog.value=result;branding.value=result.branding;runtimeContext.value={...(result.context||await request<RuntimeContext>('/context').catch(()=>({}))),branding:result.branding} as RuntimeContext;applyBranding(result.branding);analyticsConfig=installPublicAnalytics((runtimeContext.value.preferences?.marketing_analytics||{}) as Record<string,unknown>);trackPublicEvent('page_view',{surface:'booking'},analyticsConfig);const html=result.config.booking_template?.content;if(isHtmlContent(html))applyHtmlMetadata(html.html_document,result.config.title||result.branding.app.public_name||'Agendamento online');else document.title=result.config.title||result.branding.app.public_name||'Agendamento online'}
-async function loadLogin():Promise<void>{const result=await request<LoginPayload>('/login');loginPage.value=result.login_page.content;branding.value=result.branding;runtimeContext.value={...(result.context||{}),branding:result.branding} as RuntimeContext;applyBranding(result.branding);applyHtmlMetadata(result.login_page.content.html_document,result.branding.app.public_name||'Entrar')}
-async function load():Promise<void>{loading.value=true;error.value='';try{if(landingMode.value)await loadLanding();else if(loginMode.value)await loadLogin();else await loadBooking()}catch(exc){error.value=exc instanceof Error?exc.message:'Página pública indisponível.'}finally{loading.value=false}}
+async function load():Promise<void>{loading.value=true;error.value='';try{if(landingMode.value)await loadLanding();else await loadBooking()}catch(exc){error.value=exc instanceof Error?exc.message:'Página pública indisponível.'}finally{loading.value=false}}
 function onAnalyticsEvent(event:Event):void{const detail=(event as CustomEvent).detail||{};trackPublicEvent(String(detail.name||''),detail.payload||{},analyticsConfig)}
 onMounted(()=>{window.addEventListener('scheduler-pro-analytics-event',onAnalyticsEvent);void load()});onUnmounted(()=>window.removeEventListener('scheduler-pro-analytics-event',onAnalyticsEvent))
 </script>
 
 <template>
-  <main class="public-site-page" :class="{'html-surface':Boolean(experienceHtml||landingHtml||bookingHtml||loginHtml)}" :style="bookingPageStyle">
+  <main class="public-site-page" :class="{'html-surface':Boolean(experienceHtml||landingHtml||bookingHtml)}" :style="bookingPageStyle">
     <div v-if="loading" class="public-state"><LoaderCircle :size="36" class="spin"/><strong>Carregando página...</strong></div>
     <template v-else-if="landingMode&&(experienceHtml||landing)">
       <HtmlTemplateFrame v-if="experienceHtml" :html="experienceHtml" mode="landing" :context="runtimeContext"/>
@@ -112,13 +109,12 @@ onMounted(()=>{window.addEventListener('scheduler-pro-analytics-event',onAnalyti
         <template #booking><PublicBookingWidget v-if="widgetCatalog&&runtimeContext.features?.public_booking" :catalog="widgetCatalog"/><div v-else class="booking-unavailable"><CalendarDays :size="30"/><strong>Agenda online indisponível neste momento.</strong><span>Você ainda pode usar os contatos desta página.</span></div></template>
       </PublicVisualLandingRenderer>
     </template>
-    <template v-else-if="loginMode&&loginHtml"><HtmlTemplateFrame :html="loginHtml" mode="login" :context="runtimeContext"/></template>
     <template v-else-if="bookingMode&&(experienceHtml||catalog)">
       <HtmlTemplateFrame v-if="experienceHtml" :html="experienceHtml" mode="booking" :context="runtimeContext"/>
       <HtmlTemplateFrame v-else-if="bookingHtml" :html="bookingHtml" mode="booking" :context="runtimeContext"/>
       <section v-else-if="catalog" class="direct-booking-shell" :data-template="catalogView.config.booking_template?.key||''"><header class="direct-booking-header"><div class="direct-brand"><img v-if="catalogView.branding.assets.logo_url" :src="catalogView.branding.assets.logo_url" :alt="catalogView.branding.app.public_name"/><div v-else class="direct-mark">SP</div><div><strong>{{catalogView.branding.app.public_name||'Scheduler Pro'}}</strong><small>{{catalogView.branding.app.slogan||'Agendamento online'}}</small></div></div><div class="direct-copy"><span>Agenda online</span><h1>{{catalogView.config.title}}</h1><p>{{catalogView.config.subtitle}}</p></div></header><PublicBookingWidget v-if="widgetCatalog" :catalog="widgetCatalog"/></section>
     </template>
-    <section v-else class="public-state unavailable"><LogIn v-if="loginMode" :size="48"/><CalendarDays v-else :size="48"/><h1>{{loginMode?'Login indisponível':landingMode?'Página em preparação':'Agenda indisponível'}}</h1><p>{{error||'Este conteúdo ainda não está disponível.'}}</p></section>
+    <section v-else class="public-state unavailable"><CalendarDays :size="48"/><h1>{{landingMode?'Página em preparação':'Agenda indisponível'}}</h1><p>{{error||'Este conteúdo ainda não está disponível.'}}</p></section>
   </main>
 </template>
 
