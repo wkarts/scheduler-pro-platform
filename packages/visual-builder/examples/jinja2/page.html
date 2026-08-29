@@ -1,0 +1,8 @@
+<link rel="stylesheet" href="{{ url_for('static', path='argws-builder/styles/builder.css') }}">
+<argws-page-renderer id="argws-page"></argws-page-renderer>
+<script type="module">
+import "{{ url_for('static', path='argws-builder/src/index.js') }}";
+const response = await fetch("{{ page_api_url }}", {headers:{Accept:'application/json'}});
+const payload = await response.json();
+document.getElementById('argws-page').document = payload.data?.document ?? payload.document ?? payload;
+</script>

@@ -97,3 +97,11 @@ O Template Genérico é fallback; não substitui automaticamente personalizaçõ
 ## Limitação do runtime local
 
 A suíte `pytest` completa não inicia neste ambiente porque faltam dependências de produção/teste como `structlog` e `asyncpg`. Essas dependências não foram removidas do projeto; a suíte completa deve rodar no GitHub Actions/ambiente oficial, onde as dependências são instaladas.
+
+---
+
+## Checkpoint canônico — ARGWS Visual Builder 2.4.0
+
+Direção final: AVB Universal + Scheduler Pro Experience Contract v2. Landing e Agenda Pública permanecem customizáveis; Login é nativo white-label. Templates v1/Base64 são migrados automaticamente para assets. Esta rodada também inclui CRUD de expediente/bloqueios, resiliência para agendamentos legados, correções de menu/calendário mobile e nova identidade padrão Scheduler Pro/PWA.
+
+Validação desta rodada: AVB 70/70 (universal e integrado), npm check PASS, compileall PASS, contratos 2.4.0 5/5, scripts Vue 28/28 sem falhas sintáticas.

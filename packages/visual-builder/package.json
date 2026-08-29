@@ -1,7 +1,7 @@
 {
   "name": "@argws/visual-builder",
-  "version": "2.3.2",
-  "description": "ARGWS Visual Builder Universal 2.3.2: Project/Site Workspace universal com seleção automática da logo oficial Light/Dark.",
+  "version": "2.4.0",
+  "description": "ARGWS Visual Builder Universal 2.4.0: HTML-first Experience Builder com Runtime SDK v1, Bindings v1, Theme Tokens v1 e Experience Contract v2.",
   "type": "module",
   "main": "./src/index.js",
   "module": "./src/index.js",
@@ -18,13 +18,17 @@
     "src",
     "styles",
     "assets",
+    "docs",
+    "examples",
     "LICENSE",
     "README.md",
-    "VERSION"
+    "VERSION",
+    "CHANGELOG.md",
+    "integrations"
   ],
   "scripts": {
     "test": "node --test tests/*.test.js",
-    "check": "node --check src/model.js && node --check src/registry.js && node --check src/history.js && node --check src/sanitize.js && node --check src/dynamic.js && node --check src/dynamic-tags.js && node --check src/data-sources.js && node --check src/actions.js && node --check src/plugins.js && node --check src/services.js && node --check src/submissions.js && node --check src/forms.js && node --check src/library.js && node --check src/assets.js && node --check src/branding.js && node --check src/permissions.js && node --check src/i18n.js && node --check src/operations.js && node --check src/project-package.js && node --check src/custom-code.js && node --check src/embeds.js && node --check src/audit.js && node --check src/site-kit.js && node --check src/runtime.js && node --check src/renderer.js && node --check src/template-packages.js && node --check src/adapters.js && node --check src/editor.js && node --check src/page-renderer.js && node --check src/templates.js && node --check src/index.js && node --check src/project.js && node --check src/project-workspace.js"
+    "check": "node --check src/model.js && node --check src/registry.js && node --check src/history.js && node --check src/sanitize.js && node --check src/dynamic.js && node --check src/dynamic-tags.js && node --check src/data-sources.js && node --check src/actions.js && node --check src/plugins.js && node --check src/services.js && node --check src/submissions.js && node --check src/forms.js && node --check src/library.js && node --check src/assets.js && node --check src/branding.js && node --check src/permissions.js && node --check src/i18n.js && node --check src/operations.js && node --check src/project-package.js && node --check src/custom-code.js && node --check src/embeds.js && node --check src/audit.js && node --check src/site-kit.js && node --check src/runtime.js && node --check src/renderer.js && node --check src/template-packages.js && node --check src/adapters.js && node --check src/editor.js && node --check src/page-renderer.js && node --check src/templates.js && node --check src/index.js && node --check src/project.js && node --check src/project-workspace.js && node --check src/experience-contract.js && node --check src/template-runtime-sdk.js && node --check src/bindings-v1.js && node --check src/theme-tokens.js && node --check src/experience-package.js && node --check src/permissions-v2.js"
   },
   "keywords": [
     "page-builder",
@@ -46,7 +50,12 @@
     "svelte",
     "query-builder",
     "dynamic-tags",
-    "site-builder"
+    "site-builder",
+    "html-first",
+    "template-runtime-sdk",
+    "experience-contract",
+    "bindings",
+    "theme-tokens"
   ],
   "license": "MIT",
   "engines": {

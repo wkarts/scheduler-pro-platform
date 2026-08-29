@@ -408,7 +408,7 @@ class AppointmentService:
                 raise APIError("APPOINTMENT_RANGE_INVALID", "Período de agenda inválido.", 422)
             if range_end - range_start > timedelta(days=370):
                 raise APIError("APPOINTMENT_RANGE_TOO_LARGE", "Consulte no máximo 370 dias por vez.", 422)
-            clauses.append("a.starts_at < :range_end and a.ends_at > :range_start")
+            clauses.append("a.starts_at < :range_end and coalesce(a.ends_at, a.starts_at + interval '60 minutes') > :range_start")
             params["range_start"] = range_start
             params["range_end"] = range_end
         elif day:
@@ -431,16 +431,18 @@ class AppointmentService:
                 text(
                     f"""
                     select a.id::text, a.customer_id::text, a.service_id::text,
-                           a.professional_id::text, a.starts_at, a.ends_at,
+                           a.professional_id::text, a.starts_at,
+                           coalesce(a.ends_at, a.starts_at + interval '60 minutes') as ends_at,
                            a.status, a.source, a.created_at,
-                           c.name as customer_name, c.phone as customer_phone,
-                           c.email as customer_email,
-                           s.name as service_name, s.duration_minutes, s.price,
-                           p.name as professional_name
+                           coalesce(c.name,'Cliente legado') as customer_name,
+                           c.phone as customer_phone, c.email as customer_email,
+                           coalesce(s.name,'Atendimento') as service_name,
+                           coalesce(s.duration_minutes, greatest(5, extract(epoch from (coalesce(a.ends_at, a.starts_at + interval '60 minutes')-a.starts_at))/60)::integer) as duration_minutes,
+                           s.price, coalesce(p.name,'Agenda geral') as professional_name
                     from appointments a
-                    join customers c on c.id = a.customer_id
+                    left join customers c on c.id = a.customer_id
                     left join services s on s.id = a.service_id
-                    join professionals p on p.id = a.professional_id
+                    left join professionals p on p.id = a.professional_id
                     where {' and '.join(clauses)}
                     order by a.starts_at asc
                     limit 2000
@@ -457,16 +459,18 @@ class AppointmentService:
                 text(
                     """
                     select a.id::text, a.customer_id::text, a.service_id::text,
-                           a.professional_id::text, a.starts_at, a.ends_at,
+                           a.professional_id::text, a.starts_at,
+                           coalesce(a.ends_at, a.starts_at + interval '60 minutes') as ends_at,
                            a.status, a.source, a.created_at,
-                           c.name as customer_name, c.phone as customer_phone,
-                           c.email as customer_email,
-                           s.name as service_name, s.duration_minutes, s.price,
-                           p.name as professional_name
+                           coalesce(c.name,'Cliente legado') as customer_name,
+                           c.phone as customer_phone, c.email as customer_email,
+                           coalesce(s.name,'Atendimento') as service_name,
+                           coalesce(s.duration_minutes, greatest(5, extract(epoch from (coalesce(a.ends_at, a.starts_at + interval '60 minutes')-a.starts_at))/60)::integer) as duration_minutes,
+                           s.price, coalesce(p.name,'Agenda geral') as professional_name
                     from appointments a
-                    join customers c on c.id = a.customer_id
+                    left join customers c on c.id = a.customer_id
                     left join services s on s.id = a.service_id
-                    join professionals p on p.id = a.professional_id
+                    left join professionals p on p.id = a.professional_id
                     where a.id=cast(:appointment_id as uuid)
                     """
                 ),

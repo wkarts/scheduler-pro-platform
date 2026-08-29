@@ -6,7 +6,7 @@ import {
   isHtmlDocument, normalizeDocument, normalizeProject, PROJECT_SCHEMA, renderDocument, toSchedulerProContent,
 } from '../src/index.js';
 
-function schedulerHtml(key,surface,title){const version=surface==='login'?1:2;const login=surface==='login'?'<form id=\"loginForm\" data-sp-auth-binding=\"application\"></form><script>window.SchedulerProAuth.login(\"a@b.com\",\"x\")<\/script>':'';return `<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="scheduler-pro-template" content="${key}"><meta name="scheduler-pro-content-version" content="${version}"><meta name="scheduler-pro-surface" content="${surface}"><title>${title}</title><style>@media(max-width:680px){body{margin:0}}</style></head><body><main>${title}</main>${surface==='public-booking'?'<div data-scheduler-pro-booking></div>':''}${login}</body></html>`;}
+function schedulerHtml(key,surface,title){return `<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="scheduler-pro-template" content="${key}"><meta name="scheduler-pro-content-version" content="2"><meta name="scheduler-pro-surface" content="${surface}"><title>${title}</title><style>@media(max-width:680px){body{margin:0}}</style></head><body><main>${title}</main>${surface==='public-booking'?'<div data-scheduler-pro-booking></div>':''}</body></html>`;}
 
 // ZIP stored mínimo, suficiente para o importador sem dependência externa.
 function crc32(bytes){let c=0xffffffff;for(const b of bytes){c^=b;for(let k=0;k<8;k++)c=(c>>>1)^((c&1)?0xedb88320:0);}return(c^0xffffffff)>>>0;}
@@ -32,10 +32,10 @@ test('projeto universal mantém páginas independentes',()=>{
   assert.equal(p.schema,PROJECT_SCHEMA);assert.equal(p.pages.length,2);assert.notEqual(p.pages[0].document,p.pages[1].document);assert.equal(normalizeProject(p).pages[1].route,'/contato');
 });
 
-test('pacote Scheduler Pro vira família com LANDING, BOOKING e LOGIN independentes',async()=>{
-  const key='studio-teste';const manifest={schema:'scheduler-pro-template-package/v1',package:{key,name:'Studio Teste',surfaces:{landing:{surface:'LANDING',renderer:'HTML',entry:'landing.html',route:'/pagina',seo:{title:'Landing'}},booking:{surface:'BOOKING',renderer:'HTML',entry:'agendamento.html',route:'/agendar',seo:{title:'Agendamento'}},login:{surface:'LOGIN',renderer:'HTML',entry:'login.html',route:'/login',seo:{title:'Login'}}}}};
-  const zip=zipStored({'template.json':JSON.stringify(manifest),'landing.html':schedulerHtml(key,'landing','Landing'),'agendamento.html':schedulerHtml(key,'public-booking','Agendamento'),'login.html':schedulerHtml(key,'login','Login')});
-  const result=await importSchedulerProTemplateFamily(zip,{sourceName:'studio.zip'});assert.equal(result.project.pages.length,3);const landing=result.project.pages.find(p=>p.surface==='LANDING'),booking=result.project.pages.find(p=>p.surface==='BOOKING'),login=result.project.pages.find(p=>p.surface==='LOGIN');assert.ok(landing);assert.ok(booking);assert.ok(login);assert.equal(landing.document.mode,'HTML');assert.equal(booking.document.mode,'HTML');assert.equal(login.document.mode,'HTML');assert.equal(landing.route,'/pagina');assert.equal(booking.route,'/agendar');assert.equal(login.route,'/login');assert.equal(landing.document.builder.root_ids.length,0);assert.equal(booking.document.builder.root_ids.length,0);assert.equal(login.document.builder.root_ids.length,0);
+test('pacote Scheduler Pro vira família com LANDING e BOOKING como duas páginas',async()=>{
+  const key='studio-teste';const manifest={schema:'scheduler-pro-template-package/v1',package:{key,name:'Studio Teste',surfaces:{landing:{renderer:'HTML',entry:'landing.html',route:'/pagina',seo:{title:'Landing'}},booking:{renderer:'HTML',entry:'agendamento.html',route:'/agendar',seo:{title:'Agendamento'}}}}};
+  const zip=zipStored({'template.json':JSON.stringify(manifest),'landing.html':schedulerHtml(key,'landing','Landing'),'agendamento.html':schedulerHtml(key,'public-booking','Agendamento')});
+  const result=await importSchedulerProTemplateFamily(zip,{sourceName:'studio.zip'});assert.equal(result.project.pages.length,2);const landing=result.project.pages.find(p=>p.surface==='LANDING'),booking=result.project.pages.find(p=>p.surface==='BOOKING');assert.ok(landing);assert.ok(booking);assert.equal(landing.document.mode,'HTML');assert.equal(booking.document.mode,'HTML');assert.equal(landing.route,'/pagina');assert.equal(booking.route,'/agendar');assert.equal(landing.document.builder.root_ids.length,0);assert.equal(booking.document.builder.root_ids.length,0);
 });
 
 test('workspace universal e adapter Scheduler Pro são exportados pelo pacote',async()=>{

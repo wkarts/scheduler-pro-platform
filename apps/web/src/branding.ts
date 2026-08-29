@@ -3,7 +3,7 @@ import { apiGet } from './api/client'
 export type BrandingManifest = {
   tenant: { id: string; slug: string | null; hostname: string | null }
   app: { name: string; public_name: string; slogan?: string | null; locale: string; timezone: string }
-  assets: { logo_url?: string | null; icon_url?: string | null; favicon_url?: string | null }
+  assets: { logo_url?: string | null; logo_dark_url?: string | null; icon_url?: string | null; favicon_url?: string | null }
   theme: {
     mode: 'light' | 'dark' | 'system'
     font_family: string
@@ -35,6 +35,7 @@ export function applyBranding(manifest: BrandingManifest): void {
   root.style.setProperty('--sp-radius', manifest.theme.border_radius)
   root.style.setProperty('--sp-font', manifest.theme.font_family)
   document.title = manifest.app.public_name || manifest.app.name
+  root.dataset.tenantTheme = manifest.theme.mode || 'system'
 
   const favicon = manifest.assets.favicon_url || manifest.assets.icon_url
   if (favicon) {

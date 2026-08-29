@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
 import PublicSitePage from './PublicSitePage.vue'
 import TenantAgendaCenter from './TenantAgendaCenter.vue'
 import TenantAgendaOperator from './TenantAgendaOperator.vue'
@@ -20,16 +20,23 @@ import './tenantContrast.css'
 const authenticated=ref(Boolean(localStorage.getItem('scheduler_pro_access_token')))
 const activeView=ref((window.location.hash||'#dashboard').replace(/^#/,'')||'dashboard')
 const normalizedPath=window.location.pathname.replace(/\/+$/,'')||'/'
-const publicSurface=ref(['/agendar','/pagina','/login'].includes(normalizedPath))
+const initialHash=window.location.hash.replace(/^#/,'')
+const sourcePwa=new URLSearchParams(window.location.search).get('source')==='pwa'
+const publicLogin=ref(normalizedPath==='/login')
+const pwaOpenMode=ref('AUTO')
+const publicRoot=computed(()=>normalizedPath==='/'&&!initialHash&&(!sourcePwa||pwaOpenMode.value==='LANDING'))
+const publicSurface=computed(()=>['/agendar','/pagina'].includes(normalizedPath)||publicRoot.value)
+const forcePwaLogin=computed(()=>sourcePwa&&pwaOpenMode.value==='LOGIN')
 function refreshAuthState():void{authenticated.value=Boolean(localStorage.getItem('scheduler_pro_access_token'))}
 function refreshRoute():void{activeView.value=(window.location.hash||'#dashboard').replace(/^#/,'')||'dashboard'}
 function onStorage(event:StorageEvent):void{if(event.key==='scheduler_pro_access_token')refreshAuthState()}
-onMounted(()=>{refreshAuthState();refreshRoute();window.addEventListener('storage',onStorage);window.addEventListener('hashchange',refreshRoute);window.addEventListener('scheduler-pro-auth-changed',refreshAuthState)})
+onMounted(()=>{refreshAuthState();refreshRoute();window.addEventListener('storage',onStorage);window.addEventListener('hashchange',refreshRoute);window.addEventListener('scheduler-pro-auth-changed',refreshAuthState);if(sourcePwa)void fetch('/api/v1/public/context',{cache:'no-store',headers:{Accept:'application/json'}}).then(r=>r.json()).then(body=>{pwaOpenMode.value=String(body?.data?.preferences?.pwa_open_mode||'AUTO').toUpperCase()}).catch(()=>undefined)})
 onUnmounted(()=>{window.removeEventListener('storage',onStorage);window.removeEventListener('hashchange',refreshRoute);window.removeEventListener('scheduler-pro-auth-changed',refreshAuthState)})
 </script>
 
 <template>
-  <PublicSitePage v-if="publicSurface"/>
+  <TenantBrandedLogin v-if="publicLogin||forcePwaLogin" @authenticated="refreshAuthState"/>
+  <PublicSitePage v-else-if="publicSurface"/>
   <template v-else>
     <TenantBrandedLogin v-if="!authenticated" @authenticated="refreshAuthState"/>
     <template v-else>

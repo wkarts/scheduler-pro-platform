@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.tenant_context import TenantContext
 
-VISUAL_BUILDER_VERSION = "2.3.2"
+VISUAL_BUILDER_VERSION = "2.4.0"
 
 
 def _bool(value: Any, default: bool) -> bool:
@@ -51,6 +51,8 @@ class PublicPageContextService:
             "show_whatsapp_on_landing",
             "booking_page_template_key",
             "login_page_template_key",
+            "marketing_analytics",
+            "pwa_open_mode",
         ]
         setting_rows = (
             await self.tenant_session.execute(
@@ -147,5 +149,7 @@ class PublicPageContextService:
                 "login_page_template_key": preferences.get(
                     "login_page_template_key"
                 ),
+                "marketing_analytics": preferences.get("marketing_analytics") or {},
+                "pwa_open_mode": preferences.get("pwa_open_mode") or "AUTO",
             },
         }

@@ -1,0 +1,29 @@
+Scheduler Pro + ARGWS Visual Builder 2.4.0 — validação local
+Data: 2026-08-29
+
+ARGWS Visual Builder Universal 2.4.0:
+- npm test: 70/70 PASS
+- npm run check: PASS
+
+ARGWS Visual Builder integrado no Scheduler Pro:
+- npm test: 70/70 PASS
+- npm run check: PASS
+
+Backend:
+- python compileall apps/api/app + migrations: PASS
+- testes contratuais AVB 2.4.0 executados diretamente: 5/5 PASS
+
+Vue/TypeScript:
+- scripts Vue Web + Admin verificados por TypeScript transpileModule: 28 arquivos / 0 falhas sintáticas
+- durante esta varredura foi identificada e corrigida uma expressão inválida em PublicSitePage.vue antes do empacotamento.
+
+Migração de templates:
+- 8/8 pacotes oficiais v1 migrados para Experience Contract v2
+- Studio Beatriz Nails: migrado, 6 assets extraídos
+- Roberto Martelinho de Ouro: migrado, 6 assets extraídos
+- Gilmar Cabeleireiro: migrado, 5 assets extraídos
+- login.html legado é deliberadamente ignorado no 2.4.0; Login é nativo/white-label.
+
+Limitações do runtime local:
+- pytest completo não executado porque structlog e asyncpg não estão instalados neste runtime.
+- Ruff e MyPy não estão instalados localmente; devem ser confirmados pelo GitHub Actions.

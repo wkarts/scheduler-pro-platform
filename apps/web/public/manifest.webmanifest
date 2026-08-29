@@ -3,28 +3,40 @@
   "name": "Scheduler PRO",
   "short_name": "Scheduler PRO",
   "description": "Agenda inteligente, clientes, serviços, confirmações e operação conectada.",
-  "start_url": "/#dashboard",
+  "start_url": "/?source=pwa",
   "scope": "/",
   "display": "standalone",
   "orientation": "any",
   "background_color": "#FFFFFF",
-  "theme_color": "#0B132B",
+  "theme_color": "#0B0F1A",
   "categories": [
     "business",
     "productivity"
   ],
   "icons": [
     {
-      "src": "/icons/icon.png",
-      "sizes": "512x512",
+      "src": "/icons/icon-192.png",
+      "sizes": "192x192",
       "type": "image/png",
-      "purpose": "any maskable"
+      "purpose": "any"
     },
     {
-      "src": "/icons/icon.svg",
-      "sizes": "any",
-      "type": "image/svg+xml",
+      "src": "/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
       "purpose": "any"
+    },
+    {
+      "src": "/icons/maskable-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/icons/maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
     }
   ],
   "shortcuts": [

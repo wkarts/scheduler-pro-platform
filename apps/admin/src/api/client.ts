@@ -114,3 +114,15 @@ export async function apiDelete<T>(path: string, token?: string): Promise<T> {
     'DELETE',
   )
 }
+
+export async function apiPostForm<T>(path: string, form: FormData, token?: string): Promise<T> {
+  return parseResponse<T>(
+    await fetch(`${API_BASE_URL}${path}`, {
+      method: 'POST',
+      headers: { Accept: 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+      body: form,
+    }),
+    path,
+    'POST',
+  )
+}

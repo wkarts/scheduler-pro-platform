@@ -182,7 +182,7 @@ async def sync_builtin_template_packages(session: AsyncSession) -> dict[str, Any
                     existing,
                     content,
                     changelog=(
-                        "ARGWS Visual Builder 2.3.2 — pacote oficial canônico"
+                        "ARGWS Visual Builder 2.4.0 — pacote oficial canônico"
                     ),
                     actor="system:template-bootstrap",
                     publish=True,
@@ -204,7 +204,7 @@ async def sync_builtin_template_packages(session: AsyncSession) -> dict[str, Any
                     **common,
                     "content": content,
                     "changelog": (
-                        "ARGWS Visual Builder 2.3.2 — pacote oficial canônico"
+                        "ARGWS Visual Builder 2.4.0 — pacote oficial canônico"
                     ),
                 },
                 actor="system:template-bootstrap",

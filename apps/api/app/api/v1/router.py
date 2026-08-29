@@ -14,6 +14,7 @@ from app.api.v1.routes import (
     builds,
     customers,
     downloads,
+    experience,
     files,
     health,
     landing_pages,
@@ -190,6 +191,15 @@ api_router.include_router(
     downloads.router,
     prefix="/downloads",
     tags=["Universal App Downloads"],
+)
+api_router.include_router(
+    experience.router,
+    prefix="/experience",
+    tags=["Experience Builder 2.4"],
+    dependencies=[
+        Depends(require_tenant_capability("landing_pages")),
+        Depends(require_permission("landing_pages.manage")),
+    ],
 )
 api_router.include_router(branding.router, prefix="/branding", tags=["Branding"])
 api_router.include_router(platform.router, prefix="/platform", tags=["Platform"])

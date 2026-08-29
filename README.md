@@ -1,16 +1,19 @@
-> **Atualização 2026-08-28 — AVB 2.3.2 Interaction/Performance Fix:** corrige eventos do ShadowRoot, tema/importar/fechar/editar, aplicação atômica de templates, importação persistente e elimina payloads pesados de settings/histórico no bootstrap do tenant. Consulte `CORRECAO_INTERACOES_AVB_2.3.2_20260828.md`.
-
 # Scheduler Pro Platform
 
-Plataforma SaaS multitenant de agendamentos construída com **FastAPI/Python 3.13**, **PostgreSQL**, **Redis**, **RabbitMQ** e **Vue 3 + Tailwind PWA**. A experiência principal é **PWA-first**; Tauri 2 permanece ativo somente para os aplicativos mobile Android/iOS.
+Plataforma SaaS multitenant de agendamentos construída com **FastAPI/Python 3.13**, **PostgreSQL**, **Redis**, **RabbitMQ** e **Vue 3 + PWA**.
 
-O código desktop legado continua preservado para eventual retomada, mas não participa dos workflows, releases ou validações obrigatórias atuais.
+## ARGWS Visual Builder 2.4.0 — arquitetura canônica
 
-## ARGWS Visual Builder 2.3.2
+A versão canônica desta entrega é **ARGWS Visual Builder 2.4.0**. O Builder é universal e reutilizável em outros projetos; o Scheduler Pro utiliza um host adapter próprio.
 
-A versão canônica integrada nesta entrega é **ARGWS Visual Builder 2.3.2**. O Scheduler Pro trabalha com três páginas públicas de primeira classe: Landing (`/pagina`), Agenda Pública (`/agendar`) e Login (`/login`). O template `scheduler-pro-padrao-generico` é o fallback seguro quando não existe personalização válida.
+- **Landing:** HTML completo + Bindings v1 + Theme Tokens + assets + versionamento/publicação.
+- **Agenda Pública:** HTML completo + Bindings + Template Runtime SDK + motor real Scheduler Pro.
+- **Login:** nativo Scheduler Pro, white-label; não é mais template HTML.
+- **Branding/PWA:** logo claro/escuro, favicon, ícones, fundo do Login, cores e manifest por tenant.
+- **Compatibilidade:** templates v1 com Base64 são migrados automaticamente para Experience Contract v2 e assets externos.
+- **Permissões do editor:** blocked/basic/design/full/developer, administráveis também pelo Control Plane.
 
-A integração 2.3.2 corrige o caso em que uma página HTML completa era renderizada e logo em seguida substituída pelo estado “Página vazia”, acelera o Project/Site Workspace com carregamento progressivo, mantém o catálogo oficial em cache e persiste o template selecionado antes de abrir o editor. Preview/publicação continuam usando o contexto real do tenant e as flags da aplicação.
+Documentação principal: `docs/ARGWS_VISUAL_BUILDER_2.4.0_CANONICO.md` e `docs/TEMPLATE_AI_CONSTRUCTION_PROMPT_AVB_2.4.0.md`.
 
 ## Estado funcional auditado
 

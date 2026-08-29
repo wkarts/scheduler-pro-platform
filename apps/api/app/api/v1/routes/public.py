@@ -21,6 +21,7 @@ from app.core.tenant_context import TenantContext
 from app.services.agenda_report_delivery_service import verify_report_token
 from app.services.branding_service import BrandingService
 from app.services.file_service import TenantFileService
+from app.services.experience_service import ExperienceService
 from app.services.global_template_service import GlobalTemplateService
 from app.services.html_template_contract import HtmlTemplateContract
 from app.services.landing_service import LandingPageService
@@ -30,14 +31,21 @@ from app.services.builtin_template_package_service import DEFAULT_TEMPLATE_KEY
 from app.services.template_contract import TemplateContract
 
 router = APIRouter()
-PUBLIC_LANDING_ASSET_PREFIX = "landing/"
-PUBLIC_LANDING_ASSET_TYPES = {
+PUBLIC_ASSET_PREFIXES = ("landing/", "experience/")
+PUBLIC_ASSET_TYPES = {
     "image/png",
     "image/jpeg",
     "image/webp",
     "image/gif",
     "image/avif",
     "image/svg+xml",
+    "text/css",
+    "text/javascript",
+    "application/javascript",
+    "application/json",
+    "font/woff",
+    "font/woff2",
+    "application/font-woff",
 }
 
 
@@ -111,18 +119,45 @@ def _stream(body: Any) -> Iterator[bytes]:
         body.close()
 
 
+@router.get("/experience/{surface}")
+async def public_experience_page(
+    surface: str,
+    context: TenantContext = Depends(get_tenant_context),
+    tenant_session: AsyncSession = Depends(get_tenant_session),
+    platform_session: AsyncSession = Depends(get_platform_session),
+) -> dict[str, Any]:
+    normalized = surface.strip().upper()
+    if normalized not in {"LANDING", "BOOKING"}:
+        raise APIError("EXPERIENCE_SURFACE_INVALID", "Use landing ou booking.", 422)
+    runtime = await PublicPageContextService(
+        context=context, tenant_session=tenant_session, platform_session=platform_session
+    ).build()
+    page_key = "landing" if normalized == "LANDING" else "booking"
+    if not runtime["pages"][page_key]["enabled"]:
+        raise APIError("PUBLIC_EXPERIENCE_DISABLED", "Esta página pública está offline.", 404)
+    experience = ExperienceService(tenant_session, context)
+    result = await experience.document(normalized, published=True)
+    if result is None or result.get("version") is None:
+        await experience.ensure_default_experience()
+        result = await experience.document(normalized, published=True)
+    if result is None or result.get("version") is None:
+        raise APIError("PUBLIC_EXPERIENCE_NOT_FOUND", "Esta página ainda não foi publicada no Experience Contract v2.", 404)
+    branding = await BrandingService(platform_session).manifest_for_context(context)
+    return success({"surface": normalized, "page": result["page"], "version": result["version"], "branding": branding, "context": runtime})
+
+
 @router.get("/assets/{key:path}")
 async def public_landing_asset(
     key: str,
     context: TenantContext = Depends(get_tenant_context),
 ) -> StreamingResponse:
     normalized = TenantFileService.normalize_key(key)
-    if not normalized.startswith(PUBLIC_LANDING_ASSET_PREFIX):
+    if not normalized.startswith(PUBLIC_ASSET_PREFIXES):
         raise APIError("PUBLIC_ASSET_NOT_FOUND", "Arquivo público não encontrado.", 404)
 
     result = await TenantFileService(context).get_object(normalized)
     content_type = str(result.get("ContentType") or "application/octet-stream").lower()
-    if content_type not in PUBLIC_LANDING_ASSET_TYPES:
+    if content_type not in PUBLIC_ASSET_TYPES:
         try:
             result["Body"].close()
         finally:

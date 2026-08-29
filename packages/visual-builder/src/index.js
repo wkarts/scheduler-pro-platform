@@ -43,4 +43,11 @@ export function renderPage(input, options = {}) {
 import { renderDocumentAsync as _renderDocumentAsync } from './renderer.js';
 export async function renderPageAsync(input, options = {}) { return (await _renderDocumentAsync(input, options)).html; }
 
-export const ARGWS_VISUAL_BUILDER_VERSION='2.3.2';
+// ARGWS Visual Builder 2.4.0 — HTML-first Experience Runtime
+export * from './experience-contract.js';
+export * from './template-runtime-sdk.js';
+export * from './bindings-v1.js';
+export * from './theme-tokens.js';
+export * from './experience-package.js';
+export * from './permissions-v2.js';
+export const ARGWS_VISUAL_BUILDER_VERSION='2.4.0';

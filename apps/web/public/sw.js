@@ -1,5 +1,5 @@
 const CACHE_PREFIX = 'scheduler-pro-web-'
-const CACHE = `${CACHE_PREFIX}avb-2.3.2-interactionfix-v3`
+const CACHE = `${CACHE_PREFIX}avb-2.4.0-experience-v2`
 const STATIC_ASSETS = [
   '/',
   '/index.html',

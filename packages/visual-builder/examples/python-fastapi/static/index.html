@@ -1,0 +1,14 @@
+<!doctype html>
+<html lang="pt-BR">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>ARGWS Visual Builder + FastAPI</title></head>
+<body>
+  <argws-visual-builder id="editor"></argws-visual-builder>
+  <script type="module">
+    import { RestAdapter } from '/builder/src/index.js';
+    const editor=document.querySelector('#editor');
+    editor.adapter=new RestAdapter({baseUrl:'/api/pages',slug:'home'});
+    editor.addEventListener('upb-close',()=>history.back());
+    await editor.load();
+  </script>
+</body>
+</html>

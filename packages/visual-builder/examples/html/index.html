@@ -1,0 +1,4 @@
+<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="../../styles/builder.css"><title>ARGWS Builder HTML</title></head><body>
+<argws-page-renderer id="page"></argws-page-renderer>
+<script type="module">import '../../src/index.js';const r=await fetch('./page.json');document.getElementById('page').document=await r.json();</script>
+</body></html>

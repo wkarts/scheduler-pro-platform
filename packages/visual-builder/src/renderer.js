@@ -108,73 +108,28 @@ function schedulerResponsive(node) {
     hidden: { desktop:Boolean(node.responsive?.hidden?.desktop), tablet:Boolean(node.responsive?.hidden?.tablet), mobile:Boolean(node.responsive?.hidden?.mobile) },
   };
 }
-function normalizeSchedulerHtmlDocument(htmlDocument,{templateKey='argws-importado',surface='LANDING',contentVersion=2}={}) {
-  let html=String(htmlDocument||'');
-  const normalizedSurface=String(surface||'LANDING').toUpperCase();
-  const declaredSurface=normalizedSurface==='BOOKING'?'public-booking':(normalizedSurface==='LOGIN'?'login':'landing');
-  const minimumVersion=normalizedSurface==='LOGIN'?1:2;
-  const version=Math.max(minimumVersion,Number(contentVersion||minimumVersion));
-  const safeKey=String(templateKey||'argws-importado').toLowerCase().replace(/[^a-z0-9-]+/g,'-').replace(/^-+|-+$/g,'').slice(0,120)||'argws-importado';
-  if(!/^<!doctype\s+html/i.test(html.trim())) html=`<!doctype html>${html}`;
-  if(!/<html[\s>]/i.test(html)) html=`<!doctype html><html lang="pt-BR"><head></head><body>${html.replace(/^<!doctype\s+html>/i,'')}</body></html>`;
-  if(!/<head[\s>]/i.test(html)) html=html.replace(/<html([^>]*)>/i,'<html$1><head></head>');
-  if(!/<body[\s>]/i.test(html)) html=html.replace(/<\/head>/i,'</head><body>').replace(/<\/html>/i,'</body></html>');
-  function currentMeta(name){
-    const escaped=name.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
-    const byName=new RegExp(`<meta\\s+[^>]*name=["']${escaped}["'][^>]*content=["']([^"']*)["'][^>]*>`,'i');
-    const byContent=new RegExp(`<meta\\s+[^>]*content=["']([^"']*)["'][^>]*name=["']${escaped}["'][^>]*>`,'i');
-    return html.match(byName)?.[1]??html.match(byContent)?.[1]??'';
-  }
-  function setMeta(name,value){
-    const escaped=name.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
-    const byName=new RegExp(`(<meta\\s+[^>]*name=["']${escaped}["'][^>]*content=["'])([^"']*)(["'][^>]*>)`,'i');
-    const byContent=new RegExp(`(<meta\\s+[^>]*content=["'])([^"']*)(["'][^>]*name=["']${escaped}["'][^>]*>)`,'i');
-    if(byName.test(html)){html=html.replace(byName,`$1${value}$3`);return;}
-    if(byContent.test(html)){html=html.replace(byContent,`$1${value}$3`);return;}
-    html=html.replace(/<head([^>]*)>/i,match=>`${match}<meta name="${name}" content="${String(value).replace(/"/g,'&quot;')}">`);
-  }
-  const viewport=currentMeta('viewport');
-  if(!viewport.replace(/\s+/g,'').toLowerCase().includes('width=device-width'))setMeta('viewport','width=device-width,initial-scale=1');
-  const existingKey=currentMeta('scheduler-pro-template').trim().toLowerCase();
-  if(!/^[a-z0-9][a-z0-9-]{0,118}[a-z0-9]$/.test(existingKey))setMeta('scheduler-pro-template',safeKey.length<2?'argws-importado':safeKey);
-  const existingVersion=Number(currentMeta('scheduler-pro-content-version'));
-  if(!Number.isFinite(existingVersion)||existingVersion<minimumVersion)setMeta('scheduler-pro-content-version',String(version));
-  const existingSurface=currentMeta('scheduler-pro-surface').trim().toLowerCase();
-  const accepted=normalizedSurface==='BOOKING'?['booking','public-booking','agendamento']:(normalizedSurface==='LOGIN'?['login','sign-in']:['landing']);
-  if(!accepted.includes(existingSurface))setMeta('scheduler-pro-surface',declaredSurface);
-  return html;
-}
-
 export function toSchedulerProContent(input) {
   const doc = normalizeDocument(input);
   if (isHtmlDocument(doc) && String(doc.html?.contract || '').startsWith('scheduler-pro-html-template/')) {
-    const surface=String(doc.surface || doc.html.surface || 'LANDING').toUpperCase();
-    const minimumVersion=surface==='LOGIN'?1:2;
-    const contentVersion=Math.max(minimumVersion,Number(doc.html.content_version || minimumVersion));
-    const templateKey=String(doc.html.template_key || 'argws-importado');
     return {
       render_mode: 'HTML',
       contract: doc.html.contract || 'scheduler-pro-html-template/v1',
-      template_key: templateKey,
-      surface,
-      content_version: contentVersion,
-      html_document: normalizeSchedulerHtmlDocument(doc.html.document,{templateKey,surface,contentVersion}),
+      template_key: String(doc.html.template_key || 'argws-importado'),
+      surface: String(doc.surface || doc.html.surface || 'LANDING').toUpperCase(),
+      content_version: Math.max(2, Number(doc.html.content_version || 2)),
+      html_document: String(doc.html.document || ''),
     };
   }
   // Compatibilidade defensiva com documentos antigos ainda não normalizados.
   const htmlSurface = Object.values(doc.builder?.nodes || {}).find(node => node?.type === 'html_surface' && typeof node?.props?.html_document === 'string' && node.props.html_document.trim());
   if (htmlSurface && String(htmlSurface.props.contract || '').startsWith('scheduler-pro-html-template/')) {
-    const surface=String(htmlSurface.props.surface || 'LANDING').toUpperCase();
-    const minimumVersion=surface==='LOGIN'?1:2;
-    const contentVersion=Math.max(minimumVersion,Number(htmlSurface.props.content_version || minimumVersion));
-    const templateKey=String(htmlSurface.props.template_key || 'argws-importado');
     return {
       render_mode: 'HTML',
       contract: htmlSurface.props.contract || 'scheduler-pro-html-template/v1',
-      template_key: templateKey,
-      surface,
-      content_version: contentVersion,
-      html_document: normalizeSchedulerHtmlDocument(htmlSurface.props.html_document,{templateKey,surface,contentVersion}),
+      template_key: String(htmlSurface.props.template_key || 'argws-importado'),
+      surface: String(htmlSurface.props.surface || 'LANDING').toUpperCase(),
+      content_version: Math.max(2, Number(htmlSurface.props.content_version || 2)),
+      html_document: String(htmlSurface.props.html_document),
     };
   }
   const blocks = [];
@@ -202,20 +157,9 @@ function img(src, alt='Imagem', attrs='') { const url=safeUrl(src,''); return ur
 function customAttributes(node){const raw=node?.meta?.attributes;if(!raw||typeof raw!=='object'||Array.isArray(raw))return'';const allowed=/^(data-[a-z0-9_.:-]+|aria-[a-z0-9_.:-]+|title|role|tabindex|lang|dir)$/i;return Object.entries(raw).filter(([name,value])=>allowed.test(name)&&value!=null).map(([name,value])=>` ${name}="${escapeHtml(String(value))}"`).join('');}
 function interactionAttribute(node){const rows=Array.isArray(node?.interactions)?node.interactions:[];return rows.length?` data-upb-interactions="${escapeHtml(JSON.stringify(rows))}"`:'';}
 function inline(prop) { return ` data-upb-inline-prop="${escapeHtml(prop)}"`; }
-function editorImportedHtmlSource(htmlDocument, context={}) {
+function editorImportedHtmlSource(htmlDocument) {
   const source=String(htmlDocument||'');
-  const features=context?.features||{};
-  const booking=Boolean(features.public_booking??features.booking);
-  const login=Boolean(features.show_login??features.login);
-  const contact=features.show_contact!==false;
-  const whatsapp=features.show_whatsapp!==false;
-  const conditionalCss=[
-    !booking?'[data-booking-only],[data-booking-link],[data-action="booking"]{display:none!important}':'',
-    !login?'[data-login-link],[data-sp-role="login-link"]{display:none!important}':'',
-    !contact?'[data-contact-only],[data-section="contact"],a[href^="tel:"],a[href^="mailto:"]{display:none!important}':'',
-    !whatsapp?'[data-whatsapp-link],a[href*="wa.me"],a[href*="whatsapp"]{display:none!important}':'',
-  ].filter(Boolean).join('');
-  const editorCss=`<style data-argws-editor-surface>html{scroll-behavior:auto!important}.reveal,[data-reveal],[data-aos],.animate-on-scroll,.scroll-reveal,.fade-in{opacity:1!important;visibility:visible!important;transform:none!important;animation:none!important;transition:none!important}${conditionalCss}</style>`;
+  const editorCss='<style data-argws-editor-surface>html{scroll-behavior:auto!important}.reveal,[data-reveal],[data-aos],.animate-on-scroll,.scroll-reveal,.fade-in{opacity:1!important;visibility:visible!important;transform:none!important;animation:none!important;transition:none!important}</style>';
   if (/<\/head\s*>/i.test(source)) return source.replace(/<\/head\s*>/i,`${editorCss}</head>`);
   return `${editorCss}${source}`;
 }
@@ -319,7 +263,7 @@ export function renderNode(doc, node, device='desktop', context={}) {
     case 'html_surface': {
       const sandbox = context.editor ? 'allow-forms allow-same-origin' : (context.allowImportedHtmlScripts ? 'allow-forms allow-scripts allow-modals allow-popups allow-downloads' : 'allow-forms');
       const editorClass = context.editor ? ' upb-html-surface-editor' : '';
-      const htmlSource = context.editor ? editorImportedHtmlSource(p.html_document||'',context) : String(p.html_document||'');
+      const htmlSource = context.editor ? editorImportedHtmlSource(p.html_document||'') : String(p.html_document||'');
       return wrap(`<div class="upb-html-surface-frame${editorClass}"><iframe data-upb-html-surface-frame title="${escapeHtml(p.title||p.template_key||'Template HTML')}" sandbox="${sandbox}" srcdoc="${escapeHtml(htmlSource)}"></iframe></div>`);
     }
     case 'html': return wrap(conservativeHtml(p.html));
@@ -373,7 +317,7 @@ export function renderDocument(input, { device='desktop', context={}, responsive
     const sandbox=context.editor
       ? 'allow-forms allow-same-origin'
       : (context.allowImportedHtmlScripts ? 'allow-forms allow-scripts allow-modals allow-popups allow-downloads' : 'allow-forms');
-    const htmlSource=context.editor ? editorImportedHtmlSource(source,context) : source;
+    const htmlSource=context.editor ? editorImportedHtmlSource(source) : source;
     const html=`<main class="upb-page upb-html-document-page" data-upb-device="${escapeHtml(device)}" data-upb-document-mode="HTML"><div class="upb-html-document-frame${context.editor?' editor':''}"><iframe data-upb-html-document-frame data-upb-html-surface-frame title="${escapeHtml(doc.title||doc.html?.template_key||'Página HTML')}" sandbox="${sandbox}" srcdoc="${escapeHtml(htmlSource)}"></iframe></div></main>`;
     const css=`:host{display:block}.upb-page.upb-html-document-page{display:block;min-height:100%;width:100%;background:transparent}.upb-html-document-frame{width:100%;min-height:100dvh}.upb-html-document-frame iframe{display:block;width:100%;min-height:100dvh;border:0;background:#fff}.upb-html-document-frame.editor iframe{min-height:760px}`;
     return {html,css,document:doc};
