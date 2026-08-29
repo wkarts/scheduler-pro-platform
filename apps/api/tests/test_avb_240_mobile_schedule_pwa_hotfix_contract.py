@@ -28,7 +28,6 @@ def _web_root() -> Path:
     return WEB_ROOT
 
 
-
 def test_service_duration_can_be_variable() -> None:
     assert ServiceCreate(name="Atendimento variável", duration_minutes=0).duration_minutes == 0
     assert ServiceUpdate(duration_minutes=0).duration_minutes == 0
@@ -77,7 +76,9 @@ def test_pwa_update_and_branding_manifest_bypass_stale_cache() -> None:
     assert "updateViaCache: 'none'" in pwa
 
     sw = (web / "public" / "sw.js").read_text(encoding="utf-8")
-    assert "avb-2.4.0-pr63-final-runtime-v6" in sw
+    assert "tenant-runtime-recovery-v7" in sw
+    assert "caches.delete(key)" in sw
+    assert "self.clients.claim()" in sw
 
     branding = (API_ROOT / "app" / "api" / "v1" / "routes" / "branding.py").read_text(encoding="utf-8")
     assert '"Cache-Control": "no-store, max-age=0"' in branding

@@ -1,5 +1,5 @@
 const CACHE_PREFIX = 'scheduler-pro-web-'
-const CACHE = `${CACHE_PREFIX}avb-2.4.0-pr63-final-runtime-v6`
+const CACHE = `${CACHE_PREFIX}tenant-runtime-recovery-v7`
 const STATIC_ASSETS = [
   '/',
   '/index.html',
@@ -47,7 +47,6 @@ self.addEventListener('fetch', event => {
   const url = new URL(request.url)
   if (url.origin !== self.location.origin) return
 
-  // Nunca responder APIs, confirmações públicas ou a agenda atual a partir de cache obsoleto.
   if (
     url.pathname.startsWith('/api/') ||
     url.pathname.startsWith('/a/') ||
@@ -75,8 +74,6 @@ self.addEventListener('fetch', event => {
     return
   }
 
-  // Manifest, favicon e demais arquivos sem hash precisam consultar a rede para
-  // que Safari/iPhone não fiquem presos indefinidamente em uma versão anterior.
   event.respondWith(networkFirst(request))
 })
 

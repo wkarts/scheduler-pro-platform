@@ -4,7 +4,6 @@ import App from './App.vue'
 import { installTenantAuthFetch } from './tenant-auth-fetch'
 import { installTenantFrontendTelemetry } from './tenant-frontend-telemetry'
 import { installTenantMobileEnhancements } from './tenant-mobile-enhancements'
-import { installTenantVersionBadge } from './tenant-version-badge'
 import './styles.css'
 import './operational.css'
 import './tenant-console.css'
@@ -23,4 +22,3 @@ installTenantAuthFetch()
 installTenantMobileEnhancements()
 installTenantFrontendTelemetry()
 createApp(App).use(createPinia()).mount('#app')
-installTenantVersionBadge()

@@ -78,7 +78,10 @@ export function applyBranding(manifest: BrandingManifest): void {
   root.style.setProperty('--sp-radius', manifest.theme.border_radius)
   root.style.setProperty('--sp-font', manifest.theme.font_family)
 
-  document.title = manifest.app.public_name || manifest.app.name
+  // A identidade do tenant personaliza a experiência visual, mas não renomeia
+  // o produto hospedeiro. Landing/Booking podem definir seus próprios títulos
+  // depois desta etapa; o shell nativo permanece Scheduler Pro.
+  document.title = 'Scheduler Pro'
   root.dataset.tenantTheme = manifest.theme.mode || 'system'
   applySidebarBranding(manifest)
 
