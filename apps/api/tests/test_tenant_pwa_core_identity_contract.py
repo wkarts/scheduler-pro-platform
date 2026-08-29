@@ -51,18 +51,19 @@ def test_web_uses_protected_dynamic_pwa_manifest() -> None:
     assert 'pwa_identity.router,\n    prefix="/branding"' in router
 
 
-def test_tenant_shell_uses_runtime_version_endpoint_like_control_plane() -> None:
-    tenant_badge = _read("apps/web/src/tenant-version-badge.ts")
-    admin_badge = _read("apps/admin/src/version-badge.ts")
+def test_tenant_shell_never_mutates_vue_dom_from_external_version_badge() -> None:
+    root = _root()
+    if root is None:
+        import pytest
+
+        pytest.skip("Fontes do monorepo não estão presentes nesta imagem.")
     web_main = _read("apps/web/src/main.ts")
-    assert "fetch('/api/v1/version'" in tenant_badge
+    admin_badge = _read("apps/admin/src/version-badge.ts")
     assert "fetch('/api/v1/version'" in admin_badge
-    assert 'release_tag' in tenant_badge
-    assert 'build_sha' in tenant_badge
-    assert 'slice(0, 8)' in tenant_badge
-    assert 'installTenantVersionBadge()' in web_main
-    assert "topVersion.style.display = 'none'" in tenant_badge
-    assert 'Scheduler Pro · ${status}' in tenant_badge
+    assert 'installTenantVersionBadge' not in web_main
+    assert not (root / "apps/web/src/tenant-version-badge.ts").exists()
+    assert 'MutationObserver' not in web_main
+    assert "createApp(App).use(createPinia()).mount('#app')" in web_main
 
 
 def test_global_branding_does_not_rename_native_application() -> None:
