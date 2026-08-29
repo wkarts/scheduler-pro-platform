@@ -29,6 +29,14 @@ def test_public_booking_and_admin_access_surfaces_exist() -> None:
     assert "Usuários e acessos" in admin
 
 
+def test_tenant_root_is_admin_without_required_endpoint() -> None:
+    app = (ROOT / "apps/web/src/App.vue").read_text(encoding="utf-8")
+    assert "['/agendar','/pagina'].includes(normalizedPath)" in app
+    assert "const publicRoot=" not in app
+    assert "normalizedPath==='/'" not in app
+    assert "activeView==='agenda'" in app
+
+
 def test_admin_access_resend_uses_existing_mail_delivery() -> None:
     source = (
         ROOT / "apps/api/app/services/tenant_access_resend_service.py"
@@ -69,4 +77,3 @@ def test_navigation_is_route_driven_and_pwa_version_handoff_is_installed() -> No
     assert "keys.filter(key => key.startsWith(CACHE_PREFIX) && key !== CACHE)" in sw
     assert "caches.delete(key)" in sw
     assert "scheduleRefresh" in mobile
-
