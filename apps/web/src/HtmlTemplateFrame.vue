@@ -62,8 +62,15 @@ async function handleRuntime(data:BridgeMessage):Promise<void>{
     respond(false,null,'Ação não suportada pelo host Scheduler Pro.')
   }catch(error){respond(false,null,error instanceof Error?error.message:'Falha no Template Runtime SDK.')}
 }
-// PR63_FINAL_RUNTIME_FIX: Login sempre resolvido pelo host nativo.
 function localNavigation(href:string):void{
+  const publicTarget=['/agendar','/pagina','/login'].some(path=>href===path||href.startsWith(path+'?'))
+  // No workspace administrativo o preview nunca pode substituir a aplicação.
+  // Interações do template abrem a superfície publicada em nova guia e mantêm
+  // Páginas públicas estável para continuar editando.
+  if(window.location.hash==='#visual-builder'&&publicTarget){
+    window.open(href,'_blank','noopener,noreferrer')
+    return
+  }
   if(href==='/login'||href.startsWith('/login?')){
     const authenticated=Boolean(localStorage.getItem('scheduler_pro_access_token'))
     window.location.assign(authenticated?'/#dashboard':href)

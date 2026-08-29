@@ -12,6 +12,7 @@ from app.core.errors import APIError
 class BookingParametersService:
     FIELD_MODES = {"DISABLED", "OPTIONAL", "REQUIRED"}
     CUSTOMER_MODES = {"NEW", "EXISTING"}
+    CHECKIN_FLOW_MODES = {"FULL", "SIMPLE"}
     KEYS = (
         "booking_service_mode",
         "booking_email_mode",
@@ -33,6 +34,7 @@ class BookingParametersService:
         "phone_country_code",
         "phone_default_area_code",
         "phone_add_ninth_digit",
+        "checkin_flow_mode",
     )
 
     def __init__(self, session: AsyncSession) -> None:
@@ -69,6 +71,9 @@ class BookingParametersService:
         customer_mode = str(values.get("default_booking_customer_mode") or "NEW").upper()
         if customer_mode not in self.CUSTOMER_MODES:
             customer_mode = "NEW"
+        checkin_flow_mode = str(values.get("checkin_flow_mode") or "FULL").upper()
+        if checkin_flow_mode not in self.CHECKIN_FLOW_MODES:
+            checkin_flow_mode = "FULL"
         return {
             "service_mode": self._mode(values.get("booking_service_mode"), "REQUIRED"),
             "email_mode": self._mode(values.get("booking_email_mode"), "OPTIONAL"),
@@ -82,6 +87,7 @@ class BookingParametersService:
                 values.get("default_booking_professional_name") or "Agenda geral"
             ),
             "default_customer_mode": customer_mode,
+            "checkin_flow_mode": checkin_flow_mode,
             "simultaneous": {
                 "public": self._bool(values.get("allow_simultaneous_public_booking"), False),
                 "internal": self._bool(values.get("allow_simultaneous_internal_booking"), False),
@@ -144,6 +150,16 @@ class BookingParametersService:
                 422,
             )
 
+        checkin_flow_mode = str(
+            payload.get("checkin_flow_mode", current["checkin_flow_mode"])
+        ).upper()
+        if checkin_flow_mode not in self.CHECKIN_FLOW_MODES:
+            raise APIError(
+                "CHECKIN_FLOW_MODE_INVALID",
+                "O fluxo de Check-in deve ser Completo ou Simplificado.",
+                422,
+            )
+
         simultaneous = payload.get("simultaneous") or current["simultaneous"]
         if not isinstance(simultaneous, dict):
             raise APIError("BOOKING_CAPACITY_INVALID", "Configuração de capacidade inválida.", 422)
@@ -198,6 +214,7 @@ class BookingParametersService:
             "default_appointment_duration_minutes": duration,
             "default_booking_professional_name": default_professional_name,
             "default_booking_customer_mode": default_customer_mode,
+            "checkin_flow_mode": checkin_flow_mode,
             "allow_simultaneous_public_booking": allow_public,
             "allow_simultaneous_internal_booking": allow_internal,
             "simultaneous_booking_capacity": capacity,

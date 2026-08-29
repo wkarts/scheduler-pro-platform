@@ -37,11 +37,32 @@ def test_visual_builder_html_document_is_not_replaced_by_empty_canvas() -> None:
     assert ".upb-html-surface-editor iframe,[data-upb-html-document-frame]" in source
 
 
-def test_tenant_visual_builder_autoloads_and_handles_close_event() -> None:
+def test_tenant_visual_builder_handles_advanced_close_event() -> None:
     source = _source("apps/web/src/TenantVisualPageBuilder.vue")
     assert "await el.load()" in source
     assert "addEventListener('upb-close',closeAdvanced" in source
     assert "scheduler_pro_public_pages_last_surface" in source
+
+
+def test_public_pages_workspace_opens_overview_before_any_surface() -> None:
+    builder = _source("apps/web/src/TenantVisualPageBuilder.vue")
+
+    assert "const tab=ref<Tab>('overview')" in builder
+    assert "tab.value='overview'" in builder
+    assert "page.value=null" in builder
+    assert "try{await loadCore()}finally{opening=false}" in builder
+    assert "const saved=initialPageTab()" not in builder
+    assert "await loadPage(saved" not in builder
+    assert "Landing e Agenda só são carregadas" in builder
+    assert "Visão geral" in builder
+
+
+def test_public_pages_preview_cannot_replace_admin_console() -> None:
+    frame = _source("apps/web/src/HtmlTemplateFrame.vue")
+
+    assert "window.location.hash==='#visual-builder'&&publicTarget" in frame
+    assert "window.open(href,'_blank','noopener,noreferrer')" in frame
+    assert "preview nunca pode substituir a aplicação" in frame
 
 
 def test_public_pages_workspace_never_uses_polling_remount_or_route_bounce() -> None:
@@ -51,7 +72,7 @@ def test_public_pages_workspace_never_uses_polling_remount_or_route_bounce() -> 
     assert "setInterval(publicPages" not in app
     assert '<TenantVisualPageBuilder :key=' not in app
     assert '<TenantVisualPageBuilder/>' in app
-    assert 'document.addEventListener(\'click\',onPublicPagesNavCapture,true)' in app
+    assert "document.addEventListener('click',onPublicPagesNavCapture,true)" in app
     assert "document.querySelector('.experience-center')" in app
     assert "window.location.hash='dashboard'" not in app
     assert "window.location.hash='visual-builder'" not in app
