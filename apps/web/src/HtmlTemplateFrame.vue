@@ -8,6 +8,12 @@ const props=withDefaults(defineProps<{html:string;mode?:Mode;context?:RuntimeCon
 const frame=ref<HTMLIFrameElement|null>(null)
 const frameHeight=ref(720)
 
+function cloneForBridge(value:any):any{
+  if(value===undefined)return null
+  try{const serialized=JSON.stringify(value);return serialized===undefined?null:JSON.parse(serialized)}catch{return null}
+}
+function postToFrame(message:Record<string,unknown>):void{const target=frame.value?.contentWindow;if(!target)return;target.postMessage(cloneForBridge(message),'*')}
+
 const BRIDGE_SOURCE=`
 (function(){
   var pending=new Map(),sequence=0;
@@ -65,15 +71,15 @@ const BRIDGE_SOURCE=`
 `
 const csp=`<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data: blob: https:; style-src 'unsafe-inline' https:; font-src data: https:; script-src 'unsafe-inline' https:; media-src data: blob: https:; frame-src https:; connect-src 'none'; form-action 'none'; base-uri 'none'">`
 const bridge='<script>'+BRIDGE_SOURCE+'</'+'script>'
-const contextScript=computed(()=>`<script>window.SCHEDULER_PRO_CONTEXT=${JSON.stringify(props.context||{}).replace(/</g,'\\u003c')}</`+'script>')
+const contextScript=computed(()=>`<script>window.SCHEDULER_PRO_CONTEXT=${JSON.stringify(cloneForBridge(props.context||{})).replace(/</g,'\\u003c')}</`+'script>')
 function runtimeCompatibleSource(source:string):string{return source.replace(/\bwindow\.location\.origin\b/g,"'https://scheduler-pro-template.local'").replace(/\bwindow\.location\.protocol\b/g,"'https:'")}
 const srcdoc=computed(()=>{const source=runtimeCompatibleSource(props.html||'');const injection=`${csp}${contextScript.value}${bridge}`;if(/<head(?:\s[^>]*)?>/i.test(source))return source.replace(/<head(\s[^>]*)?>/i,m=>`${m}${injection}`);if(/<html(?:\s[^>]*)?>/i.test(source))return source.replace(/<html(\s[^>]*)?>/i,m=>`${m}<head>${injection}</head>`);return `<!doctype html><html><head>${injection}</head><body>${source}</body></html>`})
 function allowed(path:string,method:string):boolean{const clean=path.split('#',1)[0]||'';if(method==='GET'&&clean.startsWith('/api/v1/public/booking/availability'))return true;if(clean==='/api/v1/public/booking'&&['GET','POST'].includes(method))return true;if(method==='GET'&&clean.startsWith('/api/v1/public/landing'))return true;if(method==='GET'&&clean==='/api/v1/public/context')return true;return false}
 async function handleApi(data:BridgeMessage):Promise<void>{const target=frame.value?.contentWindow;if(!target||!data.id||!data.path)return;const method=String(data.method||'GET').toUpperCase();if(!allowed(data.path,method)){target.postMessage({type:'scheduler-pro-html-api-response',id:data.id,status:403,body:JSON.stringify({error:{code:'HTML_TEMPLATE_API_DENIED',message:'Recurso não permitido neste modelo.'}})},'*');return}try{const response=await fetch(data.path,{method,cache:'no-store',headers:{Accept:'application/json',...(data.body?{'content-type':'application/json'}:{})},...(data.body?{body:data.body}:{})});target.postMessage({type:'scheduler-pro-html-api-response',id:data.id,status:response.status,body:await response.text(),headers:{'content-type':response.headers.get('content-type')||'application/json'}},'*')}catch{target.postMessage({type:'scheduler-pro-html-api-response',id:data.id,status:503,body:JSON.stringify({error:{message:'Não foi possível acessar o Scheduler Pro.'}})},'*')}}
-async function handleLogin(data:BridgeMessage):Promise<void>{const target=frame.value?.contentWindow;if(!target||!data.id)return;try{const response=await fetch('/api/v1/auth/login',{method:'POST',cache:'no-store',headers:{Accept:'application/json','content-type':'application/json'},body:JSON.stringify({email:data.email||'',password:data.password||''})});const payload=await response.json().catch(()=>({}));if(!response.ok||!payload.data)throw new Error(payload.error?.message||'E-mail ou senha inválidos.');const result=payload.data;localStorage.setItem('scheduler_pro_access_token',String(result.access_token||''));if(result.refresh_token)localStorage.setItem('scheduler_pro_refresh_token',String(result.refresh_token));window.dispatchEvent(new Event('scheduler-pro-auth-changed'));target.postMessage({type:'scheduler-pro-auth-response',id:data.id,ok:true,data:result},'*');window.location.assign('/#dashboard')}catch(error){target.postMessage({type:'scheduler-pro-auth-response',id:data.id,ok:false,message:error instanceof Error?error.message:'Falha ao autenticar.'},'*')}}
+async function handleLogin(data:BridgeMessage):Promise<void>{if(!frame.value?.contentWindow||!data.id)return;try{const response=await fetch('/api/v1/auth/login',{method:'POST',cache:'no-store',headers:{Accept:'application/json','content-type':'application/json'},body:JSON.stringify({email:data.email||'',password:data.password||''})});const payload=await response.json().catch(()=>({}));if(!response.ok||!payload.data)throw new Error(payload.error?.message||'E-mail ou senha inválidos.');const result=payload.data;localStorage.setItem('scheduler_pro_access_token',String(result.access_token||''));if(result.refresh_token)localStorage.setItem('scheduler_pro_refresh_token',String(result.refresh_token));window.dispatchEvent(new Event('scheduler-pro-auth-changed'));postToFrame({type:'scheduler-pro-auth-response',id:data.id,ok:true,data:result});window.location.assign('/#dashboard')}catch(error){postToFrame({type:'scheduler-pro-auth-response',id:data.id,ok:false,message:error instanceof Error?error.message:'Falha ao autenticar.'})}}
 async function handleRuntime(data:BridgeMessage):Promise<void>{
-  const target=frame.value?.contentWindow;if(!target||!data.id||!data.action)return
-  const respond=(ok:boolean,value:any,message='')=>target.postMessage({type:'argws-runtime-response',id:data.id,ok,data:value,message},'*')
+  if(!frame.value?.contentWindow||!data.id||!data.action)return
+  const respond=(ok:boolean,value:any,message='')=>postToFrame({type:'argws-runtime-response',id:data.id,ok,data:value,message})
   try{
     const payload=data.payload||{}
     if(data.action==='context.get'){respond(true,props.context||{});return}
@@ -83,7 +89,7 @@ async function handleRuntime(data:BridgeMessage):Promise<void>{
     if(data.action==='booking.availability'){const q=new URLSearchParams(Object.entries(payload).filter(([,v])=>v!==undefined&&v!==null).map(([k,v])=>[k,String(v)]));respond(true,await fetch(`/api/v1/public/booking/availability?${q}`,{cache:'no-store'}).then(r=>r.json()).then(v=>v.data));return}
     if(data.action==='booking.create'){const response=await fetch('/api/v1/public/booking',{method:'POST',headers:{'content-type':'application/json',Accept:'application/json'},body:JSON.stringify(payload)});const body=await response.json();if(!response.ok)throw new Error(body.error?.message||'Falha ao criar agendamento.');respond(true,body.data);return}
     if(data.action==='navigation.open'||data.action==='navigation.openLanding'||data.action==='navigation.openBooking'||data.action==='navigation.openLogin'){const href=data.action==='navigation.openLanding'?'/pagina':data.action==='navigation.openBooking'?'/agendar':data.action==='navigation.openLogin'?'/login':String(payload.path||'/pagina');localNavigation(href);respond(true,{href});return}
-    if(data.action==='analytics.track'){window.dispatchEvent(new CustomEvent('scheduler-pro-analytics-event',{detail:payload}));respond(true,{tracked:true});return}
+    if(data.action==='analytics.track'){window.dispatchEvent(new CustomEvent('scheduler-pro-analytics-event',{detail:cloneForBridge(payload)}));respond(true,{tracked:true});return}
     respond(false,null,'Ação não suportada pelo host Scheduler Pro.')
   }catch(error){respond(false,null,error instanceof Error?error.message:'Falha no Template Runtime SDK.')}
 }
@@ -93,8 +99,8 @@ function localNavigation(href:string):void{
   if(href==='/login'||href.startsWith('/login?')){const authenticated=Boolean(localStorage.getItem('scheduler_pro_access_token'));window.location.assign(authenticated?'/#dashboard':href);return}
   if(['/agendar','/pagina'].some(path=>href===path||href.startsWith(path+'?')))window.location.assign(href)
 }
-function onMessage(event:MessageEvent):void{if(event.source!==frame.value?.contentWindow)return;const data=event.data as BridgeMessage|null;if(!data||typeof data!=='object')return;if(data.type==='scheduler-pro-html-api-request')void handleApi(data);if(data.type==='argws-runtime-request')void handleRuntime(data);if(data.type==='scheduler-pro-auth-login')void handleLogin(data);if(data.type==='scheduler-pro-html-navigate'&&data.href)localNavigation(data.href);if(data.type==='scheduler-pro-analytics-track')window.dispatchEvent(new CustomEvent('scheduler-pro-analytics-event',{detail:{name:(data as any).name||'',payload:(data as any).payload||{}}}));if(data.type==='scheduler-pro-html-height'){const next=Math.max(480,Math.min(20000,Number(data.height||0)));if(Number.isFinite(next))frameHeight.value=next}}
-function pushContext():void{frame.value?.contentWindow?.postMessage({type:'scheduler-pro-context',context:props.context||{}},'*')}
+function onMessage(event:MessageEvent):void{if(event.source!==frame.value?.contentWindow)return;const data=event.data as BridgeMessage|null;if(!data||typeof data!=='object')return;if(data.type==='scheduler-pro-html-api-request')void handleApi(data);if(data.type==='argws-runtime-request')void handleRuntime(data);if(data.type==='scheduler-pro-auth-login')void handleLogin(data);if(data.type==='scheduler-pro-html-navigate'&&data.href)localNavigation(data.href);if(data.type==='scheduler-pro-analytics-track')window.dispatchEvent(new CustomEvent('scheduler-pro-analytics-event',{detail:{name:(data as any).name||'',payload:cloneForBridge((data as any).payload||{})}}));if(data.type==='scheduler-pro-html-height'){const next=Math.max(480,Math.min(20000,Number(data.height||0)));if(Number.isFinite(next))frameHeight.value=next}}
+function pushContext():void{postToFrame({type:'scheduler-pro-context',context:props.context||{}})}
 onMounted(()=>window.addEventListener('message',onMessage));onUnmounted(()=>window.removeEventListener('message',onMessage))
 </script>
 <template><iframe ref="frame" class="scheduler-html-template-frame" :data-mode="mode" :srcdoc="srcdoc" :style="{height:`${frameHeight}px`}" sandbox="allow-scripts allow-forms" referrerpolicy="no-referrer" title="Página personalizada" @load="pushContext"/></template>
