@@ -15,7 +15,7 @@ type Professional={id:string;name:string}
 type HtmlContent={render_mode:'HTML';html_document:string;surface?:string;template_key?:string;content_version?:number;contract?:string}
 type BookingDesignContent={global_styles?:Record<string,unknown>;layout?:Record<string,unknown>;copy?:Record<string,unknown>}
 type BookingTemplate={key:string;version:number;content:BookingDesignContent|HtmlContent}
-type RuntimeContext={features?:Record<string,unknown>;pages?:Record<string,{enabled?:boolean}>;preferences?:Record<string,unknown>;tenant?:Record<string,unknown>}
+type RuntimeContext={features?:Record<string,unknown>;pages?:Record<string,{enabled?:boolean}>;preferences?:Record<string,unknown>;tenant?:Record<string,unknown>;branding?:BrandingManifest}
 type BookingConfig={enabled:boolean;title:string;subtitle:string;success_message:string;custom_html:string;allow_any_professional:boolean;require_name:boolean;require_phone:boolean;service_mode:FieldMode;email_mode:FieldMode;phone_mode:FieldMode;duration_mode:FieldMode;professional_mode:FieldMode;default_duration_minutes:number;default_professional_name:string;simultaneous_capacity?:number|null;unlimited_capacity?:boolean;public_url:string;booking_template?:BookingTemplate|null}
 type Catalog={config:BookingConfig;services:Service[];professionals:Professional[];branding:BrandingManifest;context?:RuntimeContext}
 type WidgetBookingTemplate={key:string;version:number;content:BookingDesignContent}
@@ -31,7 +31,6 @@ type Envelope<T>={data?:T;error?:{message?:string}}
 
 const path=window.location.pathname.replace(/\/+$/,'')||'/'
 const landingMode=computed(()=>path==='/pagina')
-// PR63_FINAL_RUNTIME_FIX: PublicSitePage não renderiza Login; /login pertence ao host nativo.
 const bookingMode=computed(()=>!landingMode.value)
 const catalog=ref<Catalog|null>(null),landing=ref<LandingPage|null>(null),branding=ref<BrandingManifest|null>(null),runtimeContext=ref<RuntimeContext>({})
 const loading=ref(true),error=ref(''),experienceHtml=ref('')
@@ -51,29 +50,20 @@ async function request<T>(resource:string):Promise<T>{const response=await fetch
 function upsertMeta(selector:string,attribute:'name'|'property',key:string,value:string):void{let node=document.head.querySelector<HTMLMetaElement>(selector);if(!node){node=document.createElement('meta');node.setAttribute(attribute,key);document.head.appendChild(node)}node.content=value}
 function applyHtmlMetadata(source:string,fallbackTitle:string):void{const doc=new DOMParser().parseFromString(source,'text/html');document.title=doc.title.trim()||fallbackTitle;for(const name of ['description','robots','theme-color','color-scheme','twitter:card','twitter:title','twitter:description','twitter:image']){const value=doc.head.querySelector<HTMLMetaElement>(`meta[name="${name}"]`)?.content?.trim();if(value)upsertMeta(`meta[name="${name}"]`,'name',name,value)}for(const property of ['og:type','og:locale','og:title','og:description','og:image','og:url']){const value=doc.head.querySelector<HTMLMetaElement>(`meta[property="${property}"]`)?.content?.trim();if(value)upsertMeta(`meta[property="${property}"]`,'property',property,value)}}
 function applyMetadata(page:LandingPage):void{if(isHtmlContent(page.content)){applyHtmlMetadata(page.content.html_document,branding.value?.app.public_name||'Página pública');return}const seo=blockContent(page.content).seo||{};const title=String(seo.title||branding.value?.app.public_name||'Scheduler Pro'),description=String(seo.description||'Página pública do Scheduler Pro.');document.title=title;upsertMeta('meta[name="description"]','name','description',description)}
+
+// Experience v2 é uma página completa e possui identidade própria. O Branding global
+// do tenant pertence ao Login/Tenant Console/PWA e só fica disponível ao template
+// quando ele pedir explicitamente pelo Runtime SDK. Nunca sobrescrevemos logo, nome,
+// cores ou tipografia do HTML importado de forma automática.
 function automaticExperienceBindings(result:ExperiencePayload):Record<string,unknown>{
-  const brand=result.branding
   const features=result.context?.features||{}
   return{
-    'business.name':brand.app.public_name||brand.app.name||'Scheduler Pro',
-    'business.logo':brand.assets.logo_url||'',
-    'business.logo_dark':brand.assets.logo_dark_url||brand.assets.logo_url||'',
-    'brand.logo':brand.assets.logo_url||'',
-    'brand.logo_dark':brand.assets.logo_dark_url||brand.assets.logo_url||'',
     'show_booking':Boolean(features.public_booking),
     'show_login':Boolean(features.show_login),
     'show_whatsapp':Boolean(features.show_whatsapp),
   }
 }
-function experienceTheme(result:ExperiencePayload):Record<string,unknown>{
-  const source={...(result.version.theme||{})} as Record<string,any>
-  if(result.page.template_key==='scheduler-pro-padrao-generico'){
-    const colors=result.branding.theme?.colors||{}
-    source.colors={...(source.colors||{}),primary:colors.primary,secondary:colors.secondary,accent:colors.accent,background:colors.background,text:colors.text}
-    source.typography={...(source.typography||{}),body:result.branding.theme?.font_family,heading:result.branding.theme?.font_family}
-  }
-  return source
-}
+function experienceTheme(result:ExperiencePayload):Record<string,unknown>{return result.version.theme||{}}
 function experienceDocument(result:ExperiencePayload):string{
   const bindings=(normalizeBindingsManifest(result.version.metadata?.bindings||{}) as any).bindings||{}
   const values={...automaticExperienceBindings(result),...(result.version.bindings_values||{})}
@@ -87,8 +77,9 @@ async function loadExperience(surface:'LANDING'|'BOOKING'):Promise<boolean>{
     const result=await request<ExperiencePayload>(`/experience/${surface}`)
     experienceHtml.value=experienceDocument(result)
     branding.value=result.branding
+    // Branding permanece somente como dado opcional do Runtime SDK. Não chamamos
+    // applyBranding() para uma Experience HTML completa.
     runtimeContext.value={...(result.context||{}),branding:result.branding} as RuntimeContext
-    applyBranding(result.branding)
     analyticsConfig=installPublicAnalytics((runtimeContext.value.preferences?.marketing_analytics||{}) as Record<string,unknown>);trackPublicEvent('page_view',{surface:surface.toLowerCase()},analyticsConfig)
     applyHtmlMetadata(experienceHtml.value,result.branding.app.public_name||'Scheduler Pro')
     return true
