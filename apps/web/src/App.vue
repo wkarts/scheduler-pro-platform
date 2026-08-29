@@ -20,12 +20,12 @@ import './tenantContrast.css'
 const authenticated=ref(Boolean(localStorage.getItem('scheduler_pro_access_token')))
 const activeView=ref((window.location.hash||'#dashboard').replace(/^#/,'')||'dashboard')
 const normalizedPath=window.location.pathname.replace(/\/+$/,'')||'/'
-const initialHash=window.location.hash.replace(/^#/,'')
 const sourcePwa=new URLSearchParams(window.location.search).get('source')==='pwa'
 const publicLogin=computed(()=>normalizedPath==='/login'&&!authenticated.value)
 const pwaOpenMode=ref('AUTO')
-const publicRoot=computed(()=>normalizedPath==='/'&&!initialHash&&(!sourcePwa||pwaOpenMode.value==='LANDING'))
-const publicSurface=computed(()=>['/agendar','/pagina'].includes(normalizedPath)||publicRoot.value)
+// HOTFIX_TENANT_ROOT_ADMIN: a raiz do domínio pertence sempre ao console/login do tenant.
+// Landing e Agenda Pública só existem nas rotas públicas explícitas /pagina e /agendar.
+const publicSurface=computed(()=>['/agendar','/pagina'].includes(normalizedPath))
 const forcePwaLogin=computed(()=>sourcePwa&&pwaOpenMode.value==='LOGIN'&&!authenticated.value)
 function refreshAuthState():void{authenticated.value=Boolean(localStorage.getItem('scheduler_pro_access_token'))}
 function refreshRoute():void{activeView.value=(window.location.hash||'#dashboard').replace(/^#/,'')||'dashboard'}
