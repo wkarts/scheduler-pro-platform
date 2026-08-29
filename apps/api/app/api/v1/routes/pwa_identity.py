@@ -40,15 +40,18 @@ CORE_PWA_ICONS = [
 ]
 
 
+def _dict_value(source: dict[str, Any], key: str) -> dict[str, Any]:
+    value = source.get(key)
+    return value if isinstance(value, dict) else {}
+
+
 def _allow_tenant_pwa_identity(manifest: dict[str, Any]) -> bool:
-    settings = manifest.get("settings")
-    if not isinstance(settings, dict):
-        return False
+    settings = _dict_value(manifest, "settings")
     return bool(settings.get("allow_pwa_identity_override", False))
 
 
 def _tenant_icons(manifest: dict[str, Any]) -> list[dict[str, str]]:
-    assets = manifest.get("assets") if isinstance(manifest.get("assets"), dict) else {}
+    assets = _dict_value(manifest, "assets")
     branding_version = int(manifest.get("branding_version") or 0)
     icon_url = str(assets.get("icon_url") or "").strip()
     if not icon_url or icon_url in {"/icons/icon-512.png", "/icons/icon.svg", "/icons/icon.png"}:
@@ -70,9 +73,9 @@ async def pwa_manifest(
     session: AsyncSession = Depends(get_platform_session),
 ) -> JSONResponse:
     manifest = await BrandingService(session).manifest_for_context(context)
-    app = manifest.get("app") if isinstance(manifest.get("app"), dict) else {}
-    theme = manifest.get("theme") if isinstance(manifest.get("theme"), dict) else {}
-    colors = theme.get("colors") if isinstance(theme.get("colors"), dict) else {}
+    app = _dict_value(manifest, "app")
+    theme = _dict_value(manifest, "theme")
+    colors = _dict_value(theme, "colors")
     allow_override = _allow_tenant_pwa_identity(manifest)
 
     if allow_override:
