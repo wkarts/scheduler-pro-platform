@@ -5,7 +5,6 @@ from typing import Any
 import bleach
 from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel, EmailStr, Field
-from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.responses import StreamingResponse
 
@@ -23,7 +22,6 @@ from app.services.branding_service import BrandingService
 from app.services.file_service import TenantFileService
 from app.services.experience_service import ExperienceService
 from app.services.global_template_service import GlobalTemplateService
-from app.services.html_template_contract import HtmlTemplateContract
 from app.services.landing_service import LandingPageService
 from app.services.public_booking_service import PublicBookingService
 from app.services.public_page_context_service import PublicPageContextService
