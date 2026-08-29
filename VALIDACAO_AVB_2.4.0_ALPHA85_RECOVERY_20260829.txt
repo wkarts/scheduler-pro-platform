@@ -37,3 +37,13 @@ DIAGNÓSTICO RELEVANTE
 LIMITAÇÕES DO RUNTIME DE VALIDAÇÃO
 - apps/web e apps/admin build não executados: vue-tsc não está instalado no source/runtime desta sessão
 - não declarar pytest completo como PASS nesta sessão
+
+CONSOLIDAÇÃO FINAL DOS TEMPLATES
+[PASS] barber-shop-neo-generico: upload == resource == pasta de entrega | a00ec036d3f994f2cea811e5818a2243a748c387abd0801f6f4b9ae494ff8ea1
+[PASS] clinica-medica-generico: upload == resource == pasta de entrega | 006f925b242f2c225d1e4644b2c8ffdcb9b8c5e8a5659f0c4d18c8f876721d85
+[PASS] clinica-odontologica-generico: upload == resource == pasta de entrega | ce8ddcd8be51a1b38049fe9f0d4aef2634dfa30cd8e7e5c40ba4b14ea45eec7a
+[PASS] clinica-veterinaria-generico: upload == resource == pasta de entrega | 2859bed7381675d6e5fed236f3c0e0907797fd147723e1ca87fa0956920fd05d
+[PASS] martelinho-de-ouro-generico: upload == resource == pasta de entrega | 083c04898bbdec727da9323a915aae60a2eba76916593d527a73009505821136
+[PASS] scheduler-pro-padrao-generico: upload == resource == pasta de entrega | 6edee1e49944f1fc46afdbb21670c17cc9332a4f0c40f327f64dea105ae83bc0
+[PASS] studio-unhas-generico: upload == resource == pasta de entrega | 1217faec440cce3e6d4e65ffb8edfaa35be241b05ffdf98962b7a137f8491464
+[PASS] tecnologia-generico-simples: upload == resource == pasta de entrega | 8a7b49ea67c6003d3becbfa43c4e298b0341f31a4df779cf4876234a75639914

@@ -175,3 +175,20 @@ O build completo de `apps/web`/`apps/admin` não pôde ser executado porque o so
 
 O pytest completo também não é anunciado como executado nesta sessão quando requer dependências ausentes do ambiente. A compilação Python e os testes do pacote AVB foram executados conforme descrito acima.
 
+
+## Consolidação final dos 8 templates atualizados
+
+A entrega final foi regenerada após o reenvio dos oito pacotes corrigidos. Os bytes desses uploads foram incorporados **sem reconstrução** em `apps/api/resources/template-packages/` e também expostos em `TEMPLATES_AVB_2.4.0_OFICIAIS/` para conferência direta.
+
+| Template | SHA-256 |
+|---|---|
+| `barber-shop-neo-generico` | `a00ec036d3f994f2cea811e5818a2243a748c387abd0801f6f4b9ae494ff8ea1` |
+| `clinica-medica-generico` | `006f925b242f2c225d1e4644b2c8ffdcb9b8c5e8a5659f0c4d18c8f876721d85` |
+| `clinica-odontologica-generico` | `ce8ddcd8be51a1b38049fe9f0d4aef2634dfa30cd8e7e5c40ba4b14ea45eec7a` |
+| `clinica-veterinaria-generico` | `2859bed7381675d6e5fed236f3c0e0907797fd147723e1ca87fa0956920fd05d` |
+| `martelinho-de-ouro-generico` | `083c04898bbdec727da9323a915aae60a2eba76916593d527a73009505821136` |
+| `scheduler-pro-padrao-generico` | `6edee1e49944f1fc46afdbb21670c17cc9332a4f0c40f327f64dea105ae83bc0` |
+| `studio-unhas-generico` | `1217faec440cce3e6d4e65ffb8edfaa35be241b05ffdf98962b7a137f8491464` |
+| `tecnologia-generico-simples` | `8a7b49ea67c6003d3becbfa43c4e298b0341f31a4df779cf4876234a75639914` |
+
+Todos os oito pacotes passaram novamente pelo importador da própria alpha.85 Recovery como `argws-experience-package/v2`, com Landing e Booking válidos.
