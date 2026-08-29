@@ -41,11 +41,14 @@ def test_tenant_pwa_identity_override_is_opt_in() -> None:
 def test_web_uses_protected_dynamic_pwa_manifest() -> None:
     index = _read("apps/web/index.html")
     route = _read("apps/api/app/api/v1/routes/pwa_identity.py")
+    router = _read("apps/api/app/api/v1/router.py")
     assert '/api/v1/pwa/manifest.webmanifest' in index
     assert 'name = CORE_PWA_NAME' in route
     assert 'icons = list(CORE_PWA_ICONS)' in route
     assert 'allow_pwa_identity_override' in route
     assert 'X-Scheduler-PWA-Identity' in route
+    assert 'pwa_identity.router, prefix="/pwa"' in router
+    assert 'pwa_identity.router,\n    prefix="/branding"' in router
 
 
 def test_tenant_shell_uses_runtime_version_endpoint_like_control_plane() -> None:
