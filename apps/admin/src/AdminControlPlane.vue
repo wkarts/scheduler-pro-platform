@@ -1114,8 +1114,9 @@ onUnmounted(() => {
     <section v-if="!isAuthenticated" class="auth-page">
       <aside class="auth-visual">
         <div class="auth-brand auth-brand-centered">
-          <div class="brand-mark">SP</div>
-          <div><strong>Scheduler Pro</strong><span>Control Plane</span></div>
+          <!-- PR63_FINAL_RUNTIME_FIX: wordmark transparente no Control Plane. -->
+          <img class="auth-wordmark" src="/branding/scheduler-pro-logo-dark.png" alt="Scheduler Pro" />
+          <div><strong>Control Plane</strong><span>Administração da plataforma</span></div>
         </div>
       </aside>
       <form class="auth-card" @submit.prevent="login">

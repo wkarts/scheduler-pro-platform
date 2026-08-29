@@ -264,7 +264,9 @@ class ExperienceContractService:
         binding_definitions = {**landing_bindings, **booking_bindings}
         landing, a1 = _extract_embedded_assets(landing, "landing")
         booking, a2 = _extract_embedded_assets(booking, "booking")
-        dedup: dict[str, ExperienceAsset] = {asset.sha256: asset for asset in [*a1, *a2]}
+        # PR63_FINAL_RUNTIME_FIX: preservar caminhos Landing/Booking mesmo quando
+        # o conteúdo binário é idêntico. O HTML referencia o caminho lógico, não o SHA.
+        assets_by_path: dict[str, ExperienceAsset] = {asset.path: asset for asset in [*a1, *a2]}
         return ParsedExperience(
             source_schema=LEGACY_SCHEMA,
             package_key=key,
@@ -274,6 +276,6 @@ class ExperienceContractService:
             booking_html=_rewrite_asset_urls(booking, key),
             bindings={"schema": "argws-bindings/v1", "version": 1, "bindings": binding_definitions},
             theme={"schema": "argws-theme-tokens/v1", "version": 1, "name": str(package.get("name") or key)},
-            assets=tuple(dedup.values()),
-            warnings=(f"Pacote v1 migrado para Experience Contract v2; {len(dedup)} asset(s) Base64 extraído(s) quando aplicável.", "Login legado foi ignorado; o Login é nativo/white-label no 2.4.0."),
+            assets=tuple(assets_by_path.values()),
+            warnings=(f"Pacote v1 migrado para Experience Contract v2; {len(assets_by_path)} asset(s) Base64 extraído(s) quando aplicável.", "Login legado foi ignorado; o Login é nativo/white-label no 2.4.0."),
         )

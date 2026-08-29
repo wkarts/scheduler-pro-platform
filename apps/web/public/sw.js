@@ -1,5 +1,5 @@
 const CACHE_PREFIX = 'scheduler-pro-web-'
-const CACHE = `${CACHE_PREFIX}avb-2.4.0-final-mobile-agenda-v5`
+const CACHE = `${CACHE_PREFIX}avb-2.4.0-pr63-final-runtime-v6`
 const STATIC_ASSETS = [
   '/',
   '/index.html',
