@@ -31,26 +31,8 @@ jobs:
       - name: Validate Compose model
         run: docker compose -f deployments/development/docker-compose.yml config --quiet
 
-      - name: Build development API images with retry
-        shell: bash
-        run: |
-          set -euo pipefail
-          compose=(docker compose -f deployments/development/docker-compose.yml)
-          for attempt in 1 2 3; do
-            echo "Build attempt ${attempt}/3"
-            if "${compose[@]}" build api bootstrap; then
-              exit 0
-            fi
-            if [ "$attempt" -eq 3 ]; then
-              echo "API/bootstrap build failed after 3 attempts." >&2
-              exit 1
-            fi
-            docker builder prune -af >/dev/null 2>&1 || true
-            sleep $((attempt * 5))
-          done
-
       - name: Start development stack and bootstrap
-        run: docker compose -f deployments/development/docker-compose.yml up --no-build -d
+        run: docker compose -f deployments/development/docker-compose.yml up --build -d
 
       - name: Wait for real readiness
         shell: bash
