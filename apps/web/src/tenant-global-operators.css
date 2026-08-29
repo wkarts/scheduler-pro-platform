@@ -1,0 +1,58 @@
+/* Operadores globais: mesma régua visual no Desktop/Web sem alterar a função de cada componente. */
+@media (min-width: 701px) {
+  .sp-global-agenda-operator,
+  .sp-checkin-launcher {
+    right: 22px !important;
+    width: 178px !important;
+    min-width: 178px !important;
+    height: 46px !important;
+    min-height: 46px !important;
+    padding: 0 15px !important;
+    border-radius: 14px !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 8px !important;
+    font-size: 11px !important;
+    line-height: 1 !important;
+    font-weight: 850 !important;
+    box-sizing: border-box !important;
+    transform: none;
+  }
+
+  .sp-global-agenda-operator {
+    bottom: 22px !important;
+  }
+
+  .sp-checkin-launcher {
+    bottom: 78px !important;
+    border: 1px solid #a7f3d0 !important;
+    background: linear-gradient(135deg, #ecfdf5 0%, #d1fae5 100%) !important;
+    color: #047857 !important;
+    box-shadow: 0 12px 30px rgba(4, 120, 87, .15) !important;
+  }
+
+  .sp-checkin-launcher:hover {
+    background: linear-gradient(135deg, #d1fae5 0%, #bbf7d0 100%) !important;
+    transform: translateY(-1px) !important;
+  }
+}
+
+@media (max-width: 700px) {
+  .sp-global-agenda-operator,
+  .sp-checkin-launcher {
+    width: 50px !important;
+    min-width: 50px !important;
+    height: 50px !important;
+    min-height: 50px !important;
+    right: 13px !important;
+    padding: 0 !important;
+    justify-content: center !important;
+    border-radius: 50% !important;
+  }
+
+  .sp-global-agenda-operator { bottom: 13px !important; }
+  .sp-checkin-launcher { bottom: 73px !important; }
+  .sp-global-agenda-operator span,
+  .sp-checkin-launcher span { display: none !important; }
+}

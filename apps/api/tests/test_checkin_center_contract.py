@@ -20,23 +20,51 @@ def _source(path: str) -> str:
     return (ROOT / path).read_text(encoding="utf-8")
 
 
-def test_checkin_center_is_global_like_agenda_operator() -> None:
+def test_checkin_center_is_global_and_aligned_with_agenda_operator() -> None:
     app = _source("apps/web/src/App.vue")
     center = _source("apps/web/src/TenantCheckInCenter.vue")
     operator = _source("apps/web/src/TenantAgendaOperator.vue")
+    global_css = _source("apps/web/src/tenant-global-operators.css")
 
     assert "TenantCheckInCenter" in app
     assert "<TenantCheckInCenter/>" in app
     assert 'TenantCheckInCenter v-if="activeView' not in app
+    assert "tenant-global-operators.css" in app
     assert "sp-checkin-launcher" in center
     assert "sp-global-agenda-operator" in operator
-    assert "bottom:80px" in center
-    assert "bottom:22px" in operator
+    assert ".sp-global-agenda-operator," in global_css
+    assert ".sp-checkin-launcher" in global_css
+    assert "width: 178px !important" in global_css
+    assert "height: 46px !important" in global_css
+    assert "bottom: 22px !important" in global_css
+    assert "bottom: 78px !important" in global_css
     assert "Central de Check-in" in center
     assert "Selecionar este horário" in center
     assert "Não compareceu" in center
     assert "Horário chegou · aguardando Check-in" in center
     assert "Atrasado ${deltaMinutes} min · aguardando Check-in" in center
+
+
+def test_checkin_mobile_has_operational_tabs_and_full_height_queue() -> None:
+    center = _source("apps/web/src/TenantCheckInCenter.vue")
+    global_css = _source("apps/web/src/tenant-global-operators.css")
+
+    assert "type MobileTab='summary'|'queue'|'history'" in center
+    assert "sp-checkin-mobile-tabs" in center
+    assert ">Resumo</span>" in center
+    assert ">Atendimentos</span>" in center
+    assert ">Histórico</span>" in center
+    assert "queueRows" in center
+    assert "historyRows" in center
+    assert "visibleRows" in center
+    assert "mobile-tab-queue .sp-checkin-metrics" in center
+    assert "mobile-tab-history .sp-checkin-metrics" in center
+    assert "height:100dvh" in center
+    assert "flex:1 1 auto" in center
+    assert "overflow:auto" in center
+    assert "grid-template-columns:repeat(2,minmax(0,1fr))" in center
+    assert "width: 50px !important" in global_css
+    assert "bottom: 73px !important" in global_css
 
 
 def test_checkin_flow_defaults_to_full_and_supports_simple() -> None:
