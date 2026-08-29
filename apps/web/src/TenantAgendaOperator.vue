@@ -109,7 +109,7 @@ async function loadData():Promise<void>{
 }
 function chooseCustomer():void{const item=customers.value.find((row)=>row.id===selectedCustomerId.value);if(!item)return;quick.value.customer_name=item.name;quick.value.customer_phone=item.phone||'';quick.value.customer_email=item.email||''}
 function selectCustomer(id:string):void{selectedCustomerId.value=id;chooseCustomer()}
-function chooseService():void{const item=services.value.find((row)=>row.id===selectedServiceId.value);if(!item)return;freeService.value='';quick.value.duration_minutes=item.duration_minutes;quick.value.price=item.price??null}
+function chooseService():void{const item=services.value.find((row)=>row.id===selectedServiceId.value);if(!item)return;freeService.value='';quick.value.duration_minutes=item.duration_minutes>0?item.duration_minutes:(params.value?.default_duration_minutes||60);quick.value.price=item.price??null}
 function chooseProfessional():void{const item=professionals.value.find((row)=>row.id===selectedProfessionalId.value);if(item)quick.value.professional_name=item.name}
 function resetQuick(keepDate=false):void{const date=keepDate?quick.value.starts_at:'';selectedCustomerId.value='';customerSearch.value='';freeService.value='';quick.value={customer_name:'',customer_phone:'',customer_email:'',duration_minutes:params.value?.default_duration_minutes||60,price:null,professional_name:params.value?.default_professional_name||'Agenda geral',starts_at:date};applyDefaults()}
 async function show(target:AgendaOperatorTab='quick',detail:AgendaOperatorDetail={}):Promise<void>{open.value=true;tab.value=target;resetMessages();await loadData();customerMode.value=params.value?.default_customer_mode==='EXISTING'?'existing':'new';if(detail.startsAt)quick.value.starts_at=detail.startsAt;if(detail.customerId){customerMode.value='existing';selectCustomer(detail.customerId)}}
@@ -192,7 +192,7 @@ onUnmounted(()=>window.removeEventListener(AGENDA_OPERATOR_EVENT,onOperatorEvent
           </template>
 
           <div class="sp-operator-grid">
-            <label v-if="showService">Serviço <small v-if="!serviceRequired">opcional/livre</small><select v-model="selectedServiceId" @change="chooseService"><option value="">Serviço livre / não informado</option><option v-for="item in services.filter(s=>s.active)" :key="item.id" :value="item.id">{{item.name}} · {{item.duration_minutes}} min</option></select></label>
+            <label v-if="showService">Serviço <small v-if="!serviceRequired">opcional/livre</small><select v-model="selectedServiceId" @change="chooseService"><option value="">Serviço livre / não informado</option><option v-for="item in services.filter(s=>s.active)" :key="item.id" :value="item.id">{{item.name}} · {{item.duration_minutes>0?item.duration_minutes+' min':'duração variável'}}</option></select></label>
             <label v-if="showService&&!selectedServiceId">Descrição do serviço<input v-model="freeService" placeholder="Ex.: Avaliação, retoque, orçamento"/></label>
             <label v-if="showService">Valor<input v-model.number="quick.price" type="number" min="0" step="0.01" placeholder="Opcional"/></label>
             <label v-if="showProfessional">Profissional / responsável<select v-model="selectedProfessionalId" @change="chooseProfessional"><option value="">{{params?.default_professional_name||'Agenda geral'}}</option><option v-for="item in professionals" :key="item.id" :value="item.id">{{item.name}}</option></select></label>

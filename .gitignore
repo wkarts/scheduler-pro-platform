@@ -46,3 +46,5 @@ minio-data/
 postgres-data/
 redis-data/
 rabbitmq-data/
+!apps/api/resources/avb-template-kit/*.zip
+!apps/api/resources/avb-template-kit/*.tgz

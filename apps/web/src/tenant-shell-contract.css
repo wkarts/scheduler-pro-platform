@@ -111,3 +111,40 @@
   .tenant-console .content-shell,
   .tenant-console.collapsed .content-shell { margin-left: 0 !important; }
 }
+
+
+/* Mobile navigation 2.4.0: drawer modal, backdrop and touch-safe header. */
+body.sp-mobile-nav-open { overflow: hidden !important; touch-action: none; }
+.tenant-console .mobile-nav-backdrop { display: none; }
+@media (max-width: 900px) {
+  .tenant-console .mobile-nav-backdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 29;
+    border: 0;
+    background: rgba(2, 6, 23, .48);
+    backdrop-filter: blur(2px);
+  }
+  .tenant-console .sidebar,
+  .tenant-console.collapsed .sidebar {
+    z-index: 31 !important;
+    box-shadow: 24px 0 60px rgba(2,6,23,.26);
+    overscroll-behavior: contain;
+  }
+  .tenant-console .topbar { padding: 0 12px !important; gap: 9px !important; }
+  .tenant-console .topbar-search { min-width: 0 !important; flex: 1 1 auto; }
+  .tenant-console .company-switcher { display: none !important; }
+  .tenant-console .profile > div:last-child { display: none !important; }
+  .tenant-console .main-content { padding: 18px 12px 76px !important; width: 100%; min-width: 0; }
+  .tenant-console .page-header { display: grid; grid-template-columns: 1fr; }
+  .tenant-console .page-actions { width: 100%; display: grid; grid-template-columns: 1fr 1fr; }
+  .tenant-console .page-actions .btn { width: 100%; }
+  .tenant-console .responsive-table { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+}
+@media (max-width: 520px) {
+  .tenant-console .topbar-search { display: none !important; }
+  .tenant-console .topbar-spacer { flex: 1 1 auto; }
+  .tenant-console .install-top { display: none !important; }
+  .tenant-console .page-actions { grid-template-columns: 1fr; }
+}

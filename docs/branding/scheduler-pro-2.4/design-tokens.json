@@ -1,0 +1,41 @@
+{
+  "brand": "Scheduler PRO",
+  "version": "1.0.0",
+  "colors": {
+    "navy": "#0B0F1A",
+    "navy_2": "#111827",
+    "cyan": "#0AE1C0",
+    "blue": "#2563EB",
+    "violet": "#7C3AED",
+    "magenta": "#C026D3",
+    "light": "#E6E8EF",
+    "white": "#FFFFFF",
+    "muted": "#6B7280"
+  },
+  "gradient": {
+    "primary": "linear-gradient(90deg, #0AE1C0 0%, #2563EB 35%, #7C3AED 68%, #C026D3 100%)"
+  },
+  "typography": {
+    "primary": "Sora",
+    "fallback": [
+      "Inter",
+      "system-ui",
+      "sans-serif"
+    ],
+    "weights": {
+      "regular": 400,
+      "medium": 500,
+      "semibold": 600,
+      "bold": 700
+    }
+  },
+  "brand_voice": [
+    "moderna",
+    "precisa",
+    "tecnológica",
+    "confiável",
+    "fluida"
+  ],
+  "tagline": "Mais tempo para o que realmente importa.",
+  "secondary_line": "Agendar • Conectar • Otimizar"
+}

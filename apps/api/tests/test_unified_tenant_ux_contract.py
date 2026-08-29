@@ -48,7 +48,9 @@ def test_public_assets_are_limited_to_landing_prefix() -> None:
 
     assert '@router.get("/assets/{key:path}")' in public_routes
     assert 'PUBLIC_LANDING_ASSET_PREFIX = "landing/"' in public_routes
+    assert 'PUBLIC_EXPERIENCE_ASSET_PREFIX = "experience/"' in public_routes
     assert 'normalized.startswith(PUBLIC_LANDING_ASSET_PREFIX)' in public_routes
+    assert 'normalized.startswith(PUBLIC_EXPERIENCE_ASSET_PREFIX)' in public_routes
     assert 'f"/api/v1/public/assets/{quote(normalized, safe=\'/\')}"' in files_routes
 
 
@@ -67,8 +69,8 @@ def test_public_surfaces_are_separated_and_editor_uses_canonical_visual_builder(
     assert "'/agendar'" in app and "'/pagina'" in app and "'/login'" in app
     assert "landingMode" in site
     assert "PublicVisualLandingRenderer" in site
-    assert "SchedulerProProjectAdapter" in editor
-    assert "argws-visual-builder-app" in editor
+    assert "ExperiencePageAdapter" in editor
+    assert "argws-visual-builder" in editor
     assert "#visual-builder" in editor
     assert "MutationObserver" not in editor
     assert "argws-page-renderer" in renderer

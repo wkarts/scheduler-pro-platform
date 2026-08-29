@@ -408,7 +408,7 @@ class AppointmentService:
                 raise APIError("APPOINTMENT_RANGE_INVALID", "Período de agenda inválido.", 422)
             if range_end - range_start > timedelta(days=370):
                 raise APIError("APPOINTMENT_RANGE_TOO_LARGE", "Consulte no máximo 370 dias por vez.", 422)
-            clauses.append("a.starts_at < :range_end and a.ends_at > :range_start")
+            clauses.append("a.starts_at >= :range_start and a.starts_at < :range_end")
             params["range_start"] = range_start
             params["range_end"] = range_end
         elif day:
@@ -431,16 +431,18 @@ class AppointmentService:
                 text(
                     f"""
                     select a.id::text, a.customer_id::text, a.service_id::text,
-                           a.professional_id::text, a.starts_at, a.ends_at,
+                           a.professional_id::text, a.starts_at,
+                           case when a.ends_at is null or a.ends_at <= a.starts_at then a.starts_at + interval '60 minutes' else a.ends_at end as ends_at,
                            a.status, a.source, a.created_at,
-                           c.name as customer_name, c.phone as customer_phone,
-                           c.email as customer_email,
-                           s.name as service_name, s.duration_minutes, s.price,
-                           p.name as professional_name
+                           coalesce(c.name,'Cliente legado') as customer_name,
+                           c.phone as customer_phone, c.email as customer_email,
+                           coalesce(s.name,'Atendimento') as service_name,
+                           case when coalesce(s.duration_minutes, 0) > 0 then s.duration_minutes else greatest(5, extract(epoch from ((case when a.ends_at is null or a.ends_at <= a.starts_at then a.starts_at + interval '60 minutes' else a.ends_at end)-a.starts_at))/60)::integer end as duration_minutes,
+                           s.price, coalesce(p.name,'Agenda geral') as professional_name
                     from appointments a
-                    join customers c on c.id = a.customer_id
+                    left join customers c on c.id = a.customer_id
                     left join services s on s.id = a.service_id
-                    join professionals p on p.id = a.professional_id
+                    left join professionals p on p.id = a.professional_id
                     where {' and '.join(clauses)}
                     order by a.starts_at asc
                     limit 2000
@@ -457,16 +459,18 @@ class AppointmentService:
                 text(
                     """
                     select a.id::text, a.customer_id::text, a.service_id::text,
-                           a.professional_id::text, a.starts_at, a.ends_at,
+                           a.professional_id::text, a.starts_at,
+                           case when a.ends_at is null or a.ends_at <= a.starts_at then a.starts_at + interval '60 minutes' else a.ends_at end as ends_at,
                            a.status, a.source, a.created_at,
-                           c.name as customer_name, c.phone as customer_phone,
-                           c.email as customer_email,
-                           s.name as service_name, s.duration_minutes, s.price,
-                           p.name as professional_name
+                           coalesce(c.name,'Cliente legado') as customer_name,
+                           c.phone as customer_phone, c.email as customer_email,
+                           coalesce(s.name,'Atendimento') as service_name,
+                           case when coalesce(s.duration_minutes, 0) > 0 then s.duration_minutes else greatest(5, extract(epoch from ((case when a.ends_at is null or a.ends_at <= a.starts_at then a.starts_at + interval '60 minutes' else a.ends_at end)-a.starts_at))/60)::integer end as duration_minutes,
+                           s.price, coalesce(p.name,'Agenda geral') as professional_name
                     from appointments a
-                    join customers c on c.id = a.customer_id
+                    left join customers c on c.id = a.customer_id
                     left join services s on s.id = a.service_id
-                    join professionals p on p.id = a.professional_id
+                    left join professionals p on p.id = a.professional_id
                     where a.id=cast(:appointment_id as uuid)
                     """
                 ),

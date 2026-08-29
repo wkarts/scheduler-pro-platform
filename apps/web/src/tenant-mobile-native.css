@@ -15,8 +15,8 @@
     position: fixed !important;
     z-index: 1200 !important;
     inset: 0 auto 0 0 !important;
-    width: min(88vw, 344px) !important;
-    max-width: 344px !important;
+    width: min(92vw, 360px) !important;
+    max-width: 360px !important;
     height: 100dvh !important;
     transform: translateX(-105%) !important;
     transition: transform .22s ease !important;
@@ -25,7 +25,7 @@
     overscroll-behavior: contain;
   }
   .tenant-console.mobileOpen .sidebar { transform: translateX(0) !important; }
-  .tenant-console.collapsed .sidebar { width: min(88vw, 344px) !important; }
+  .tenant-console.collapsed .sidebar { width: min(92vw, 360px) !important; }
   .tenant-console.mobileOpen .sidebar .nav-item span,
   .tenant-console.mobileOpen .sidebar .brand > div:not(.brand-mark),
   .tenant-console.mobileOpen .sidebar .version-info,
@@ -181,9 +181,11 @@
   .tenant-console .sp-calendar-layout,
   .tenant-console .sp-form-layout { display: block !important; }
   .tenant-console .sp-calendar-layout > *, .tenant-console .sp-form-layout > * { margin-bottom: 12px; }
-  .tenant-console .sp-calendar-card, .tenant-console .sp-day-card, .tenant-console .sp-card { border-radius: 20px !important; }
-  .tenant-console .sp-calendar-grid { gap: 4px !important; }
-  .tenant-console .sp-calendar-grid button { min-height: 44px !important; border-radius: 10px !important; padding: 4px !important; }
+  .tenant-console .sp-calendar-card, .tenant-console .sp-day-card, .tenant-console .sp-card { border-radius: 20px !important; min-width: 0 !important; width: 100% !important; max-width: 100% !important; overflow: hidden !important; }
+  .tenant-console .sp-weekdays, .tenant-console .sp-calendar-grid { grid-template-columns: repeat(7, minmax(0, 1fr)) !important; width: 100% !important; min-width: 0 !important; max-width: 100% !important; }
+  .tenant-console .sp-calendar-grid { gap: 2px !important; border-left: 0 !important; }
+  .tenant-console .sp-calendar-grid button { width: 100% !important; min-width: 0 !important; min-height: 46px !important; border-radius: 9px !important; padding: 4px 2px !important; text-align: center !important; overflow: hidden !important; }
+  .tenant-console .sp-weekdays span { min-width: 0 !important; overflow: hidden !important; text-overflow: clip !important; }
   .tenant-console .sp-day-list .sp-appointment { grid-template-columns: 58px minmax(0,1fr) !important; gap: 8px; }
   .tenant-console .sp-day-list .sp-appointment em { grid-column: 2; justify-self: start; }
   .tenant-console .sp-form-grid, .tenant-console .sp-color-grid { grid-template-columns: 1fr !important; }

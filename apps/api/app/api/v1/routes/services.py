@@ -15,14 +15,14 @@ router = APIRouter()
 
 class ServiceCreate(BaseModel):
     name: str = Field(min_length=2, max_length=160)
-    duration_minutes: int = Field(default=30, ge=5, le=720)
+    duration_minutes: int = Field(default=30, ge=0, le=720)
     price: float | None = Field(default=None, ge=0)
     active: bool = True
 
 
 class ServiceUpdate(BaseModel):
     name: str | None = Field(default=None, min_length=2, max_length=160)
-    duration_minutes: int | None = Field(default=None, ge=5, le=720)
+    duration_minutes: int | None = Field(default=None, ge=0, le=720)
     price: float | None = Field(default=None, ge=0)
     active: bool | None = None
 

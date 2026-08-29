@@ -1,0 +1,1 @@
+{"schema":"argws-bindings/v1","version":1,"bindings":{"business.name":{"type":"text","label":"Nome da empresa","group":"Identidade"},"hero.title":{"type":"text","label":"Título principal","group":"Hero"},"contact.whatsapp":{"type":"phone","label":"WhatsApp","group":"Contato"},"show_booking":{"type":"boolean","label":"Exibir agendamento","group":"Seções"}}}

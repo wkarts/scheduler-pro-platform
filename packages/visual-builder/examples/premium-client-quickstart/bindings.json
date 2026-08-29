@@ -1,0 +1,56 @@
+{
+  "schema": "argws-bindings/v1",
+  "version": 1,
+  "bindings": {
+    "business.name": {
+      "type": "text",
+      "label": "Nome da empresa",
+      "group": "Identidade"
+    },
+    "brand.logo": {
+      "type": "image",
+      "label": "Logo",
+      "group": "Identidade"
+    },
+    "hero.eyebrow": {
+      "type": "text",
+      "label": "Chamada curta",
+      "group": "Hero"
+    },
+    "hero.title": {
+      "type": "text",
+      "label": "Título principal",
+      "group": "Hero"
+    },
+    "hero.subtitle": {
+      "type": "richtext",
+      "label": "Subtítulo",
+      "group": "Hero"
+    },
+    "cta.label": {
+      "type": "text",
+      "label": "Texto do CTA",
+      "group": "Hero"
+    },
+    "contact.whatsapp": {
+      "type": "phone",
+      "label": "WhatsApp",
+      "group": "Contato"
+    },
+    "contact.instagram": {
+      "type": "url",
+      "label": "Instagram",
+      "group": "Contato"
+    },
+    "show_booking": {
+      "type": "boolean",
+      "label": "Exibir CTA de agendamento",
+      "group": "Seções"
+    },
+    "show_contact": {
+      "type": "boolean",
+      "label": "Exibir contatos",
+      "group": "Seções"
+    }
+  }
+}

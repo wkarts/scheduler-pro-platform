@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, File, UploadFile
 from pydantic import BaseModel, Field
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
-from starlette.responses import StreamingResponse
+from starlette.responses import JSONResponse, StreamingResponse
 
 from app.api.deps import (
     get_platform_session,
@@ -22,7 +22,7 @@ from app.services.branding_service import BrandingService
 from app.services.file_service import TenantFileService
 
 router = APIRouter()
-BrandAssetKind = Literal["logo", "icon", "favicon"]
+BrandAssetKind = Literal["logo", "logo-dark", "icon", "favicon", "login-background"]
 BRAND_ASSET_FIELDS = {"logo": "logo_url", "icon": "icon_url", "favicon": "favicon_url"}
 BRAND_ASSET_TYPES = {"image/png", "image/jpeg", "image/webp", "image/svg+xml", "image/x-icon", "image/vnd.microsoft.icon"}
 BRAND_ASSET_MAX_BYTES = 4 * 1024 * 1024
@@ -74,6 +74,49 @@ async def get_manifest(
     return success(await service.manifest_for_context(context))
 
 
+@router.get("/manifest.webmanifest")
+async def tenant_pwa_manifest(
+    context: TenantContext = Depends(get_tenant_context),
+    session: AsyncSession = Depends(get_platform_session),
+) -> JSONResponse:
+    manifest = await BrandingService(session).manifest_for_context(context)
+    app = manifest["app"]
+    assets = manifest["assets"]
+    theme = manifest["theme"]
+    branding_version = int(manifest.get("branding_version") or 0)
+    icon_url = str(assets.get("icon_url") or "")
+    version_suffix = f"?v={branding_version}" if branding_version else ""
+    if icon_url and icon_url not in {"/icons/icon-512.png", "/icons/icon.svg"}:
+        icons = [{"src": f"{icon_url}{version_suffix}", "sizes": "any", "type": "image/png", "purpose": "any maskable"}]
+    else:
+        icons = [
+            {"src": "/icons/icon-192.png?v=avb240-brand-v2", "sizes": "192x192", "type": "image/png", "purpose": "any"},
+            {"src": "/icons/icon-512.png?v=avb240-brand-v2", "sizes": "512x512", "type": "image/png", "purpose": "any"},
+            {"src": "/icons/maskable-192.png?v=avb240-brand-v2", "sizes": "192x192", "type": "image/png", "purpose": "maskable"},
+            {"src": "/icons/maskable-512.png?v=avb240-brand-v2", "sizes": "512x512", "type": "image/png", "purpose": "maskable"},
+        ]
+    payload = {
+        "id": f"/{context.slug}",
+        "name": app.get("public_name") or app.get("name") or "Scheduler PRO",
+        "short_name": (app.get("public_name") or "Scheduler PRO")[:30],
+        "description": app.get("slogan") or "Mais tempo para o que realmente importa.",
+        "start_url": "/?source=pwa",
+        "scope": "/",
+        "display": "standalone",
+        "orientation": "any",
+        "background_color": theme["colors"].get("background") or "#FFFFFF",
+        "theme_color": theme["colors"].get("secondary") or "#0B0F1A",
+        "icons": icons,
+        "categories": ["business", "productivity"],
+        "shortcuts": [
+            {"name": "Agenda", "url": "/#agenda"},
+            {"name": "Página pública", "url": "/pagina"},
+            {"name": "Agendar", "url": "/agendar"},
+        ],
+    }
+    return JSONResponse(payload, media_type="application/manifest+json", headers={"Cache-Control": "no-store, max-age=0", "X-Scheduler-Branding-Version": str(branding_version)})
+
+
 @router.get("/assets/{kind}")
 async def public_brand_asset(
     kind: BrandAssetKind,
@@ -84,7 +127,7 @@ async def public_brand_asset(
         _stream(result["Body"]),
         media_type=str(result.get("ContentType") or "application/octet-stream"),
         headers={
-            "Cache-Control": "public, max-age=300, must-revalidate",
+            "Cache-Control": "no-cache, max-age=0, must-revalidate",
             "ETag": str(result.get("ETag", "")),
         },
     )
@@ -122,11 +165,22 @@ async def upload_brand_asset(
         f"branding/{kind}", BytesIO(data), content_type
     )
     public_url = f"/api/v1/branding/assets/{kind}"
-    manifest = await BrandingService(session).save_profile(
-        context.tenant_id,
-        {BRAND_ASSET_FIELDS[kind]: public_url},
-        tenant_name=context.slug,
-    )
+    service = BrandingService(session)
+    if kind in {"login-background", "logo-dark"}:
+        profile = await service.get_or_create_profile(context.tenant_id, context.slug)
+        settings = dict(profile.settings or {})
+        settings["login_background_url" if kind == "login-background" else "logo_dark_url"] = public_url
+        manifest = await service.save_profile(
+            context.tenant_id,
+            {"settings": settings},
+            tenant_name=context.slug,
+        )
+    else:
+        manifest = await service.save_profile(
+            context.tenant_id,
+            {BRAND_ASSET_FIELDS[kind]: public_url},
+            tenant_name=context.slug,
+        )
     return success({"kind": kind, "url": public_url, "file": stored, "manifest": manifest})
 
 

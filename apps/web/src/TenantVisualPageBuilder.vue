@@ -1,77 +1,130 @@
 <script setup lang="ts">
-import { nextTick, onMounted, onUnmounted, ref } from 'vue'
-import { SchedulerProProjectAdapter, type ArgwsVisualBuilderApp } from '@argws/visual-builder'
+import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue'
+import {
+  applyBindingsToHtml,
+  createHtmlDocument,
+  createThemeTokens,
+  normalizeBindingsManifest,
+  themeTokensToCss,
+  type ArgwsVisualBuilder,
+  type PageAdapter,
+  type PageDocument,
+} from '@argws/visual-builder'
 import '@argws/visual-builder'
+import HtmlTemplateFrame from './HtmlTemplateFrame.vue'
 
-const active = ref(false)
-const mountPoint = ref<HTMLDivElement | null>(null)
-const mountError = ref('')
-const mounting = ref(false)
-let app: ArgwsVisualBuilderApp | null = null
+type Tab='overview'|'landing'|'booking'|'branding'|'login'|'pwa'|'templates'|'marketing'
+type Surface='LANDING'|'BOOKING'
+type EditorLevel='blocked'|'basic'|'design'|'full'|'developer'
+type Envelope<T>={data?:T;error?:{message?:string}}
+type PageSummary={id:string;surface:Surface;route:string;template_key?:string|null;enabled:boolean;draft_version_id?:string|null;published_version_id?:string|null;theme?:Record<string,unknown>;bindings?:Record<string,unknown>}
+type ExperienceSummary={schema:string;pages:PageSummary[];editor:{level:EditorLevel};theme_apply_console:boolean;marketing:Record<string,string>;pwa_open_mode:string}
+type ExperienceVersion={id:string;version_number:number;html:string;metadata:Record<string,any>;bindings_values:Record<string,any>;theme:Record<string,any>;label?:string|null;published:boolean;created_at?:string}
+type ExperiencePage={page:PageSummary;version:ExperienceVersion|null}
+type TemplateRow={key:string;name:string;description?:string|null;segment?:string|null;platform_default?:boolean}
+type RuntimeContext={features?:Record<string,unknown>;tenant?:Record<string,unknown>;preferences?:Record<string,unknown>}
+type BrandingManifest={app:{name?:string;public_name?:string;slogan?:string};assets:{logo_url?:string;logo_dark_url?:string;icon_url?:string;favicon_url?:string};theme:{mode?:string;font_family?:string;border_radius?:string;colors:{primary?:string;secondary?:string;accent?:string;background?:string;text?:string}};settings?:Record<string,unknown>}
+type BindingDefinition={type:string;label:string;group:string;default?:unknown;help?:string;options?:unknown[]}
 
-async function open(): Promise<void> {
-  if (active.value && app) return
-  active.value = true
-  mountError.value = ''
-  await nextTick()
-  window.requestAnimationFrame(() => mountBuilder())
+const active=ref(false),loading=ref(false),saving=ref(false),error=ref(''),message=ref('')
+const tab=ref<Tab>('overview'),summary=ref<ExperienceSummary|null>(null),runtime=ref<RuntimeContext>({}),branding=ref<BrandingManifest|null>(null),templates=ref<TemplateRow[]>([])
+const page=ref<ExperiencePage|null>(null),surface=ref<Surface>('LANDING'),bindingValues=ref<Record<string,any>>({}),theme=ref<any>(createThemeTokens())
+const advanced=ref(false),advancedHost=ref<HTMLDivElement|null>(null),advancedElement=ref<ArgwsVisualBuilder|null>(null)
+const confirmTemplate=ref<TemplateRow|null>(null),importBusy=ref(false),assetBusy=ref('')
+const applyTemplateBranding=ref(false),publishAfterImport=ref(false)
+const brandingForm=ref({public_name:'',slogan:'',primary:'#2563EB',secondary:'#0B0F1A',accent:'#0AE1C0',background:'#FFFFFF',text:'#0B0F1A',font_family:'Sora, Inter, system-ui, sans-serif',login_title:'',login_message:'',login_card_title:'',login_card_message:''})
+const marketingForm=ref({ga4_measurement_id:'',google_ads_conversion_id:'',google_ads_conversion_label:'',meta_pixel_id:'',gtm_container_id:'',tiktok_pixel_id:''})
+const pwaOpenMode=ref('AUTO'),themeApplyConsole=ref(false)
+
+async function api<T>(path:string,init:RequestInit={}):Promise<T>{const response=await fetch(`/api/v1${path}`,{...init,cache:'no-store',headers:{Accept:'application/json',...(init.body&&!((init.body) instanceof FormData)?{'content-type':'application/json'}:{}),...(init.headers||{})}});const body=await response.json().catch(()=>({})) as Envelope<T>;if(!response.ok||body.data===undefined)throw new Error(body.error?.message||`Falha HTTP ${response.status}`);return body.data}
+const level=computed<EditorLevel>(()=>summary.value?.editor?.level||'basic')
+const rank:Record<EditorLevel,number>={blocked:0,basic:1,design:2,full:3,developer:4}
+function can(required:EditorLevel):boolean{return rank[level.value]>=rank[required]}
+const currentSummary=computed(()=>summary.value?.pages.find(item=>item.surface===surface.value)||null)
+const definitions=computed<Record<string,BindingDefinition>>(()=>{const raw=page.value?.version?.metadata?.bindings||{};return (normalizeBindingsManifest(raw) as any).bindings||{}})
+const bindingEntries=computed(()=>Object.entries(definitions.value))
+function htmlWithTheme(html:string):string{const css=themeTokensToCss(createThemeTokens(theme.value),':root');const style=`<style data-avb-theme>${css}</style>`;return /<head(?:\s[^>]*)?>/i.test(html)?html.replace(/<head(\s[^>]*)?>/i,m=>`${m}${style}`):`${style}${html}`}
+const previewHtml=computed(()=>{const html=page.value?.version?.html||'';return htmlWithTheme(applyBindingsToHtml(html,bindingValues.value,definitions.value))})
+
+function hydrateBranding(value:BrandingManifest):void{branding.value=value;const s=value.settings||{};brandingForm.value={public_name:value.app.public_name||value.app.name||'',slogan:value.app.slogan||'',primary:value.theme.colors.primary||'#2563EB',secondary:value.theme.colors.secondary||'#0B0F1A',accent:value.theme.colors.accent||'#0AE1C0',background:value.theme.colors.background||'#FFFFFF',text:value.theme.colors.text||'#0B0F1A',font_family:value.theme.font_family||'Sora, Inter, system-ui, sans-serif',login_title:String(s.login_title||''),login_message:String(s.login_message||''),login_card_title:String(s.login_card_title||''),login_card_message:String(s.login_card_message||'')}}
+async function loadCore():Promise<void>{loading.value=true;error.value='';try{const [s,c,b]=await Promise.all([api<ExperienceSummary>('/experience'),api<RuntimeContext>('/public/context').catch(()=>({})),api<BrandingManifest>('/branding/manifest')]);summary.value=s;runtime.value={...c,branding:b} as RuntimeContext;hydrateBranding(b);marketingForm.value={...marketingForm.value,...(s.marketing||{})};pwaOpenMode.value=s.pwa_open_mode||'AUTO';themeApplyConsole.value=Boolean(s.theme_apply_console);void api<TemplateRow[]>('/experience/templates').then(rows=>templates.value=rows).catch(()=>undefined)}catch(exc){error.value=exc instanceof Error?exc.message:'Falha ao carregar a experiência.'}finally{loading.value=false}}
+async function loadPage(next:Surface):Promise<void>{surface.value=next;loading.value=true;error.value='';page.value=null;try{page.value=await api<ExperiencePage>(`/experience/pages/${next}`);bindingValues.value={...(page.value.version?.bindings_values||{})};theme.value=createThemeTokens(page.value.version?.theme||page.value.page.theme||{});tab.value=next==='LANDING'?'landing':'booking'}catch(exc){const msg=exc instanceof Error?exc.message:'';if(!msg.includes('não inicializada'))error.value=msg||'Página ainda não inicializada.';tab.value=next==='LANDING'?'landing':'booking'}finally{loading.value=false}}
+async function savePage(publish=false):Promise<void>{if(!page.value?.version)return;saving.value=true;error.value='';message.value='';try{const result=await api<{version_id:string;version_number:number}>(`/experience/pages/${surface.value}/draft`,{method:'POST',body:JSON.stringify({html:page.value.version.html,template_key:page.value.page.template_key||null,bindings_values:bindingValues.value,theme:theme.value,metadata:page.value.version.metadata||{},label:'Edição pelo ARGWS Visual Builder 2.4.0'})});if(publish)await api(`/experience/pages/${surface.value}/publish`,{method:'POST',body:JSON.stringify({version_id:result.version_id})});message.value=publish?'Alterações salvas e publicadas.':'Rascunho salvo.';await loadCore();await loadPage(surface.value)}catch(exc){error.value=exc instanceof Error?exc.message:'Não foi possível salvar.'}finally{saving.value=false}}
+function toggleSurface(event:Event):void{void setEnabled(Boolean((event.target as HTMLInputElement)?.checked))}
+async function setEnabled(value:boolean):Promise<void>{try{await api(`/experience/pages/${surface.value}/enabled`,{method:'PUT',body:JSON.stringify({enabled:value})});if(currentSummary.value)currentSummary.value.enabled=value;message.value=value?'Página pública ativada.':'Página pública desativada.'}catch(exc){error.value=exc instanceof Error?exc.message:'Falha ao alterar publicação.'}}
+async function uploadBindingAsset(key:string,event:Event):Promise<void>{const input=event.target as HTMLInputElement;const file=input.files?.[0];if(!file)return;assetBusy.value=key;try{const form=new FormData();form.append('file',file);const result=await api<{url:string}>('/experience/assets',{method:'POST',body:form});bindingValues.value[key]=result.url;message.value='Imagem enviada.'}catch(exc){error.value=exc instanceof Error?exc.message:'Falha no upload.'}finally{assetBusy.value='';input.value=''}}
+
+class ExperiencePageAdapter implements PageAdapter{
+  constructor(private owner:Surface){}
+  async load():Promise<PageDocument>{const value=await api<ExperiencePage>(`/experience/pages/${this.owner}`);if(!value.version)throw new Error('Página ainda não possui rascunho.');return createHtmlDocument({title:this.owner==='LANDING'?'Landing Page':'Agenda Pública',htmlDocument:value.version.html,surface:this.owner,contract:'argws-experience-package/v2',templateKey:value.page.template_key||'',contentVersion:2,sourceName:'Scheduler Pro Experience v2'})}
+  async saveDraft(doc:PageDocument):Promise<unknown>{const html=doc.html?.document||'';const current=await api<ExperiencePage>(`/experience/pages/${this.owner}`);return api(`/experience/pages/${this.owner}/draft`,{method:'POST',body:JSON.stringify({html,template_key:current.page.template_key||null,bindings_values:current.version?.bindings_values||{},theme:current.version?.theme||{},metadata:current.version?.metadata||{},label:'Modo avançado AVB 2.4.0'})})}
+  async autosave(doc:PageDocument):Promise<unknown>{return this.saveDraft(doc)}
+  async publish(doc:PageDocument):Promise<unknown>{const saved=await this.saveDraft(doc) as {version_id?:string};return api(`/experience/pages/${this.owner}/publish`,{method:'POST',body:JSON.stringify({version_id:saved.version_id||null})})}
+  async versions():Promise<unknown[]>{return api(`/experience/pages/${this.owner}/versions`)}
+  async listTemplates():Promise<unknown[]>{return[]}
 }
+async function openAdvanced():Promise<void>{if(!can('full'))return;advanced.value=true;await nextTick();if(!advancedHost.value)return;const el=document.createElement('argws-visual-builder') as ArgwsVisualBuilder;el.adapter=new ExperiencePageAdapter(surface.value);el.context={...runtime.value,surface:surface.value};advancedHost.value.replaceChildren(el);advancedElement.value=el}
+function closeAdvanced():void{advancedElement.value?.remove();advancedElement.value=null;advanced.value=false}
 
-function mountBuilder(): void {
-  if (!mountPoint.value || app || mounting.value) return
-  mounting.value = true
-  mountError.value = ''
-  try {
-    const element = document.createElement('argws-visual-builder-app') as ArgwsVisualBuilderApp
-    element.adapter = new SchedulerProProjectAdapter({ baseUrl: '/api/v1', landingSlug: 'home' })
-    element.addEventListener('avb-close', close)
-    mountPoint.value.appendChild(element)
-    app = element
-  } catch (error) {
-    mountError.value = error instanceof Error ? error.message : 'Não foi possível iniciar o ARGWS Visual Builder.'
-  } finally {
-    mounting.value = false
-  }
-}
-
-function retryMount(): void {
-  app?.remove()
-  app = null
-  mountError.value = ''
-  void nextTick().then(() => window.requestAnimationFrame(() => mountBuilder()))
-}
-
-function close(): void {
-  app?.removeEventListener('avb-close', close)
-  app?.remove()
-  app = null
-  mountError.value = ''
-  mounting.value = false
-  active.value = false
-  if (window.location.hash === '#visual-builder') window.location.hash = 'dashboard'
-}
-
-
-function syncRoute(): void {
-  const next = window.location.hash === '#visual-builder'
-  if (next && !active.value) void open()
-  else if (!next && active.value) { app?.remove(); app = null; active.value = false }
-}
-onMounted(async () => { await nextTick(); window.addEventListener('hashchange', syncRoute); syncRoute() })
-onUnmounted(() => { window.removeEventListener('hashchange', syncRoute); app?.remove(); app = null; active.value = false })
+async function applyThemeToIdentity(tokens:Record<string,any>=theme.value):Promise<void>{const t=createThemeTokens(tokens);const old=branding.value?.settings||{};hydrateBranding(await api<BrandingManifest>('/branding/profile',{method:'PUT',body:JSON.stringify({primary_color:t.colors.primary,secondary_color:t.colors.secondary,accent_color:t.colors.accent,background_color:t.colors.background,text_color:t.colors.text,font_family:t.typography.body,settings:old})}));message.value='Tema aplicado à identidade visual do tenant.'}
+async function importOfficial(row:TemplateRow):Promise<void>{importBusy.value=true;error.value='';try{await api(`/experience/import-official/${encodeURIComponent(row.key)}`,{method:'POST',body:JSON.stringify({})});if(applyTemplateBranding.value){const landing=await api<ExperiencePage>('/experience/pages/LANDING');if(landing.version?.theme)await applyThemeToIdentity(landing.version.theme)}if(publishAfterImport.value){await Promise.all([api('/experience/pages/LANDING/publish',{method:'POST',body:JSON.stringify({version_id:null})}),api('/experience/pages/BOOKING/publish',{method:'POST',body:JSON.stringify({version_id:null})})])}confirmTemplate.value=null;message.value=`${row.name} aplicado em Landing e Agenda${publishAfterImport.value?' e publicado':''}. Login nativo foi preservado.`;applyTemplateBranding.value=false;publishAfterImport.value=false;await loadCore()}catch(exc){error.value=exc instanceof Error?exc.message:'Falha ao aplicar template.'}finally{importBusy.value=false}}
+async function importCustom(event:Event):Promise<void>{const input=event.target as HTMLInputElement;const file=input.files?.[0];if(!file)return;importBusy.value=true;try{const form=new FormData();form.append('file',file);const result=await api<{name:string;warnings?:string[]}>('/experience/import',{method:'POST',body:form});message.value=`${result.name} importado. ${result.warnings?.join(' ')||''}`;await loadCore()}catch(exc){error.value=exc instanceof Error?exc.message:'Falha ao importar pacote.'}finally{importBusy.value=false;input.value=''}}
+async function saveBranding():Promise<void>{saving.value=true;try{const old=branding.value?.settings||{};const f=brandingForm.value;const payload={public_name:f.public_name,slogan:f.slogan,primary_color:f.primary,secondary_color:f.secondary,accent_color:f.accent,background_color:f.background,text_color:f.text,font_family:f.font_family,settings:{...old,login_title:f.login_title,login_message:f.login_message,login_card_title:f.login_card_title,login_card_message:f.login_card_message}};hydrateBranding(await api<BrandingManifest>('/branding/profile',{method:'PUT',body:JSON.stringify(payload)}));message.value='Identidade visual salva.'}catch(exc){error.value=exc instanceof Error?exc.message:'Falha ao salvar identidade.'}finally{saving.value=false}}
+async function uploadBrand(kind:'logo'|'logo-dark'|'icon'|'favicon'|'login-background',event:Event):Promise<void>{const input=event.target as HTMLInputElement;const file=input.files?.[0];if(!file)return;assetBusy.value=kind;try{const form=new FormData();form.append('file',file);const result=await api<{manifest:BrandingManifest}>('/branding/assets/'+kind,{method:'POST',body:form});hydrateBranding(result.manifest);message.value='Arquivo da marca atualizado.'}catch(exc){error.value=exc instanceof Error?exc.message:'Falha no upload.'}finally{assetBusy.value='';input.value=''}}
+async function saveMarketing():Promise<void>{saving.value=true;try{await api('/experience/marketing',{method:'PUT',body:JSON.stringify(marketingForm.value)});message.value='Marketing e Analytics salvos.'}catch(exc){error.value=exc instanceof Error?exc.message:'Falha ao salvar Analytics.'}finally{saving.value=false}}
+async function savePwa():Promise<void>{saving.value=true;try{await Promise.all([api('/experience/pwa',{method:'PUT',body:JSON.stringify({open_mode:pwaOpenMode.value})}),api('/experience/theme-policy',{method:'PUT',body:JSON.stringify({apply_to_console:themeApplyConsole.value})})]);message.value='Configuração PWA salva.';await loadCore()}catch(exc){error.value=exc instanceof Error?exc.message:'Falha ao salvar PWA.'}finally{saving.value=false}}
+function selectTab(next:Tab):void{closeAdvanced();tab.value=next;if(next==='landing')void loadPage('LANDING');if(next==='booking')void loadPage('BOOKING')}
+function close():void{active.value=false;closeAdvanced();if(window.location.hash==='#visual-builder')window.location.hash='dashboard'}
+function syncRoute():void{const next=window.location.hash==='#visual-builder';if(next&&!active.value){active.value=true;void loadCore()}else if(!next&&active.value){active.value=false;closeAdvanced()}}
+onMounted(()=>{window.addEventListener('hashchange',syncRoute);syncRoute()});onUnmounted(()=>{window.removeEventListener('hashchange',syncRoute);closeAdvanced()})
 </script>
 
 <template>
-  <Teleport v-if="active" to="body">
-    <div ref="mountPoint" class="sp-visual-builder-mount">
-      <section v-if="mountError" class="sp-visual-builder-error" role="alert">
-        <strong>ARGWS Visual Builder não pôde ser iniciado</strong>
-        <p>{{ mountError }}</p>
-        <div><button type="button" @click="retryMount">Tentar novamente</button><button type="button" class="secondary" @click="close">Voltar ao Scheduler Pro</button></div>
-      </section>
-    </div>
-  </Teleport>
+<Teleport v-if="active" to="body">
+  <div class="experience-center">
+    <header class="experience-top"><div class="brand"><img src="/branding/scheduler-pro-logo-light.png" alt="Scheduler Pro"><div><strong>Experiência pública</strong><span>ARGWS Visual Builder 2.4.0</span></div></div><button type="button" class="close" @click="close">×</button></header>
+    <aside class="experience-nav">
+      <button :class="{active:tab==='overview'}" @click="selectTab('overview')">Visão geral</button>
+      <button :class="{active:tab==='landing'}" @click="selectTab('landing')">Landing Page</button>
+      <button :class="{active:tab==='booking'}" @click="selectTab('booking')">Agenda Pública</button>
+      <button :class="{active:tab==='branding'}" @click="selectTab('branding')">Identidade Visual</button>
+      <button :class="{active:tab==='login'}" @click="selectTab('login')">Login</button>
+      <button :class="{active:tab==='pwa'}" @click="selectTab('pwa')">PWA</button>
+      <button v-if="can('full')" :class="{active:tab==='templates'}" @click="selectTab('templates')">Templates</button>
+      <button v-if="can('full')" :class="{active:tab==='marketing'}" @click="selectTab('marketing')">Marketing</button>
+      <footer><span>Nível do editor</span><strong>{{ level }}</strong></footer>
+    </aside>
+    <main class="experience-main">
+      <p v-if="error" class="notice error">{{ error }}</p><p v-if="message" class="notice success">{{ message }}</p>
+      <div v-if="loading" class="loading">Carregando experiência…</div>
+      <section v-else-if="level==='blocked'" class="hero-card"><h1>Personalização não liberada</h1><p>O design desta empresa é administrado pelo Control Plane. O cliente continua usando normalmente Landing, Agenda, Login e PWA publicados.</p></section>
+      <template v-else>
+        <section v-if="tab==='overview'" class="overview">
+          <div class="headline"><div><span>Scheduler Pro Experience</span><h1>Personalização por área</h1><p>Landing e Agenda usam HTML completo. Login permanece nativo e white-label. O editor modifica somente bindings e tokens autorizados.</p></div></div>
+          <div class="overview-grid"><article v-for="item in summary?.pages||[]" :key="item.surface"><span>{{ item.surface==='LANDING'?'Landing Page':'Agenda Pública' }}</span><strong>{{ item.enabled?'Online':'Offline' }}</strong><small>{{ item.template_key||'Sem template aplicado' }}</small><button @click="selectTab(item.surface==='LANDING'?'landing':'booking')">Configurar</button></article><article><span>Login</span><strong>Nativo</strong><small>White-label Scheduler Pro</small><button @click="selectTab('login')">Personalizar</button></article><article><span>PWA</span><strong>{{ pwaOpenMode }}</strong><small>Manifest e branding por tenant</small><button @click="selectTab('pwa')">Configurar</button></article></div>
+        </section>
+
+        <section v-else-if="tab==='landing'||tab==='booking'" class="page-editor">
+          <div class="section-head"><div><span>{{ surface }}</span><h1>{{ surface==='LANDING'?'Landing Page':'Agenda Pública' }}</h1><p>{{ page?.page.template_key||'Nenhum template v2 inicializado' }}</p></div><div class="head-actions"><label class="switch"><input type="checkbox" :checked="currentSummary?.enabled" @change="toggleSurface"><span>Online</span></label><button v-if="can('full')&&page?.version" @click="openAdvanced">Modo avançado</button><button v-if="page?.version" @click="savePage(false)" :disabled="saving">Salvar</button><button v-if="page?.version" class="primary" @click="savePage(true)" :disabled="saving">Publicar</button></div></div>
+          <div v-if="!page?.version" class="empty"><strong>Página ainda não inicializada.</strong><span>Aplique um template em “Templates” ou importe um Experience Package v2.</span></div>
+          <div v-else class="editor-layout"><aside class="bindings-panel"><h3>Conteúdo editável</h3><p v-if="!bindingEntries.length">Este template não declarou bindings. O visual original está preservado. Use Modo Desenvolvedor para trabalhar no HTML/CSS/JS.</p><div v-for="[key,def] in bindingEntries" :key="key" class="field"><label>{{ def.label }}</label><small>{{ def.help }}</small><template v-if="def.type==='boolean'||def.type==='section'"><input v-model="bindingValues[key]" type="checkbox"></template><template v-else-if="def.type==='color'"><input v-model="bindingValues[key]" type="color"></template><template v-else-if="def.type==='image'"><input v-model="bindingValues[key]" placeholder="URL da imagem"><label class="upload">{{assetBusy===key?'Enviando…':'Enviar imagem'}}<input type="file" accept="image/*" @change="uploadBindingAsset(key,$event)"></label></template><textarea v-else-if="def.type==='richtext'" v-model="bindingValues[key]" rows="4"></textarea><select v-else-if="def.type==='select'" v-model="bindingValues[key]"><option v-for="opt in def.options||[]" :key="String(opt)" :value="opt">{{opt}}</option></select><input v-else v-model="bindingValues[key]" :type="def.type==='number'?'number':'text'"></div><template v-if="can('design')"><h3>Design Tokens</h3><div class="token-grid"><label>Primária<input v-model="theme.colors.primary" type="color"></label><label>Secundária<input v-model="theme.colors.secondary" type="color"></label><label>Accent<input v-model="theme.colors.accent" type="color"></label><label>Fundo<input v-model="theme.colors.background" type="color"></label></div><button class="apply-theme" type="button" @click="applyThemeToIdentity()">Aplicar tema à identidade</button></template></aside><section class="preview-panel"><header><span>Preview real</span><a :href="surface==='LANDING'?'/pagina':'/agendar'" target="_blank">Abrir publicado ↗</a></header><HtmlTemplateFrame :html="previewHtml" :mode="surface==='LANDING'?'landing':'booking'" :context="runtime"/></section></div>
+        </section>
+
+        <section v-else-if="tab==='branding'||tab==='login'" class="settings-page"><div class="section-head"><div><span>White-label</span><h1>{{tab==='login'?'Login nativo':'Identidade Visual'}}</h1><p>{{tab==='login'?'A autenticação continua 100% Scheduler Pro. Personalize somente a apresentação.':'Tokens compartilhados por Landing, Agenda, Login e PWA.'}}</p></div><button class="primary" @click="saveBranding" :disabled="saving">Salvar identidade</button></div><div class="settings-grid"><div class="form-card"><template v-if="tab==='branding'"><label>Nome público<input v-model="brandingForm.public_name"></label><label>Slogan<input v-model="brandingForm.slogan"></label><div class="color-grid"><label>Primária<input v-model="brandingForm.primary" type="color"></label><label>Secundária<input v-model="brandingForm.secondary" type="color"></label><label>Accent<input v-model="brandingForm.accent" type="color"></label><label>Fundo<input v-model="brandingForm.background" type="color"></label><label>Texto<input v-model="brandingForm.text" type="color"></label></div><label>Tipografia<input v-model="brandingForm.font_family"></label><div class="upload-grid"><label>Logo claro<input type="file" accept="image/*,.svg" @change="uploadBrand('logo',$event)"></label><label>Logo escuro<input type="file" accept="image/*,.svg" @change="uploadBrand('logo-dark',$event)"></label><label>Ícone PWA<input type="file" accept="image/*,.svg" @change="uploadBrand('icon',$event)"></label><label>Favicon<input type="file" accept="image/*,.svg,.ico" @change="uploadBrand('favicon',$event)"></label></div></template><template v-else><label>Título<input v-model="brandingForm.login_title" placeholder="Agenda viva, confirmações automáticas..."></label><label>Mensagem<textarea v-model="brandingForm.login_message" rows="4"></textarea></label><label>Título do card<input v-model="brandingForm.login_card_title" placeholder="Entrar na plataforma"></label><label>Mensagem do card<input v-model="brandingForm.login_card_message" placeholder="Acesse o painel gerencial..."></label><label class="upload">Imagem de fundo do Login<input type="file" accept="image/*" @change="uploadBrand('login-background',$event)"></label><small>Login não usa template HTML. 2FA, sessão, recuperação e autenticação continuam nativos.</small></template></div><div class="brand-preview"><img v-if="branding?.assets.logo_url" :src="branding.assets.logo_url"><strong>{{brandingForm.public_name||'Scheduler Pro'}}</strong><span>{{brandingForm.slogan}}</span><a v-if="tab==='login'" href="/login" target="_blank">Visualizar Login ↗</a></div></div></section>
+
+        <section v-else-if="tab==='pwa'" class="settings-page"><div class="section-head"><div><span>Progressive Web App</span><h1>PWA por tenant</h1><p>Manifest, favicon, ícones e comportamento de abertura seguem a identidade da empresa.</p></div><button class="primary" @click="savePwa">Salvar PWA</button></div><div class="form-card narrow"><label>Ao abrir o PWA instalado<select v-model="pwaOpenMode"><option value="AUTO">Automático — Login ou Dashboard</option><option value="LOGIN">Sempre Login</option><option value="DASHBOARD">Dashboard quando autenticado</option><option value="LANDING">Landing pública</option></select></label><label class="check"><input v-model="themeApplyConsole" type="checkbox"> Aplicar identidade do tenant também ao Tenant Console</label><a href="/api/v1/branding/manifest.webmanifest" target="_blank">Ver manifest dinâmico ↗</a><small>A página pública raiz continua apropriada para Instagram. A instalação PWA usa <code>/?source=pwa</code>.</small></div></section>
+
+        <section v-else-if="tab==='templates'" class="settings-page"><div class="section-head"><div><span>Experience Packages</span><h1>Templates</h1><p>O template é a origem. Ao aplicar, cria rascunhos pertencentes ao tenant; o modelo original permanece intacto.</p></div><label class="file-button">{{importBusy?'Importando…':'Importar pacote'}}<input type="file" accept=".zip" @change="importCustom"></label></div><div class="template-grid"><article v-for="row in templates" :key="row.key"><span>{{row.segment||'Modelo oficial'}}</span><h3>{{row.name}}</h3><p>{{row.description}}</p><small>{{row.key}}</small><button class="primary" @click="confirmTemplate=row">Aplicar experiência</button></article></div></section>
+
+        <section v-else-if="tab==='marketing'" class="settings-page"><div class="section-head"><div><span>Marketing</span><h1>Analytics e Pixels</h1><p>Informe IDs. O Scheduler Pro injeta os providers e dispara eventos padronizados; templates não recebem scripts arbitrários.</p></div><button class="primary" @click="saveMarketing">Salvar Analytics</button></div><div class="form-card narrow"><label>Google Analytics 4<input v-model="marketingForm.ga4_measurement_id" placeholder="G-XXXXXXXX"></label><label>Google Ads Conversion ID<input v-model="marketingForm.google_ads_conversion_id"></label><label>Google Ads Label<input v-model="marketingForm.google_ads_conversion_label"></label><label>Meta Pixel ID<input v-model="marketingForm.meta_pixel_id"></label><label>Google Tag Manager<input v-model="marketingForm.gtm_container_id" placeholder="GTM-XXXXXXX"></label><label>TikTok Pixel ID<input v-model="marketingForm.tiktok_pixel_id"></label><small>Eventos: page_view, booking_started, service_selected, date_selected, booking_completed, whatsapp_clicked, phone_clicked e instagram_clicked.</small></div></section>
+      </template>
+    </main>
+    <div v-if="advanced" class="advanced-layer"><header><strong>Modo avançado · {{surface}}</strong><button @click="closeAdvanced">Voltar</button></header><div ref="advancedHost" class="advanced-host"></div></div>
+    <div v-if="confirmTemplate" class="modal-backdrop" @click.self="confirmTemplate=null"><section class="modal"><span>Aplicar Experience Package</span><h2>{{confirmTemplate.name}}</h2><p>Escolha o que deseja aplicar. Login continua nativo/white-label e não será substituído.</p><label class="modal-check"><input v-model="applyTemplateBranding" type="checkbox"> Aplicar também cores e tipografia à identidade</label><label class="modal-check"><input v-model="publishAfterImport" type="checkbox"> Publicar Landing e Agenda imediatamente</label><div><button @click="confirmTemplate=null">Cancelar</button><button class="primary" :disabled="importBusy" @click="importOfficial(confirmTemplate)">{{importBusy?'Aplicando…':'Aplicar'}}</button></div></section></div>
+  </div>
+</Teleport>
 </template>
+
 <style scoped>
-.sp-visual-builder-error{position:fixed;inset:0;z-index:2147483000;display:grid;place-content:center;justify-items:center;gap:12px;padding:28px;background:#f8fafc;color:#0f172a;text-align:center}.sp-visual-builder-error strong{font-size:20px}.sp-visual-builder-error p{max-width:680px;margin:0;color:#64748b}.sp-visual-builder-error div{display:flex;flex-wrap:wrap;justify-content:center;gap:8px}.sp-visual-builder-error button{min-height:42px;padding:0 16px;border:0;border-radius:12px;background:#2563eb;color:#fff;font-weight:700;cursor:pointer}.sp-visual-builder-error button.secondary{background:#e2e8f0;color:#0f172a}
+.experience-center{position:fixed;inset:0;z-index:2147482000;display:grid;grid-template:72px 1fr/230px 1fr;background:#f6f8fc;color:#0b0f1a;font-family:Sora,Inter,system-ui,sans-serif}.experience-top{grid-column:1/-1;display:flex;align-items:center;justify-content:space-between;padding:0 22px;border-bottom:1px solid #e2e8f0;background:#fff}.brand{display:flex;align-items:center;gap:13px}.brand img{width:auto;height:42px;max-width:190px;object-fit:contain}.brand div{display:grid}.brand strong{font-size:14px}.brand span{font-size:10px;color:#64748b}.close{width:42px;height:42px;border:1px solid #e2e8f0;border-radius:12px;background:#fff;font-size:26px;cursor:pointer}.experience-nav{display:flex;flex-direction:column;gap:6px;padding:18px 12px;border-right:1px solid #e2e8f0;background:#fff}.experience-nav button{min-height:42px;padding:0 13px;border:0;border-radius:10px;background:transparent;color:#475569;text-align:left;font:inherit;font-size:12px;font-weight:700;cursor:pointer}.experience-nav button.active{background:#eaf2ff;color:#1d4ed8}.experience-nav footer{margin-top:auto;padding:12px;display:grid;gap:3px;border-radius:11px;background:#f8fafc}.experience-nav footer span{font-size:9px;color:#64748b;text-transform:uppercase}.experience-nav footer strong{font-size:11px;text-transform:capitalize}.experience-main{overflow:auto;padding:26px}.notice{position:sticky;top:0;z-index:5;padding:10px 12px;border-radius:10px;font-size:11px;font-weight:700}.notice.error{background:#fee2e2;color:#991b1b}.notice.success{background:#dcfce7;color:#166534}.loading,.empty,.hero-card{min-height:240px;display:grid;place-content:center;text-align:center;gap:8px;border:1px solid #e2e8f0;border-radius:18px;background:#fff}.headline,.section-head{display:flex;align-items:flex-start;justify-content:space-between;gap:18px;margin-bottom:20px}.headline span,.section-head span,.template-grid article>span{font-size:10px;font-weight:900;letter-spacing:.1em;text-transform:uppercase;color:#2563eb}.headline h1,.section-head h1{margin:5px 0 7px;font-size:30px;letter-spacing:-.04em}.headline p,.section-head p{max-width:760px;margin:0;color:#64748b;font-size:12px;line-height:1.6}.overview-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:12px}.overview-grid article,.template-grid article{display:grid;gap:8px;padding:18px;border:1px solid #e2e8f0;border-radius:16px;background:#fff}.overview-grid article span{font-size:10px;color:#64748b}.overview-grid article strong{font-size:20px}.overview-grid article small,.template-grid small{color:#64748b;font-size:10px}.overview-grid button,.head-actions button,.section-head button,.template-grid button,.file-button,.modal button{min-height:38px;padding:0 13px;border:1px solid #cbd5e1;border-radius:10px;background:#fff;color:#334155;font:inherit;font-size:11px;font-weight:800;cursor:pointer}.primary,.head-actions .primary,.template-grid .primary,.modal .primary{border-color:transparent!important;background:linear-gradient(135deg,#2563eb,#7c3aed)!important;color:#fff!important}.head-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap}.switch,.check{display:flex!important;align-items:center;gap:7px;font-size:11px;font-weight:700}.editor-layout{display:grid;grid-template-columns:330px minmax(0,1fr);gap:14px}.bindings-panel,.preview-panel,.form-card,.brand-preview{border:1px solid #e2e8f0;border-radius:16px;background:#fff}.bindings-panel{max-height:calc(100dvh - 180px);overflow:auto;padding:16px}.bindings-panel h3{margin:10px 0;font-size:13px}.bindings-panel>p{color:#64748b;font-size:11px;line-height:1.5}.field,.form-card{display:grid;gap:6px}.field{margin-bottom:12px}.field label,.form-card label,.token-grid label,.color-grid label{font-size:10px;font-weight:800;color:#334155}.field small{color:#94a3b8;font-size:9px}.field input,.field textarea,.field select,.form-card input,.form-card textarea,.form-card select{width:100%;box-sizing:border-box;border:1px solid #cbd5e1;border-radius:9px;background:#fff;padding:9px 10px;font:inherit;font-size:11px}.field input[type=color],.color-grid input,.token-grid input{height:38px;padding:3px}.upload,.file-button{position:relative;display:flex!important;align-items:center;justify-content:center;cursor:pointer}.upload input[type=file],.file-button input{display:none}.token-grid,.color-grid,.upload-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:8px}.preview-panel{overflow:auto;max-height:calc(100dvh - 180px)}.preview-panel>header{position:sticky;top:0;z-index:2;display:flex;justify-content:space-between;padding:10px 13px;background:rgba(255,255,255,.95);border-bottom:1px solid #e2e8f0;font-size:10px;font-weight:800}.preview-panel a,.form-card a,.brand-preview a{color:#2563eb;text-decoration:none}.settings-grid{display:grid;grid-template-columns:minmax(0,560px) minmax(300px,1fr);gap:14px}.form-card{padding:18px}.form-card.narrow{max-width:650px}.form-card>label{display:grid;gap:6px;margin-bottom:12px}.brand-preview{min-height:360px;display:grid;place-content:center;justify-items:center;gap:10px;padding:24px;background:linear-gradient(145deg,#f8fafc,#eef2ff)}.brand-preview img{max-width:260px;max-height:90px;object-fit:contain}.brand-preview strong{font-size:24px}.brand-preview span{color:#64748b}.template-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px}.template-grid h3{margin:0}.template-grid p{min-height:46px;margin:0;color:#64748b;font-size:11px;line-height:1.5}.advanced-layer{position:fixed;inset:0;z-index:2147482500;display:grid;grid-template-rows:56px 1fr;background:#fff}.advanced-layer>header{display:flex;align-items:center;justify-content:space-between;padding:0 16px;border-bottom:1px solid #e2e8f0}.advanced-layer button{min-height:34px;border:1px solid #cbd5e1;border-radius:9px;background:#fff;padding:0 12px;font-weight:800}.advanced-host{min-height:0;overflow:hidden}.modal-backdrop{position:fixed;inset:0;z-index:2147483000;display:grid;place-items:center;padding:20px;background:rgba(2,6,23,.55);backdrop-filter:blur(6px)}.modal{width:min(480px,100%);padding:22px;border-radius:18px;background:#fff;box-shadow:0 30px 90px rgba(2,6,23,.3)}.modal h2{margin:6px 0}.modal p{color:#64748b;line-height:1.6}.modal-check{display:flex;align-items:center;gap:8px;margin:10px 0;font-size:11px;font-weight:700}.apply-theme{width:100%;min-height:36px;margin-top:8px;border:1px solid #cbd5e1;border-radius:9px;background:#fff;color:#334155;font-weight:800;cursor:pointer}.modal>div{display:flex;justify-content:flex-end;gap:8px}.modal span{font-size:10px;font-weight:900;color:#2563eb;text-transform:uppercase}.settings-page code{padding:2px 4px;border-radius:4px;background:#e2e8f0}.settings-page small{color:#64748b;line-height:1.6}@media(max-width:900px){.experience-center{grid-template:64px auto 1fr/1fr}.experience-top{grid-row:1}.experience-nav{grid-row:2;flex-direction:row;overflow:auto;border-right:0;border-bottom:1px solid #e2e8f0;padding:8px}.experience-nav button{white-space:nowrap}.experience-nav footer{display:none}.experience-main{grid-row:3;padding:16px}.editor-layout,.settings-grid{grid-template-columns:1fr}.bindings-panel,.preview-panel{max-height:none}.headline,.section-head{flex-direction:column}.head-actions{width:100%}}@media(max-width:560px){.brand div{display:none}.experience-main{padding:12px}.headline h1,.section-head h1{font-size:24px}.token-grid,.color-grid,.upload-grid{grid-template-columns:1fr}.overview-grid,.template-grid{grid-template-columns:1fr}}
 </style>

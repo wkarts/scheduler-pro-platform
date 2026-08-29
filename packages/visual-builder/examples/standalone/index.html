@@ -1,0 +1,15 @@
+<!doctype html>
+<html lang="pt-BR">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>ARGWS Visual Builder Standalone</title></head>
+<body>
+<argws-visual-builder id="builder"></argws-visual-builder>
+<script type="module">
+  import { MemoryAdapter, genericBusinessTemplate } from '../../src/index.js';
+  const documentModel=genericBusinessTemplate();
+  const builder=document.querySelector('#builder');
+  builder.adapter=new MemoryAdapter(documentModel);
+  builder.document=documentModel;
+  builder.addEventListener('upb-publish',event=>console.log('Publicado',event.detail));
+</script>
+</body>
+</html>

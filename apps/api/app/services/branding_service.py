@@ -8,11 +8,11 @@ from app.core.tenant_context import TenantContext
 from app.db.models_platform import BuildProfile, TenantBrandingProfile
 
 DEFAULT_COLORS = {
-    "primary": "#118AF5",
-    "secondary": "#00C2B8",
-    "accent": "#00E5FF",
+    "primary": "#2563EB",
+    "secondary": "#0B0F1A",
+    "accent": "#0AE1C0",
     "background": "#FFFFFF",
-    "text": "#0B132B",
+    "text": "#0B0F1A",
 }
 LEGACY_PLATFORM_COLORS = {
     "primary": "#2F6BFF",
@@ -21,10 +21,15 @@ LEGACY_PLATFORM_COLORS = {
     "background": "#F4F7FB",
     "text": "#0B1D3A",
 }
-DEFAULT_FONT_FAMILY = "Inter, Segoe UI, Arial, sans-serif"
-DEFAULT_SLOGAN = "Agenda inteligente. Operação conectada."
-DEFAULT_ICON_URL = "/icons/icon.svg"
-DEFAULT_FAVICON_URL = "/favicon.svg"
+DEFAULT_FONT_FAMILY = "Sora, Inter, Segoe UI, Arial, sans-serif"
+LEGACY_PLATFORM_FONT_FAMILY = "Inter, Segoe UI, Arial, sans-serif"
+DEFAULT_SLOGAN = "Mais tempo para o que realmente importa."
+DEFAULT_LOGO_URL = "/branding/scheduler-pro-logo-light.png"
+DEFAULT_LOGO_DARK_URL = "/branding/scheduler-pro-logo-dark.png"
+DEFAULT_ICON_URL = "/icons/icon-512.png"
+DEFAULT_FAVICON_URL = "/favicon.png"
+LEGACY_DEFAULT_ICON_URLS = {"", "/icons/icon.svg", "/icons/icon.png", "/icons/icon-512.png"}
+LEGACY_DEFAULT_FAVICON_URLS = {"", "/favicon.svg", "/favicon.ico", "/favicon.png"}
 
 
 def _normalized(value: str | None) -> str:
@@ -43,7 +48,7 @@ class BrandingService:
             and _normalized(profile.accent_color) == _normalized(LEGACY_PLATFORM_COLORS["accent"])
             and _normalized(profile.background_color) == _normalized(LEGACY_PLATFORM_COLORS["background"])
             and _normalized(profile.text_color) == _normalized(LEGACY_PLATFORM_COLORS["text"])
-            and str(profile.font_family or "") == DEFAULT_FONT_FAMILY
+            and str(profile.font_family or "") in {LEGACY_PLATFORM_FONT_FAMILY, DEFAULT_FONT_FAMILY}
         )
 
     @classmethod
@@ -55,6 +60,7 @@ class BrandingService:
         profile.accent_color = DEFAULT_COLORS["accent"]
         profile.background_color = DEFAULT_COLORS["background"]
         profile.text_color = DEFAULT_COLORS["text"]
+        profile.font_family = DEFAULT_FONT_FAMILY
         return True
 
     @classmethod
@@ -73,7 +79,7 @@ class BrandingService:
         profile = (await self.session.execute(select(TenantBrandingProfile).where(TenantBrandingProfile.tenant_id == tenant_id))).scalar_one_or_none()
         if profile:
             return profile
-        profile = TenantBrandingProfile(tenant_id=tenant_id, app_name=tenant_name, public_name=tenant_name, slogan=DEFAULT_SLOGAN, icon_url=DEFAULT_ICON_URL, favicon_url=DEFAULT_FAVICON_URL, primary_color=DEFAULT_COLORS["primary"], secondary_color=DEFAULT_COLORS["secondary"], accent_color=DEFAULT_COLORS["accent"], background_color=DEFAULT_COLORS["background"], text_color=DEFAULT_COLORS["text"], font_family=DEFAULT_FONT_FAMILY, border_radius="1rem", timezone=timezone)
+        profile = TenantBrandingProfile(tenant_id=tenant_id, app_name=tenant_name, public_name=tenant_name, slogan=DEFAULT_SLOGAN, logo_url=DEFAULT_LOGO_URL, icon_url=DEFAULT_ICON_URL, favicon_url=DEFAULT_FAVICON_URL, primary_color=DEFAULT_COLORS["primary"], secondary_color=DEFAULT_COLORS["secondary"], accent_color=DEFAULT_COLORS["accent"], background_color=DEFAULT_COLORS["background"], text_color=DEFAULT_COLORS["text"], font_family=DEFAULT_FONT_FAMILY, border_radius="1rem", timezone=timezone)
         self.session.add(profile)
         await self.session.flush()
         return profile
@@ -113,5 +119,19 @@ class BrandingService:
         await self.session.refresh(build)
         return {"id": build.id, "tenant_id": build.tenant_id, "branding_profile_id": build.branding_profile_id, "name": build.name, "target": build.target, "bundle_identifier": build.bundle_identifier, "package_name": build.package_name, "api_url": build.api_url, "features": build.features, "config": build.config}
 
+    @staticmethod
+    def _asset_or_default(value: str | None, *, fallback: str, legacy_values: set[str] | None = None) -> str:
+        normalized = str(value or "").strip()
+        if not normalized:
+            return fallback
+        if legacy_values is not None and normalized in legacy_values:
+            return fallback
+        return normalized
+
     def to_manifest(self, profile: TenantBrandingProfile, context: TenantContext | None = None) -> dict[str, Any]:
-        return {"tenant": {"id": profile.tenant_id, "slug": context.slug if context else None, "hostname": context.hostname if context else None}, "app": {"name": profile.app_name, "public_name": profile.public_name, "slogan": profile.slogan or DEFAULT_SLOGAN, "locale": profile.locale, "timezone": profile.timezone}, "assets": {"logo_url": profile.logo_url, "icon_url": profile.icon_url or DEFAULT_ICON_URL, "favicon_url": profile.favicon_url or DEFAULT_FAVICON_URL}, "theme": {"mode": profile.theme_mode, "font_family": profile.font_family or DEFAULT_FONT_FAMILY, "border_radius": profile.border_radius, "colors": self._manifest_colors(profile)}, "settings": profile.settings, "status": profile.status, "published_at": profile.published_at.isoformat() if profile.published_at else None}
+        version = int(profile.updated_at.timestamp()) if profile.updated_at else 0
+        icon_url = self._asset_or_default(profile.icon_url, fallback=DEFAULT_ICON_URL, legacy_values=LEGACY_DEFAULT_ICON_URLS)
+        favicon_url = self._asset_or_default(profile.favicon_url, fallback=DEFAULT_FAVICON_URL, legacy_values=LEGACY_DEFAULT_FAVICON_URLS)
+        logo_url = self._asset_or_default(profile.logo_url, fallback=DEFAULT_LOGO_URL)
+        logo_dark_url = self._asset_or_default(str((profile.settings or {}).get("logo_dark_url") or ""), fallback=DEFAULT_LOGO_DARK_URL)
+        return {"tenant": {"id": profile.tenant_id, "slug": context.slug if context else None, "hostname": context.hostname if context else None}, "app": {"name": profile.app_name, "public_name": profile.public_name, "slogan": profile.slogan or DEFAULT_SLOGAN, "locale": profile.locale, "timezone": profile.timezone}, "assets": {"logo_url": logo_url, "logo_dark_url": logo_dark_url, "icon_url": icon_url, "favicon_url": favicon_url}, "theme": {"mode": profile.theme_mode, "font_family": profile.font_family or DEFAULT_FONT_FAMILY, "border_radius": profile.border_radius, "colors": self._manifest_colors(profile)}, "settings": profile.settings, "status": profile.status, "published_at": profile.published_at.isoformat() if profile.published_at else None, "branding_version": version}

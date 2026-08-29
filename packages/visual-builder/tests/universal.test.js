@@ -163,7 +163,7 @@ test('HTML Surface mostra conteúdo com reveal no editor sem alterar o HTML publ
 
 test('identidade visual AVB é distribuída junto do pacote', async()=>{
   const fs=await import('node:fs/promises');
-  for(const name of ['argws-visual-builder-symbol-64.png','argws-visual-builder-symbol-192.png','argws-visual-builder-logo-1024.png','brand-tokens.json']){
+  for(const name of ['argws-visual-builder-symbol-64.png','argws-visual-builder-symbol-192.png','argws-visual-builder-logo-1024.png','argws-visual-builder-logo-dark.png','brand-tokens.json']){
     const stat=await fs.stat(new URL(`../assets/brand/${name}`,import.meta.url));
     assert.ok(stat.size>100,name);
   }

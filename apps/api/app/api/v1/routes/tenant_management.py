@@ -1,7 +1,9 @@
-from typing import Any
+from io import BytesIO
+from typing import Any, Literal
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, File, Query, UploadFile
 from pydantic import BaseModel, EmailStr, Field, model_validator
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import (
@@ -9,15 +11,24 @@ from app.api.deps import (
     get_platform_session,
     require_platform_permission,
 )
+from app.core.errors import APIError
 from app.core.responses import success
 from app.core.security import AuthPrincipal
 from app.db.session import tenant_session
 from app.services.observability_service import ObservabilityService
+from app.services.experience_service import ExperienceService
+from app.services.file_service import TenantFileService
+from app.services.branding_service import BrandingService
 from app.services.tenant_access_resend_service import TenantAccessResendService
 from app.services.tenant_management_service import TenantManagementService
 from app.services.tenant_resolver import TenantResolver
 
 router = APIRouter()
+
+AdminBrandAssetKind = Literal["logo", "logo-dark", "icon", "favicon", "login-background"]
+ADMIN_BRAND_ASSET_TYPES = {"image/png", "image/jpeg", "image/webp", "image/svg+xml", "image/x-icon", "image/vnd.microsoft.icon"}
+ADMIN_BRAND_ASSET_MAX_BYTES = 4 * 1024 * 1024
+ADMIN_BRAND_ASSET_FIELDS = {"logo": "logo_url", "icon": "icon_url", "favicon": "favicon_url"}
 
 
 class TenantUpdateRequest(BaseModel):
@@ -51,6 +62,36 @@ class TenantPrincipalAdminUpdateRequest(BaseModel):
         if self.email is None and self.display_name is None and self.password is None:
             raise ValueError("Informe e-mail, nome ou nova senha.")
         return self
+
+
+class TenantExperienceDraftRequest(BaseModel):
+    html: str = Field(min_length=1)
+    template_key: str | None = Field(default=None, max_length=160)
+    bindings_values: dict[str, Any] = Field(default_factory=dict)
+    theme: dict[str, Any] = Field(default_factory=dict)
+    metadata: dict[str, Any] = Field(default_factory=dict)
+    label: str | None = Field(default=None, max_length=180)
+
+
+class TenantExperiencePublishRequest(BaseModel):
+    version_id: str | None = None
+
+
+class TenantBrandingAdminRequest(BaseModel):
+    public_name: str | None = Field(default=None, max_length=160)
+    slogan: str | None = Field(default=None, max_length=220)
+    primary_color: str | None = Field(default=None, pattern=r"^#[0-9A-Fa-f]{6}$")
+    secondary_color: str | None = Field(default=None, pattern=r"^#[0-9A-Fa-f]{6}$")
+    accent_color: str | None = Field(default=None, pattern=r"^#[0-9A-Fa-f]{6}$")
+    background_color: str | None = Field(default=None, pattern=r"^#[0-9A-Fa-f]{6}$")
+    text_color: str | None = Field(default=None, pattern=r"^#[0-9A-Fa-f]{6}$")
+    font_family: str | None = Field(default=None, max_length=120)
+    settings: dict[str, Any] | None = None
+
+
+class TenantExperiencePolicyRequest(BaseModel):
+    level: str = Field(pattern="^(blocked|basic|design|full|developer)$")
+    apply_theme_to_console: bool | None = None
 
 
 class TenantAccessResendRequest(BaseModel):
@@ -198,3 +239,183 @@ async def resend_tenant_principal_admin_access(
             actor=principal.email,
         )
     )
+
+
+@router.get("/{tenant_id}/experience-policy")
+async def tenant_experience_policy(
+    tenant_id: str,
+    principal: AuthPrincipal = Depends(require_platform_permission("tenants.read")),
+    session: AsyncSession = Depends(get_platform_session),
+) -> dict[str, Any]:
+    assert_platform_tenant_access(principal, tenant_id)
+    context = await TenantResolver(session).resolve_by_id(tenant_id, require_active=False)
+    async for tenant_db in tenant_session(context):
+        rows = (
+            await tenant_db.execute(
+                text(
+                    "select key,value from tenant_settings "
+                    "where key in ('experience_editor_level','experience_theme_apply_console')"
+                )
+            )
+        ).mappings().all()
+        values = {str(row["key"]): row["value"] for row in rows}
+        return success(
+            {
+                "level": str(values.get("experience_editor_level") or "basic"),
+                "apply_theme_to_console": bool(values.get("experience_theme_apply_console") or False),
+            }
+        )
+    return success({"level": "basic", "apply_theme_to_console": False})
+
+
+@router.put("/{tenant_id}/experience-policy")
+async def update_tenant_experience_policy(
+    tenant_id: str,
+    payload: TenantExperiencePolicyRequest,
+    principal: AuthPrincipal = Depends(require_platform_permission("tenants.update")),
+    session: AsyncSession = Depends(get_platform_session),
+) -> dict[str, Any]:
+    assert_platform_tenant_access(principal, tenant_id)
+    context = await TenantResolver(session).resolve_by_id(tenant_id, require_active=False)
+    async for tenant_db in tenant_session(context):
+        import json
+
+        await tenant_db.execute(
+            text(
+                "insert into tenant_settings(key,value,updated_at) "
+                "values('experience_editor_level',cast(:level as jsonb),now()) "
+                "on conflict(key) do update set value=excluded.value,updated_at=now()"
+            ),
+            {"level": json.dumps(payload.level)},
+        )
+        if payload.apply_theme_to_console is not None:
+            await tenant_db.execute(
+                text(
+                    "insert into tenant_settings(key,value,updated_at) "
+                    "values('experience_theme_apply_console',cast(:value as jsonb),now()) "
+                    "on conflict(key) do update set value=excluded.value,updated_at=now()"
+                ),
+                {"value": json.dumps(payload.apply_theme_to_console)},
+            )
+        await tenant_db.commit()
+        return success(
+            {
+                "level": payload.level,
+                "apply_theme_to_console": bool(payload.apply_theme_to_console),
+            }
+        )
+    return success({"level": payload.level, "apply_theme_to_console": False})
+
+
+@router.get("/{tenant_id}/experience")
+async def tenant_experience_snapshot(
+    tenant_id: str,
+    principal: AuthPrincipal = Depends(require_platform_permission("tenants.read")),
+    session: AsyncSession = Depends(get_platform_session),
+) -> dict[str, Any]:
+    assert_platform_tenant_access(principal, tenant_id)
+    context = await TenantResolver(session).resolve_by_id(tenant_id, require_active=False)
+    branding = await BrandingService(session).manifest_for_context(context)
+    async for tenant_db in tenant_session(context):
+        summary = await ExperienceService(tenant_db, context).summary()
+        return success({"experience": summary, "branding": branding})
+    return success({"experience": {"pages": []}, "branding": branding})
+
+
+@router.get("/{tenant_id}/experience/pages/{surface}")
+async def tenant_experience_page(
+    tenant_id: str,
+    surface: str,
+    principal: AuthPrincipal = Depends(require_platform_permission("tenants.read")),
+    session: AsyncSession = Depends(get_platform_session),
+) -> dict[str, Any]:
+    assert_platform_tenant_access(principal, tenant_id)
+    context = await TenantResolver(session).resolve_by_id(tenant_id, require_active=False)
+    async for tenant_db in tenant_session(context):
+        result = await ExperienceService(tenant_db, context).document(surface)
+        return success(result)
+    return success(None)
+
+
+@router.post("/{tenant_id}/experience/pages/{surface}/draft")
+async def tenant_experience_save_draft(
+    tenant_id: str,
+    surface: str,
+    payload: TenantExperienceDraftRequest,
+    principal: AuthPrincipal = Depends(require_platform_permission("tenants.update")),
+    session: AsyncSession = Depends(get_platform_session),
+) -> dict[str, Any]:
+    assert_platform_tenant_access(principal, tenant_id)
+    context = await TenantResolver(session).resolve_by_id(tenant_id, require_active=False)
+    async for tenant_db in tenant_session(context):
+        result = await ExperienceService(tenant_db, context).save_draft(
+            surface, **payload.model_dump(), actor=None
+        )
+        return success(result)
+    return success({})
+
+
+@router.post("/{tenant_id}/experience/pages/{surface}/publish")
+async def tenant_experience_publish(
+    tenant_id: str,
+    surface: str,
+    payload: TenantExperiencePublishRequest,
+    principal: AuthPrincipal = Depends(require_platform_permission("tenants.update")),
+    session: AsyncSession = Depends(get_platform_session),
+) -> dict[str, Any]:
+    assert_platform_tenant_access(principal, tenant_id)
+    context = await TenantResolver(session).resolve_by_id(tenant_id, require_active=False)
+    async for tenant_db in tenant_session(context):
+        return success(await ExperienceService(tenant_db, context).publish(surface, payload.version_id))
+    return success({})
+
+
+@router.put("/{tenant_id}/experience/branding")
+async def tenant_experience_branding(
+    tenant_id: str,
+    payload: TenantBrandingAdminRequest,
+    principal: AuthPrincipal = Depends(require_platform_permission("tenants.update")),
+    session: AsyncSession = Depends(get_platform_session),
+) -> dict[str, Any]:
+    assert_platform_tenant_access(principal, tenant_id)
+    context = await TenantResolver(session).resolve_by_id(tenant_id, require_active=False)
+    return success(
+        await BrandingService(session).save_profile(
+            tenant_id, payload.model_dump(exclude_none=True), tenant_name=context.slug
+        )
+    )
+
+
+@router.post("/{tenant_id}/experience/branding/assets/{kind}")
+async def tenant_experience_brand_asset(
+    tenant_id: str,
+    kind: AdminBrandAssetKind,
+    file: UploadFile = File(...),
+    principal: AuthPrincipal = Depends(require_platform_permission("tenants.update")),
+    session: AsyncSession = Depends(get_platform_session),
+) -> dict[str, Any]:
+    assert_platform_tenant_access(principal, tenant_id)
+    content_type = str(file.content_type or "").lower()
+    if content_type not in ADMIN_BRAND_ASSET_TYPES:
+        raise APIError("BRANDING_ASSET_TYPE_INVALID", "Envie PNG, JPEG, WebP, SVG ou ICO.", 422)
+    try:
+        data = await file.read(ADMIN_BRAND_ASSET_MAX_BYTES + 1)
+    finally:
+        await file.close()
+    if not data or len(data) > ADMIN_BRAND_ASSET_MAX_BYTES:
+        raise APIError("BRANDING_ASSET_INVALID", "O arquivo de marca deve possuir conteúdo e ter no máximo 4 MB.", 413)
+    context = await TenantResolver(session).resolve_by_id(tenant_id, require_active=False)
+    stored = await TenantFileService(context).upload(f"branding/{kind}", BytesIO(data), content_type)
+    public_url = f"/api/v1/branding/assets/{kind}"
+    service = BrandingService(session)
+    if kind in {"login-background", "logo-dark"}:
+        profile = await service.get_or_create_profile(tenant_id, context.slug)
+        settings = dict(profile.settings or {})
+        settings["login_background_url" if kind == "login-background" else "logo_dark_url"] = public_url
+        manifest = await service.save_profile(tenant_id, {"settings": settings}, tenant_name=context.slug)
+    else:
+        field = ADMIN_BRAND_ASSET_FIELDS.get(kind)
+        if field is None:
+            raise APIError("BRANDING_ASSET_KIND_INVALID", "Tipo de arquivo de marca inválido.", 422)
+        manifest = await service.save_profile(tenant_id, {field: public_url}, tenant_name=context.slug)
+    return success({"kind": kind, "url": public_url, "file": stored, "manifest": manifest})

@@ -1,0 +1,24 @@
+Scheduler Pro / ARGWS Visual Builder 2.4.0 — Workflow Stable Fix
+
+Workflow integration-tests.yml:
+- restaurado exatamente ao modelo estável fornecido pelo mantenedor
+- sem retry customizado
+- sem up --no-build
+- sem alteração de branches/concurrency
+
+Validações executadas neste ambiente:
+- PWA installation contract: PASS
+- ARGWS Visual Builder 2.4.0: 70/70 PASS
+- npm run check do AVB: PASS
+- Python compileall app + tests: PASS
+- seis contratos que falharam no run 900555: conferidos/alinhados
+- SDK & Template Studio: todos os artefatos obrigatórios presentes
+- Experience Package enriquecido: parse válido, Landing + Booking + 3 assets
+- branding legado -> nova identidade Scheduler Pro: validado
+- public asset prefixes landing/ + experience/: presentes
+- ExperiencePageAdapter + argws-visual-builder: presentes
+- Vue/TypeScript script syntax: 28 arquivos / 0 falhas
+
+Limitação do runtime local:
+- pytest completo não inicia porque o ambiente não possui structlog/python-jose e outras dependências completas da API.
+- Ruff/MyPy devem ser confirmados pelo GitHub Actions oficial.

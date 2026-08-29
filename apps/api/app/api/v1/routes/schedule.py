@@ -61,7 +61,7 @@ async def list_business_hours(session: AsyncSession = Depends(get_tenant_session
 @router.post("/business-hours")
 async def create_business_hour(payload: BusinessHourPayload, session: AsyncSession = Depends(get_tenant_session)) -> dict[str, Any]:
     if payload.professional_id:
-        exists = await session.scalar(text("select exists(select 1 from professionals where id=:id::uuid)"), {"id": payload.professional_id})
+        exists = await session.scalar(text("select exists(select 1 from professionals where id=cast(:id as uuid))"), {"id": payload.professional_id})
         if not exists:
             raise APIError("PROFESSIONAL_NOT_FOUND", "Profissional não encontrado.", 404)
     row = (
@@ -82,6 +82,13 @@ async def create_business_hour(payload: BusinessHourPayload, session: AsyncSessi
 
 @router.put("/business-hours/{business_hour_id}")
 async def update_business_hour(business_hour_id: str, payload: BusinessHourPayload, session: AsyncSession = Depends(get_tenant_session)) -> dict[str, Any]:
+    if payload.professional_id:
+        exists = await session.scalar(
+            text("select exists(select 1 from professionals where id=cast(:id as uuid))"),
+            {"id": payload.professional_id},
+        )
+        if not exists:
+            raise APIError("PROFESSIONAL_NOT_FOUND", "Profissional não encontrado.", 404)
     row = (
         await session.execute(
             text(
@@ -89,7 +96,7 @@ async def update_business_hour(business_hour_id: str, payload: BusinessHourPaylo
                 update business_hours set
                   professional_id=cast(:professional_id as uuid), day_of_week=:day_of_week,
                   opens_at=:opens_at, closes_at=:closes_at, is_open=:is_open
-                where id=:id::uuid
+                where id=cast(:id as uuid)
                 returning id::text, professional_id::text, day_of_week, opens_at, closes_at, is_open, created_at
                 """
             ),
@@ -104,7 +111,7 @@ async def update_business_hour(business_hour_id: str, payload: BusinessHourPaylo
 
 @router.delete("/business-hours/{business_hour_id}")
 async def delete_business_hour(business_hour_id: str, session: AsyncSession = Depends(get_tenant_session)) -> dict[str, Any]:
-    deleted = await session.scalar(text("delete from business_hours where id=:id::uuid returning id::text"), {"id": business_hour_id})
+    deleted = await session.scalar(text("delete from business_hours where id=cast(:id as uuid) returning id::text"), {"id": business_hour_id})
     if not deleted:
         raise APIError("BUSINESS_HOUR_NOT_FOUND", "Faixa de expediente não encontrada.", 404)
     await session.commit()
@@ -132,6 +139,13 @@ async def list_blocked_periods(session: AsyncSession = Depends(get_tenant_sessio
 
 @router.post("/blocked-periods")
 async def create_blocked_period(payload: BlockedPeriodPayload, session: AsyncSession = Depends(get_tenant_session)) -> dict[str, Any]:
+    if payload.professional_id:
+        exists = await session.scalar(
+            text("select exists(select 1 from professionals where id=cast(:id as uuid))"),
+            {"id": payload.professional_id},
+        )
+        if not exists:
+            raise APIError("PROFESSIONAL_NOT_FOUND", "Profissional não encontrado.", 404)
     row = (
         await session.execute(
             text(
@@ -148,9 +162,42 @@ async def create_blocked_period(payload: BlockedPeriodPayload, session: AsyncSes
     return success(dict(row))
 
 
+@router.put("/blocked-periods/{blocked_period_id}")
+async def update_blocked_period(
+    blocked_period_id: str,
+    payload: BlockedPeriodPayload,
+    session: AsyncSession = Depends(get_tenant_session),
+) -> dict[str, Any]:
+    if payload.professional_id:
+        exists = await session.scalar(
+            text("select exists(select 1 from professionals where id=cast(:id as uuid))"),
+            {"id": payload.professional_id},
+        )
+        if not exists:
+            raise APIError("PROFESSIONAL_NOT_FOUND", "Profissional não encontrado.", 404)
+    row = (
+        await session.execute(
+            text(
+                """
+                update blocked_periods set
+                  professional_id=cast(:professional_id as uuid),
+                  starts_at=:starts_at, ends_at=:ends_at, reason=:reason
+                where id=cast(:id as uuid)
+                returning id::text, professional_id::text, starts_at, ends_at, reason, created_at
+                """
+            ),
+            {**payload.model_dump(), "id": blocked_period_id},
+        )
+    ).mappings().first()
+    if row is None:
+        raise APIError("BLOCKED_PERIOD_NOT_FOUND", "Bloqueio não encontrado.", 404)
+    await session.commit()
+    return success(dict(row))
+
+
 @router.delete("/blocked-periods/{blocked_period_id}")
 async def delete_blocked_period(blocked_period_id: str, session: AsyncSession = Depends(get_tenant_session)) -> dict[str, Any]:
-    deleted = await session.scalar(text("delete from blocked_periods where id=:id::uuid returning id::text"), {"id": blocked_period_id})
+    deleted = await session.scalar(text("delete from blocked_periods where id=cast(:id as uuid) returning id::text"), {"id": blocked_period_id})
     if not deleted:
         raise APIError("BLOCKED_PERIOD_NOT_FOUND", "Bloqueio não encontrado.", 404)
     await session.commit()

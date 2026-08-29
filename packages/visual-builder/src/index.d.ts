@@ -88,4 +88,13 @@ export function importSchedulerProTemplateFamily(source:Blob|ArrayBuffer|Uint8Ar
 
 export declare const AVB_BRAND_ASSETS: Readonly<{ lightLogo: string; darkLogo: string; symbol: string }>;
 export declare function resolveAvbBrandLogo(theme?: string): string;
-export declare const ARGWS_VISUAL_BUILDER_VERSION: string;
+
+// ARGWS Visual Builder 2.4.0 — Experience Runtime
+export const ARGWS_VISUAL_BUILDER_VERSION:'2.4.0';
+export const EXPERIENCE_CONTRACT_SCHEMA:string; export const EXPERIENCE_CONTRACT_VERSION:number; export const EXPERIENCE_SURFACES:readonly string[];
+export function createExperienceManifest(input?:Record<string,unknown>):Record<string,any>; export function validateExperienceManifest(input:unknown):{valid:boolean;errors:string[];warnings:string[];manifest:Record<string,any>|null};
+export const BINDINGS_SCHEMA:string; export const BINDING_TYPES:readonly string[]; export function normalizeBindingsManifest(input?:Record<string,unknown>):Record<string,any>; export function validateBindingsManifest(input:unknown):Record<string,any>; export function extractBindingKeys(html?:string):string[]; export function applyBindingsToHtml(html:string,values?:Record<string,unknown>,definitions?:Record<string,any>):string;
+export const THEME_SCHEMA:string; export function createThemeTokens(input?:Record<string,unknown>):Record<string,any>; export function themeTokensToCss(tokens?:Record<string,unknown>,selector?:string):string; export function mapThemeToHostTokens(tokens?:Record<string,unknown>,prefix?:string):Record<string,string>;
+export const TEMPLATE_RUNTIME_SDK_VERSION:string; export function createTemplateRuntimeSdk(adapter:Record<string,Function>):Record<string,any>; export function installTemplateRuntimeGlobal(adapter:Record<string,Function>,globalName?:string):Record<string,any>;
+export const EDITOR_LEVELS:readonly string[]; export const EDITOR_CAPABILITIES:readonly string[]; export function createExperienceEditorPolicy(level?:string,overrides?:{allow?:string[];deny?:string[]}):{level:string;capabilities:string[]}; export function experienceCan(policy:unknown,capability:string):boolean;
+export function importExperiencePackage(source:Blob|ArrayBuffer|Uint8Array,options?:Record<string,any>):Promise<Record<string,any>>; export function createExperiencePackageDescriptor(input?:Record<string,any>):Record<string,any>;

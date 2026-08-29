@@ -87,7 +87,7 @@ window.addEventListener('DOMContentLoaded', () => publishState())
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.addEventListener('controllerchange', reloadForNewWorker)
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register('/sw.js').then(registration => {
+    navigator.serviceWorker.register('/sw.js', { updateViaCache: 'none' }).then(registration => {
       void registration.update()
       window.setInterval(() => {
         if (document.visibilityState === 'visible' && navigator.onLine) void registration.update()

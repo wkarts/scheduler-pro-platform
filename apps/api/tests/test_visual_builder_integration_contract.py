@@ -26,30 +26,29 @@ def _read(path: str) -> str:
     return candidate.read_text(encoding="utf-8") if candidate.is_file() else ""
 
 
-def test_visual_builder_2_3_2_is_the_canonical_page_workspace() -> None:
+def test_visual_builder_2_4_0_is_the_canonical_experience_builder() -> None:
     raw = _read("packages/visual-builder/package.json")
     if not raw:
         return
     package = json.loads(raw)
     assert package["name"] == "@argws/visual-builder"
-    assert package["version"] == "2.3.2"
+    assert package["version"] == "2.4.0"
     assert "project-workspace.js" in package["scripts"]["check"]
     assert "release-b64" not in json.dumps(package)
     assert "materialize" not in package["scripts"]
 
 
-def test_visual_builder_uses_three_first_class_scheduler_pages() -> None:
-    project = _read("packages/visual-builder/src/project.js")
-    workspace = _read("packages/visual-builder/src/project-workspace.js")
-    templates = _read("packages/visual-builder/src/template-packages.js")
-    assert "createProjectPage" in project
-    assert "Projeto / Site" in workspace
-    assert "Modelos oficiais" in workspace
-    assert "Aplicar template" in workspace
-    assert "Aplicar família" not in workspace
-    assert "importSchedulerProTemplateFamily" in templates
-    assert "landing.html, agendamento.html e login.html" in templates
-    assert "html_surface" not in workspace
+def test_visual_builder_uses_experience_contract_v2_without_login_template() -> None:
+    experience = _read("packages/visual-builder/src/experience-contract.js")
+    sdk = _read("packages/visual-builder/src/template-runtime-sdk.js")
+    host = _read("apps/web/src/TenantVisualPageBuilder.vue")
+    assert "argws-experience-package/v2" in experience
+    assert "pages/landing.html" in experience
+    assert "pages/booking.html" in experience
+    assert "Template Runtime SDK" in sdk or "booking" in sdk
+    assert "Landing e Agenda usam HTML completo" in host
+    assert "Login permanece nativo" in host
+    assert "Login não usa template HTML" in host
 
 
 def test_old_materialized_visual_builder_runtime_is_physically_removed() -> None:
@@ -58,39 +57,40 @@ def test_old_materialized_visual_builder_runtime_is_physically_removed() -> None
     assert not _path("packages/visual-builder/scripts/materialize-release.mjs").exists()
 
 
-def test_scheduler_pro_uses_visual_builder_2_3_2_project_adapter() -> None:
+def test_scheduler_pro_uses_visual_builder_2_4_0_experience_host() -> None:
     app = _read("apps/web/src/App.vue")
     host = _read("apps/web/src/TenantVisualPageBuilder.vue")
     package = _read("apps/web/package.json")
     if not app or not package:
         return
     assert "TenantVisualPageBuilder" in app
-    assert "SchedulerProProjectAdapter" in host
-    assert "argws-visual-builder-app" in host
+    assert "ExperiencePageAdapter" in host
+    assert "argws-visual-builder" in host
     assert "#visual-builder" in host
-    assert json.loads(package)["dependencies"]["@argws/visual-builder"] == "2.3.2"
+    assert json.loads(package)["dependencies"]["@argws/visual-builder"] == "2.4.0"
 
 
-def test_public_pages_use_real_context_and_login_surface() -> None:
+def test_public_pages_use_real_context_and_native_login() -> None:
     page = _read("apps/web/src/PublicSitePage.vue")
-    frame = _read("apps/web/src/HtmlTemplateFrame.vue")
+    app = _read("apps/web/src/App.vue")
+    login = _read("apps/web/src/TenantBrandedLogin.vue")
     context_service = _read("apps/api/app/services/public_page_context_service.py")
-    assert "'/login'" in _read("apps/web/src/App.vue")
-    assert "runtimeContext" in page
-    assert "mode=\"login\"" in page
-    assert "scheduler-pro-context" in frame
-    assert "SchedulerProAuth" in frame
+    assert "'/login'" in app
+    assert "TenantBrandedLogin" in app
+    assert "loadExperience('LANDING')" in page
+    assert "loadExperience('BOOKING')" in page
     assert "public_schedule_enabled" in context_service
-    assert "show_login_on_landing" in context_service
+    assert "pwa_open_mode" in app
+    assert "branding" in login.lower()
 
 
 def test_builder_host_is_route_driven_and_disposable() -> None:
     source = _read("apps/web/src/TenantVisualPageBuilder.vue")
     if not source:
         return
-    assert "SchedulerProProjectAdapter" in source
-    assert "document.createElement('argws-visual-builder-app')" in source
-    assert "app?.remove()" in source
+    assert "ExperiencePageAdapter" in source
+    assert "document.createElement('argws-visual-builder')" in source
+    assert "advancedElement.value?.remove()" in source
     assert "hashchange" in source
     assert "MutationObserver" not in source
 

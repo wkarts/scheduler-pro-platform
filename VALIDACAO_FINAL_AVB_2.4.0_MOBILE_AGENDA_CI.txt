@@ -1,0 +1,31 @@
+Scheduler Pro + ARGWS Visual Builder 2.4.0 — Final Mobile/Agenda/PWA/CI Fix
+Data: 2026-08-28
+
+AVB VERSION: 2.4.0
+AVB tests: 70/70 PASS
+AVB npm run check: PASS
+Python compileall: PASS
+Integration workflow YAML: PASS
+Vue/TypeScript scripts: 28 / 0 syntax failures
+pwa.ts: PASS
+admin pwa.ts: PASS
+branding.ts: PASS
+publicAnalytics.ts: PASS
+
+Correções confirmadas por inspeção/contrato:
+- MyPy collision platform_templates.py: corrigida
+- BuildKit transient EOF: build retry antes do up
+- Menu mobile: labels renderizados quando mobileOpen
+- Calendário mobile: 7 colunas minmax(0,1fr)
+- Dia selecionado acompanha mudança do mês
+- Agendamento legado: filtro de range por starts_at
+- ends_at legado inválido: fallback de leitura
+- Service duration=0: permitido / duração variável
+- Business hours CRUD: POST/PUT/DELETE
+- Blocked periods CRUD: POST/PUT/DELETE
+- 17:30–22:00: válido
+- PWA: updateViaCache none + revalidation + cache v5
+- Manifest: no-store + branding_version
+- Testes obsoletos 2.3.2/login template atualizados para 2.4.0
+
+Ruff/MyPy/pytest completo: reconfirmar no GitHub Actions.
