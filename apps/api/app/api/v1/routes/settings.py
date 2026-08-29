@@ -1,5 +1,5 @@
 import json
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import APIRouter, Body, Depends
 from pydantic import BaseModel, Field
@@ -47,6 +47,7 @@ class BookingParametersUpdate(BaseModel):
     default_duration_minutes: int = Field(default=60, ge=5, le=720)
     default_professional_name: str = Field(default="Agenda geral", min_length=2, max_length=160)
     default_customer_mode: str = "NEW"
+    checkin_flow_mode: Literal["FULL", "SIMPLE"] = "FULL"
     simultaneous: SimultaneousSettings = Field(default_factory=SimultaneousSettings)
     rules: BookingRuleSettings = Field(default_factory=BookingRuleSettings)
     minimum_notice_minutes: int = Field(default=1440, ge=0, le=525600)
