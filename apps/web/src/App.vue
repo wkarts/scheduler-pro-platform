@@ -28,13 +28,8 @@ const pwaOpenMode=ref('AUTO')
 // Landing e Agenda Pública só existem nas rotas públicas explícitas /pagina e /agendar.
 const publicSurface=computed(()=>['/agendar','/pagina'].includes(normalizedPath))
 const forcePwaLogin=computed(()=>sourcePwa&&pwaOpenMode.value==='LOGIN'&&!authenticated.value)
-// PUBLIC_PAGES_LIFECYCLE_RECOVERY: o Builder permanece montado, mas o host pode
-// recriá-lo quando a rota já está selecionada e o workspace interno perdeu estado.
-const publicPagesEpoch=ref(0)
-let publicPagesRecoveryTimer:number|undefined
-let publicPagesLoadingSince=0
-let publicPagesMissingSince=0
-let publicPagesLastRecovery=0
+let publicPagesRecoveryPending=false
+
 function refreshAuthState():void{authenticated.value=Boolean(localStorage.getItem('scheduler_pro_access_token'))}
 function refreshRoute():void{activeView.value=(window.location.hash||'#dashboard').replace(/^#/,'')||'dashboard'}
 function onStorage(event:StorageEvent):void{if(event.key==='scheduler_pro_access_token')refreshAuthState()}
@@ -43,39 +38,20 @@ function isPublicPagesButton(target:EventTarget|null):boolean{
   const button=target.closest('button.nav-item')
   return Boolean(button&&button.textContent?.replace(/\s+/g,' ').trim().includes('Páginas públicas'))
 }
-function recoverPublicPagesWorkspace():void{
-  if(window.location.hash!=='#visual-builder')return
-  const now=Date.now()
-  if(now-publicPagesLastRecovery<1200)return
-  publicPagesLastRecovery=now
-  publicPagesLoadingSince=0
-  publicPagesMissingSince=0
-  publicPagesEpoch.value+=1
-}
 function onPublicPagesNavCapture(event:Event):void{
-  // Captura antes do handler do TenantConsole. Se o hash já é o mesmo, o
-  // navegador não emitirá hashchange; recriar a instância evita o estado morto.
-  if(window.location.hash==='#visual-builder'&&isPublicPagesButton(event.target))queueMicrotask(recoverPublicPagesWorkspace)
-}
-function publicPagesWatchdog():void{
-  if(window.location.hash!=='#visual-builder'){
-    publicPagesLoadingSince=0
-    publicPagesMissingSince=0
-    return
-  }
-  const workspace=document.querySelector('.experience-center')
-  const loading=workspace?.querySelector('.loading')
-  const now=Date.now()
-  if(!workspace){
-    if(!publicPagesMissingSince)publicPagesMissingSince=now
-    if(now-publicPagesMissingSince>1800)recoverPublicPagesWorkspace()
-    return
-  }
-  publicPagesMissingSince=0
-  if(loading){
-    if(!publicPagesLoadingSince)publicPagesLoadingSince=now
-    if(now-publicPagesLoadingSince>15000)recoverPublicPagesWorkspace()
-  }else publicPagesLoadingSince=0
+  if(window.location.hash!=='#visual-builder'||!isPublicPagesButton(event.target)||publicPagesRecoveryPending)return
+  // A área já existe: não remonta, não reinicia loading e não interfere na edição.
+  if(document.querySelector('.experience-center'))return
+  // Recuperação apenas sob ação explícita do usuário e somente quando o overlay
+  // realmente sumiu. Uma única reentrada de rota substitui o antigo watchdog.
+  publicPagesRecoveryPending=true
+  queueMicrotask(()=>{
+    window.location.hash='dashboard'
+    window.requestAnimationFrame(()=>{
+      window.location.hash='visual-builder'
+      publicPagesRecoveryPending=false
+    })
+  })
 }
 onMounted(()=>{
   refreshAuthState();refreshRoute()
@@ -83,7 +59,6 @@ onMounted(()=>{
   window.addEventListener('hashchange',refreshRoute)
   window.addEventListener('scheduler-pro-auth-changed',refreshAuthState)
   document.addEventListener('click',onPublicPagesNavCapture,true)
-  publicPagesRecoveryTimer=window.setInterval(publicPagesWatchdog,750)
   if(sourcePwa)void fetch('/api/v1/public/context',{cache:'no-store',headers:{Accept:'application/json'}}).then(r=>r.json()).then(body=>{pwaOpenMode.value=String(body?.data?.preferences?.pwa_open_mode||'AUTO').toUpperCase()}).catch(()=>undefined)
 })
 onUnmounted(()=>{
@@ -91,7 +66,6 @@ onUnmounted(()=>{
   window.removeEventListener('hashchange',refreshRoute)
   window.removeEventListener('scheduler-pro-auth-changed',refreshAuthState)
   document.removeEventListener('click',onPublicPagesNavCapture,true)
-  if(publicPagesRecoveryTimer!==undefined)window.clearInterval(publicPagesRecoveryTimer)
 })
 </script>
 
@@ -106,8 +80,8 @@ onUnmounted(()=>{
       <TenantAgendaCenter v-if="activeView==='agenda'"/>
       <TenantExtensions v-if="activeView==='personalizacao'||activeView==='smtp'"/>
       <TenantConfigurationCenter v-if="activeView==='configuracoes'"/>
-      <!-- Mantém o componente disponível em toda a sessão; :key apenas recupera uma instância morta. -->
-      <TenantVisualPageBuilder :key="publicPagesEpoch"/>
+      <!-- Persistente e estável: sem :key, polling ou remount automático. -->
+      <TenantVisualPageBuilder/>
       <TenantBookingAndMessages v-if="activeView==='agenda-publica'||activeView==='mensagens'"/>
       <TenantMailModeSelector v-if="activeView==='smtp'"/>
       <TenantBrandAssetUploader v-if="activeView==='personalizacao'"/>
