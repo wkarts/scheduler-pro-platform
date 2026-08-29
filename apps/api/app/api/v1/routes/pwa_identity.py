@@ -11,28 +11,28 @@ from app.services.branding_service import BrandingService
 router = APIRouter()
 
 CORE_PWA_NAME = "Scheduler Pro"
-CORE_PWA_REVISION = "scheduler-pro-core-identity-v1"
-CORE_PWA_ICONS = [
+TENANT_PWA_REVISION = "scheduler-pro-tenant-dark-v1"
+TENANT_PWA_ICONS = [
     {
-        "src": f"/icons/icon-192.png?v={CORE_PWA_REVISION}",
+        "src": f"/icons/tenant-pwa-192.png?v={TENANT_PWA_REVISION}",
         "sizes": "192x192",
         "type": "image/png",
         "purpose": "any",
     },
     {
-        "src": f"/icons/icon-512.png?v={CORE_PWA_REVISION}",
+        "src": f"/icons/tenant-pwa-512.png?v={TENANT_PWA_REVISION}",
         "sizes": "512x512",
         "type": "image/png",
         "purpose": "any",
     },
     {
-        "src": f"/icons/maskable-192.png?v={CORE_PWA_REVISION}",
+        "src": f"/icons/tenant-pwa-maskable-192.png?v={TENANT_PWA_REVISION}",
         "sizes": "192x192",
         "type": "image/png",
         "purpose": "maskable",
     },
     {
-        "src": f"/icons/maskable-512.png?v={CORE_PWA_REVISION}",
+        "src": f"/icons/tenant-pwa-maskable-512.png?v={TENANT_PWA_REVISION}",
         "sizes": "512x512",
         "type": "image/png",
         "purpose": "maskable",
@@ -45,17 +45,34 @@ def _dict_value(source: dict[str, Any], key: str) -> dict[str, Any]:
     return value if isinstance(value, dict) else {}
 
 
-def _allow_tenant_pwa_identity(manifest: dict[str, Any]) -> bool:
+def _legacy_identity_override(manifest: dict[str, Any]) -> bool:
     settings = _dict_value(manifest, "settings")
     return bool(settings.get("allow_pwa_identity_override", False))
+
+
+def _allow_tenant_pwa_name(manifest: dict[str, Any]) -> bool:
+    settings = _dict_value(manifest, "settings")
+    value = settings.get("allow_pwa_name_override")
+    return _legacy_identity_override(manifest) if value is None else bool(value)
+
+
+def _allow_tenant_pwa_icon(manifest: dict[str, Any]) -> bool:
+    settings = _dict_value(manifest, "settings")
+    value = settings.get("allow_pwa_icon_override")
+    return _legacy_identity_override(manifest) if value is None else bool(value)
 
 
 def _tenant_icons(manifest: dict[str, Any]) -> list[dict[str, str]]:
     assets = _dict_value(manifest, "assets")
     branding_version = int(manifest.get("branding_version") or 0)
     icon_url = str(assets.get("icon_url") or "").strip()
-    if not icon_url or icon_url in {"/icons/icon-512.png", "/icons/icon.svg", "/icons/icon.png"}:
-        return list(CORE_PWA_ICONS)
+    if not icon_url or icon_url in {
+        "/icons/icon-512.png",
+        "/icons/icon.svg",
+        "/icons/icon.png",
+        "/icons/tenant-pwa-512.png",
+    }:
+        return list(TENANT_PWA_ICONS)
     suffix = f"?v={branding_version}" if branding_version else ""
     return [
         {
@@ -76,18 +93,27 @@ async def pwa_manifest(
     app = _dict_value(manifest, "app")
     theme = _dict_value(manifest, "theme")
     colors = _dict_value(theme, "colors")
-    allow_override = _allow_tenant_pwa_identity(manifest)
+    allow_name_override = _allow_tenant_pwa_name(manifest)
+    allow_icon_override = _allow_tenant_pwa_icon(manifest)
 
-    if allow_override:
+    if allow_name_override:
         name = str(app.get("public_name") or app.get("name") or CORE_PWA_NAME)
         short_name = name[:30]
-        icons = _tenant_icons(manifest)
-        identity_source = "tenant"
     else:
         name = CORE_PWA_NAME
         short_name = CORE_PWA_NAME
-        icons = list(CORE_PWA_ICONS)
-        identity_source = "scheduler-pro"
+
+    # A identidade de instalação é deliberadamente distinta do Control Plane.
+    # Sem permissão de ícone próprio, tenants usam o ícone oficial com fundo escuro.
+    # O Admin/Control Plane mantém seus próprios assets transparentes em apps/admin.
+    icons = _tenant_icons(manifest) if allow_icon_override else list(TENANT_PWA_ICONS)
+
+    identity_parts: list[str] = []
+    if allow_name_override:
+        identity_parts.append("tenant-name")
+    if allow_icon_override:
+        identity_parts.append("tenant-icon")
+    identity_source = "+".join(identity_parts) if identity_parts else "scheduler-pro-tenant-dark"
 
     branding_version = int(manifest.get("branding_version") or 0)
     payload = {
