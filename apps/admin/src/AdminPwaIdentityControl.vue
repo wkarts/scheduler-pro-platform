@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { apiGet, apiPut, type ApiError } from './api/client'
 
 type SessionState={accessToken:string;refreshToken:string;userEmail:string}
@@ -9,6 +9,7 @@ type ExperienceSnapshot={branding?:BrandingManifest|null}
 
 const storageKey='scheduler-pro-admin-session'
 const open=ref(false)
+const authenticated=ref(false)
 const loading=ref(false)
 const saving=ref(false)
 const error=ref('')
@@ -17,12 +18,13 @@ const tenants=ref<Tenant[]>([])
 const tenantId=ref('')
 const branding=ref<BrandingManifest|null>(null)
 const allowOverride=ref(false)
+let authTimer:number|undefined
 
-const authenticated=computed(()=>Boolean(token()))
 const selectedTenant=computed(()=>tenants.value.find(item=>item.id===tenantId.value)??null)
 
 function session():SessionState|null{const raw=localStorage.getItem(storageKey);if(!raw)return null;try{return JSON.parse(raw) as SessionState}catch{return null}}
 function token():string{return session()?.accessToken||''}
+function syncAuth():void{authenticated.value=Boolean(token());if(!authenticated.value)open.value=false}
 function describe(errorValue:unknown):string{const value=errorValue as Partial<ApiError>;return value?.message||'Falha ao atualizar a identidade do PWA.'}
 
 async function loadTenant():Promise<void>{
@@ -57,6 +59,9 @@ async function save():Promise<void>{
       : 'PWA protegido: nome e ícones permanecem Scheduler Pro.'
   }catch(exc){error.value=describe(exc)}finally{saving.value=false}
 }
+
+onMounted(()=>{syncAuth();authTimer=window.setInterval(syncAuth,800)})
+onUnmounted(()=>{if(authTimer!==undefined)window.clearInterval(authTimer)})
 </script>
 
 <template>
