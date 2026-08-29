@@ -2,7 +2,6 @@ import { createApp } from 'vue'
 import { createPinia } from 'pinia'
 import App from './AdminControlPlane.vue'
 import AdminHtmlTemplateImportOverlay from './AdminHtmlTemplateImportOverlay.vue'
-import AdminPwaIdentityControl from './AdminPwaIdentityControl.vue'
 import AdminSecondFactorGate from './AdminSecondFactorGate.vue'
 import AdminTemplateSupportCenter from './AdminTemplateSupportCenter.vue'
 import TenantManagementDrawer from './TenantManagementDrawer.vue'
@@ -27,11 +26,6 @@ const tenantManagerHost = document.createElement('div')
 tenantManagerHost.id = 'scheduler-pro-tenant-manager'
 document.body.appendChild(tenantManagerHost)
 createApp(TenantManagementDrawer).mount(tenantManagerHost)
-
-const pwaIdentityHost = document.createElement('div')
-pwaIdentityHost.id = 'scheduler-pro-pwa-identity-control'
-document.body.appendChild(pwaIdentityHost)
-createApp(AdminPwaIdentityControl).mount(pwaIdentityHost)
 
 const templateSupportHost = document.createElement('div')
 templateSupportHost.id = 'scheduler-pro-template-support'
