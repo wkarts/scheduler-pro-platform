@@ -13,3 +13,11 @@ test('binding visual não imprime URL como texto em span legado', () => {
   assert.match(output, /<img src="\/branding\/scheduler-pro-symbol\.png" alt="">/)
   assert.doesNotMatch(output, />\/branding\/scheduler-pro-symbol\.png<\/span>/)
 })
+
+test('bindings v2 aplicam defaults de texto e imagem mesmo sem src original', () => {
+  const raw={schema:'argws-bindings/v1',version:1,defaults:{'hero.title':'Título padrão','hero.image':'/img/default.png'},bindings:{'hero.title':{type:'text'},'hero.image':{type:'image'}}};
+  const manifest=normalizeBindingsManifest(raw);
+  const html=applyBindingsToHtml('<h1 data-sp-bind="hero.title"></h1><img data-sp-bind="hero.image">',{},manifest.bindings);
+  assert.match(html,/Título padrão/);
+  assert.match(html,/src="\/img\/default\.png"/);
+});

@@ -73,6 +73,21 @@ def _rewrite_asset_urls(html: str, package_key: str) -> str:
     return output
 
 
+def _rewrite_binding_asset_urls(value: Any, package_key: str) -> Any:
+    """Normaliza defaults/valores de bindings que apontam para assets do pacote."""
+    base = f"/api/v1/public/assets/experience/{package_key}/assets/"
+    if isinstance(value, str):
+        stripped = value.strip()
+        if stripped.startswith("../assets/"):
+            return base + stripped[len("../assets/") :]
+        if stripped.startswith("assets/"):
+            return base + stripped[len("assets/") :]
+        return value
+    if isinstance(value, list):
+        return [_rewrite_binding_asset_urls(item, package_key) for item in value]
+    if isinstance(value, dict):
+        return {key: _rewrite_binding_asset_urls(item, package_key) for key, item in value.items()}
+    return value
 
 
 def _legacy_binding_definition(key: str) -> dict[str, Any]:
@@ -222,7 +237,10 @@ class ExperienceContractService:
             raise APIError("EXPERIENCE_PAGE_MISSING", "Landing ou Booking ausente/inválida.", 422) from exc
         bindings_path = _safe_name(str(files.get("bindings") or "bindings.json"))
         theme_path = _safe_name(str(files.get("theme") or "theme.json"))
-        bindings = _json_object(entries.get(bindings_path, b"{}"), bindings_path)
+        bindings = _rewrite_binding_asset_urls(
+            _json_object(entries.get(bindings_path, b"{}"), bindings_path),
+            key,
+        )
         theme = _json_object(entries.get(theme_path, b"{}"), theme_path)
         assets: list[ExperienceAsset] = []
         for name, raw in entries.items():

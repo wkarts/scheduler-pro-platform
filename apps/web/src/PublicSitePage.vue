@@ -56,6 +56,8 @@ function automaticExperienceBindings(result:ExperiencePayload):Record<string,unk
   const features=result.context?.features||{}
   return{
     'business.name':brand.app.public_name||brand.app.name||'Scheduler Pro',
+    'business.logo':brand.assets.logo_url||'',
+    'business.logo_dark':brand.assets.logo_dark_url||brand.assets.logo_url||'',
     'brand.logo':brand.assets.logo_url||'',
     'brand.logo_dark':brand.assets.logo_dark_url||brand.assets.logo_url||'',
     'show_booking':Boolean(features.public_booking),

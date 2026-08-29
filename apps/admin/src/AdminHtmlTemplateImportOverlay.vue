@@ -5,7 +5,7 @@ import { apiGet, type ApiError } from './api/client'
 
 type Session={accessToken:string;refreshToken:string;userEmail:string}
 type Tenant={id:string;name:string;slug:string;status:string}
-type Scope='GLOBAL'|'SELECTED'|'EXCLUSIVE'|'INTERNAL'
+type Scope='GLOBAL'|'SELECTED'|'EXCLUSIVE'|'INTERNAL'|'PLATFORM_DEFAULT'
 type Issue={path:string;code:string;message:string}
 type SurfaceInfo={surface:string;entry:string;route:string;bytes:number;version:number}
 type PackageMeta={key:string;name:string;description?:string|null;segment?:string|null;scope:Scope;default_for_new_tenants?:boolean}
@@ -35,7 +35,7 @@ function close():void{open.value=false}
 function selectPackage(file:File|undefined):void{
   if(!file)return
   if(!file.name.toLowerCase().endsWith('.zip')){error.value='Selecione um pacote .zip do Scheduler Pro.';return}
-  if(file.size>20*1024*1024){error.value='O pacote ZIP excede o limite de 20 MB.';return}
+  if(file.size>50*1024*1024){error.value='O pacote ZIP excede o limite de 50 MB.';return}
   packageFile.value=file;packageName.value=file.name;validation.value=null;error.value='';message.value=''
 }
 async function postForm<T>(path:string,form:FormData):Promise<T>{
@@ -75,17 +75,17 @@ onUnmounted(()=>{window.removeEventListener('storage',onAuth);window.removeEvent
   <button v-if="authenticated" class="html-import-launcher" type="button" @click="show"><FileArchive :size="17"/><span>Importar modelo</span></button>
   <div v-if="open&&authenticated" class="html-import-backdrop" @click.self="close">
     <section class="html-import-dialog" role="dialog" aria-modal="true" aria-label="Importar pacote de modelos">
-      <header><div><span>Scheduler Pro · Biblioteca de modelos</span><h2>Importar Template Package V1</h2><p>Envie um único ZIP com <b>template.json</b>, <b>landing.html</b> e/ou <b>agendamento.html</b>. O HTML é preservado integralmente; o manifesto apenas descreve a família, o escopo e as superfícies.</p></div><button class="close" aria-label="Fechar" @click="close"><X :size="20"/></button></header>
+      <header><div><span>Scheduler Pro · Biblioteca de modelos</span><h2>Importar Experience Package</h2><p>Envie um ZIP no padrão <b>argws-experience-package/v2</b> com <b>experience.json</b>, Landing, Agenda, bindings, tema e assets. Pacotes legados <b>scheduler-pro-template-package/v1</b> continuam aceitos por compatibilidade.</p></div><button class="close" aria-label="Fechar" @click="close"><X :size="20"/></button></header>
       <p v-if="error" class="alert error">{{error}}</p><p v-if="message" class="alert success"><CheckCircle2 :size="16"/>{{message}}</p>
       <main>
-        <label class="package-card"><Archive :size="34"/><div><strong>{{packageName||'Pacote Scheduler Pro (.zip)'}}</strong><span>{{packageName?'Pronto para validação.':'Selecione o pacote produzido para a biblioteca de modelos.'}}</span><small>Formato oficial: scheduler-pro-template-package/v1 · até 20 MB</small></div><input type="file" accept=".zip,application/zip" @change="selectPackage(($event.target as HTMLInputElement).files?.[0])"/><em><Upload :size="15"/>Selecionar pacote</em></label>
+        <label class="package-card"><Archive :size="34"/><div><strong>{{packageName||'Pacote Scheduler Pro (.zip)'}}</strong><span>{{packageName?'Pronto para validação.':'Selecione o pacote produzido para a biblioteca de modelos.'}}</span><small>Canônico: argws-experience-package/v2 · compatível com v1 · até 50 MB</small></div><input type="file" accept=".zip,application/zip" @change="selectPackage(($event.target as HTMLInputElement).files?.[0])"/><em><Upload :size="15"/>Selecionar pacote</em></label>
 
         <section v-if="validation" class="package-summary">
           <div><span>Modelo</span><strong>{{validation.package.name}}</strong><small>{{validation.package.key}}</small></div><div><span>Segmento</span><strong>{{validation.package.segment||'Genérico'}}</strong><small>{{validation.schema}}</small></div><div><span>Arquivo</span><strong>{{formatBytes(validation.archive_bytes)}}</strong><small>{{validation.file_count||0}} arquivo(s)</small></div>
         </section>
         <section v-if="validation" class="surface-grid"><article v-for="item in validation.surfaces" :key="item.surface"><span>{{item.surface}}</span><strong>{{item.entry}}</strong><small>{{item.route}} · v{{item.version}} · {{formatBytes(item.bytes)}}</small></article></section>
 
-        <section class="form-grid"><label>Disponibilidade<select v-model="scope"><option value="INTERNAL">Interno / não publicado</option><option value="GLOBAL">Todos os clientes</option><option value="SELECTED">Clientes selecionados</option><option value="EXCLUSIVE">Cliente exclusivo</option></select></label><label v-if="scope==='EXCLUSIVE'">Cliente exclusivo<select v-model="exclusiveTenantId"><option value="">Selecione</option><option v-for="tenant in tenants" :key="tenant.id" :value="tenant.id">{{tenant.name}}</option></select></label></section>
+        <section class="form-grid"><label>Disponibilidade<select v-model="scope"><option value="INTERNAL">Interno / não publicado</option><option value="GLOBAL">Todos os clientes</option><option value="PLATFORM_DEFAULT">Padrão da plataforma</option><option value="SELECTED">Clientes selecionados</option><option value="EXCLUSIVE">Cliente exclusivo</option></select></label><label v-if="scope==='EXCLUSIVE'">Cliente exclusivo<select v-model="exclusiveTenantId"><option value="">Selecione</option><option v-for="tenant in tenants" :key="tenant.id" :value="tenant.id">{{tenant.name}}</option></select></label></section>
         <section v-if="scope==='SELECTED'" class="tenant-picker"><strong>Clientes que poderão usar este modelo</strong><label v-for="tenant in tenants" :key="tenant.id"><input v-model="selectedTenantIds" type="checkbox" :value="tenant.id"/>{{tenant.name}}</label></section>
         <div class="options"><label><input v-model="publish" type="checkbox"/>Publicar esta versão imediatamente</label><label><input v-model="updateExisting" type="checkbox"/>Se a chave já existir, criar uma nova versão</label></div>
 

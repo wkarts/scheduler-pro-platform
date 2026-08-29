@@ -8,6 +8,7 @@ function normalizedBindingType(key,type){const candidate=BINDING_TYPES.includes(
 export function normalizeBindingsManifest(input={}){
   const source=isObject(input)?input:{};
   const raw=isObject(source.bindings)?source.bindings:source;
+  const defaults=isObject(source.defaults)?source.defaults:{};
   const bindings={};
   for(const [key,value] of Object.entries(raw)){
     if(key==='schema'||key==='version') continue;
@@ -16,7 +17,7 @@ export function normalizeBindingsManifest(input={}){
       type:normalizedBindingType(key,definition.type),
       label:String(definition.label||key),
       group:String(definition.group||'Conteúdo'),
-      default:definition.default??null,
+      default:definition.default??defaults[key]??null,
       required:Boolean(definition.required),
       options:Array.isArray(definition.options)?definition.options:[],
       help:String(definition.help||''),
@@ -48,17 +49,28 @@ function escAttr(value){return escText(value).replace(/"/g,'&quot;');}
 
 export function applyBindingsToHtml(html,values={},definitions={}){
   let output=String(html??'');
+  const hasValue=key=>Object.prototype.hasOwnProperty.call(values,key)||definitions?.[key]?.default!==null&&definitions?.[key]?.default!==undefined;
+  const resolved=key=>Object.prototype.hasOwnProperty.call(values,key)?values[key]:definitions?.[key]?.default;
   output=output.replace(/(<[^>]+\bdata-sp-bind=["']([^"']+)["'][^>]*>)([\s\S]*?)(<\/[^>]+>)/gi,(all,open,key,current,close)=>{
-    if(!(key in values)) return all;
+    if(!hasValue(key)) return all;
     const type=normalizedBindingType(key,definitions?.[key]?.type||'text');
-    const value=values[key];
-    if(type==='image') return `${open}<img src="${escAttr(value)}" alt="">${close}`;
+    const value=resolved(key);
+    if(type==='image'){
+      if(!value) return all;
+      if(/^\s*<img\b/i.test(current)) return current.replace(/(<img\b[^>]*\bsrc=["'])([^"']*)(["'])/i,(m,a,b,z)=>`${a}${escAttr(value)}${z}`)===current?`${open}<img src="${escAttr(value)}" alt="">${close}`:`${open}${current.replace(/(<img\b[^>]*\bsrc=["'])([^"']*)(["'])/i,(m,a,b,z)=>`${a}${escAttr(value)}${z}`)}${close}`;
+      return `${open}<img src="${escAttr(value)}" alt="">${close}`;
+    }
     if(type==='richtext') return `${open}${String(value??'')}${close}`;
     if(type==='boolean'||type==='section') return value?all:'';
     return `${open}${escText(value)}${close}`;
   });
-  output=output.replace(/(<(?:img|source)[^>]+\bdata-sp-bind=["']([^"']+)["'][^>]*\bsrc=["'])([^"']*)(["'][^>]*>)/gi,(all,a,key,current,z)=>key in values?`${a}${escAttr(values[key])}${z}`:all);
-  output=output.replace(/(<a[^>]+\bdata-sp-bind=["']([^"']+)["'][^>]*\bhref=["'])([^"']*)(["'][^>]*>)/gi,(all,a,key,current,z)=>key in values?`${a}${escAttr(values[key])}${z}`:all);
-  output=output.replace(/<([a-z0-9-]+)([^>]*\bdata-sp-show=["']([^"']+)["'][^>]*)>([\s\S]*?)<\/\1>/gi,(all,tag,attrs,key,body)=>values[key]===false||values[key]===0||values[key]===''?'':all);
+  output=output.replace(/<(img|source)\b([^>]*\bdata-sp-bind=["']([^"']+)["'][^>]*)>/gi,(all,tag,attrs,key)=>{
+    if(!hasValue(key)||!resolved(key)) return all;
+    const src=escAttr(resolved(key));
+    if(/\bsrc\s*=\s*["'][^"']*["']/i.test(attrs)) return `<${tag}${attrs.replace(/\bsrc\s*=\s*(["'])[^"']*\1/i,`src="${src}"`)}>`;
+    return `<${tag}${attrs} src="${src}">`;
+  });
+  output=output.replace(/(<a[^>]+\bdata-sp-bind=["']([^"']+)["'][^>]*\bhref=["'])([^"']*)(["'][^>]*>)/gi,(all,a,key,current,z)=>hasValue(key)&&resolved(key)?`${a}${escAttr(resolved(key))}${z}`:all);
+  output=output.replace(/<([a-z0-9-]+)([^>]*\bdata-sp-show=["']([^"']+)["'][^>]*)>([\s\S]*?)<\/\1>/gi,(all,tag,attrs,key,body)=>hasValue(key)&&(resolved(key)===false||resolved(key)===0||resolved(key)==='')?'':all);
   return output;
 }

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from copy import deepcopy
 from typing import Any
 
 from sqlalchemy import text
@@ -57,6 +58,8 @@ class HtmlTemplateImportService:
         default_for_new_tenants: bool = False,
         publish: bool = False,
         update_existing: bool = True,
+        template_key: str | None = None,
+        experience_metadata: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         validation = HtmlTemplateContract.ensure_family(
             landing_html=landing_html,
@@ -64,6 +67,9 @@ class HtmlTemplateImportService:
             login_html=login_html,
         )
         key = str(validation["template_key"])
+        declared_key = str(template_key or '').strip().lower()
+        if declared_key and declared_key != key:
+            raise APIError('GLOBAL_TEMPLATE_PACKAGE_KEY_MISMATCH', f'O pacote usa {declared_key}, mas o HTML declara {key}.', 422)
         clean_name = name.strip()
         if len(clean_name) < 2 or len(clean_name) > 180:
             raise APIError("GLOBAL_TEMPLATE_NAME_INVALID", "Nome do modelo inválido.", 422)
@@ -98,6 +104,8 @@ class HtmlTemplateImportService:
                 html_document,
                 expected_surface=surface,
             )
+            if experience_metadata:
+                content['experience'] = deepcopy(experience_metadata)
             existing_id = await self._existing(surface, key)
             metadata = {
                 "name": surface_name,
@@ -108,7 +116,7 @@ class HtmlTemplateImportService:
                 "exclusive_tenant_id": exclusive if storage_scope == "EXCLUSIVE" else None,
                 "selected_tenant_ids": selected if storage_scope == "SELECTED" else [],
             }
-            changelog = "Importação HTML pelo Control Plane"
+            changelog = "Importação Experience v2 pelo Control Plane" if experience_metadata else "Importação HTML pelo Control Plane"
             if existing_id:
                 if not update_existing:
                     raise APIError(
