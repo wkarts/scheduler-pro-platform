@@ -1,0 +1,49 @@
+Scheduler Pro 0.1.0-alpha.85 — AVB 2.4.0 Recovery
+Data: 2026-08-29
+
+BASE
+- scheduler-pro-platform-0.1.0-alpha.85.zip
+- scheduler-pro-diagnostics-20260829-063154Z.zip
+- 8 Experience Packages v2 fornecidos pelo usuário
+
+GITHUB
+- Nenhuma PR criada nesta rodada
+- Nenhuma alteração enviada ao GitHub nesta rodada
+
+VALIDAÇÕES
+[PASS] Python compileall: app + tests
+[PASS] node --check nos JS alterados
+[PASS] parsing TypeScript dos componentes Vue alterados
+[PASS] @argws/visual-builder check
+[PASS] @argws/visual-builder tests: 73/73
+[PASS] 8 packages oficiais: argws-experience-package/v2
+[PASS] 8 packages oficiais: somente LANDING + BOOKING
+[PASS] 8 uploads originais aceitos pelo novo importador do Control Plane
+[PASS] SHA256SUMS dos 8 packages oficiais
+[PASS] defaults de bindings aplicados a texto e imagem
+[PASS] imagem com data-sp-bind sem src recebe src
+[PASS] Modo Avançado chama el.load()
+[PASS] evento upb-close integrado ao host
+[PASS] última superfície pública persistida
+[PASS] root administrativo sem endpoint obrigatório preservado
+
+DIAGNÓSTICO RELEVANTE
+- 2x LANDING draft HTTP 422
+- 6x browser_long_task no #visual-builder (1126ms a 3586ms)
+- 9x 404 histórico em assets do template genérico antigo
+- importações /experience/import com HTTP 200 confirmadas no backend
+- 2x manifest.webmanifest 404 no hostname raiz sem tenant; fora da falha de template tenant
+
+LIMITAÇÕES DO RUNTIME DE VALIDAÇÃO
+- apps/web e apps/admin build não executados: vue-tsc não está instalado no source/runtime desta sessão
+- não declarar pytest completo como PASS nesta sessão
+
+CONSOLIDAÇÃO FINAL DOS TEMPLATES
+[PASS] barber-shop-neo-generico: upload == resource == pasta de entrega | a00ec036d3f994f2cea811e5818a2243a748c387abd0801f6f4b9ae494ff8ea1
+[PASS] clinica-medica-generico: upload == resource == pasta de entrega | 006f925b242f2c225d1e4644b2c8ffdcb9b8c5e8a5659f0c4d18c8f876721d85
+[PASS] clinica-odontologica-generico: upload == resource == pasta de entrega | ce8ddcd8be51a1b38049fe9f0d4aef2634dfa30cd8e7e5c40ba4b14ea45eec7a
+[PASS] clinica-veterinaria-generico: upload == resource == pasta de entrega | 2859bed7381675d6e5fed236f3c0e0907797fd147723e1ca87fa0956920fd05d
+[PASS] martelinho-de-ouro-generico: upload == resource == pasta de entrega | 083c04898bbdec727da9323a915aae60a2eba76916593d527a73009505821136
+[PASS] scheduler-pro-padrao-generico: upload == resource == pasta de entrega | 6edee1e49944f1fc46afdbb21670c17cc9332a4f0c40f327f64dea105ae83bc0
+[PASS] studio-unhas-generico: upload == resource == pasta de entrega | 1217faec440cce3e6d4e65ffb8edfaa35be241b05ffdf98962b7a137f8491464
+[PASS] tecnologia-generico-simples: upload == resource == pasta de entrega | 8a7b49ea67c6003d3becbfa43c4e298b0341f31a4df779cf4876234a75639914

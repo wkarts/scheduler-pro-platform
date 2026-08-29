@@ -126,10 +126,10 @@ def test_eight_official_page_families_are_real_zip_packages() -> None:
         report = HtmlTemplatePackageService.validate(archive)
         assert report["valid"], {key: report["errors"]}
         assert report["package"]["key"] == key
-        assert set(report["surfaces"]) == {"landing", "booking", "login"}
+        assert report["schema"] == "argws-experience-package/v2"
+        assert set(report["surfaces"]) == {"landing", "booking"}
         assert report["surfaces"]["landing"]["surface"] == "LANDING"
         assert report["surfaces"]["booking"]["surface"] == "BOOKING"
-        assert report["surfaces"]["login"]["surface"] == "LOGIN"
 
 
 def test_generic_template_is_the_platform_fallback() -> None:

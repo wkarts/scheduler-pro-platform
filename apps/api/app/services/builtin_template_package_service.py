@@ -51,34 +51,33 @@ def builtin_template_package(key: str) -> dict[str, Any]:
 
 @lru_cache(maxsize=len(OFFICIAL_TEMPLATE_KEYS))
 def _builtin_manifest(key: str) -> dict[str, Any]:
-    """Lê somente template.json para o catálogo leve.
-
-    O Workspace não precisa descompactar/validar HTMLs de vários megabytes apenas
-    para desenhar os cards. A validação completa continua em
-    ``builtin_template_package`` no bootstrap e no uso da superfície.
-    """
+    """Lê o manifesto v2 canônico ou o v1 legado para o catálogo leve."""
     try:
         with ZipFile(BytesIO(builtin_template_archive(key))) as archive:
-            raw = archive.read("template.json")
+            names = set(archive.namelist())
+            manifest_name = "experience.json" if "experience.json" in names else "template.json"
+            raw = archive.read(manifest_name)
         decoded: object = json.loads(raw.decode("utf-8"))
     except Exception as exc:
         raise RuntimeError(f"Manifesto oficial inválido: {key}") from exc
     if not isinstance(decoded, dict):
         raise RuntimeError(f"Manifesto oficial deve ser um objeto JSON: {key}")
     manifest = cast(dict[str, Any], decoded)
-    if manifest.get("schema") != "scheduler-pro-template-package/v1":
+    if manifest.get("schema") not in {"argws-experience-package/v2", "scheduler-pro-template-package/v1"}:
         raise RuntimeError(f"Schema oficial inválido: {key}")
     package = manifest.get("package") or {}
     if package.get("key") != key:
         raise RuntimeError(f"Chave do manifesto oficial diverge: {key}")
     return manifest
 
-
 @lru_cache(maxsize=1)
 def _official_template_families_cached() -> tuple[dict[str, Any], ...]:
     rows: list[dict[str, Any]] = []
     for key in OFFICIAL_TEMPLATE_KEYS:
-        package = (_builtin_manifest(key).get("package") or {})
+        manifest = _builtin_manifest(key)
+        package = (manifest.get("package") or {})
+        source_schema = str(manifest.get("schema") or "")
+        surfaces = package.get("surfaces") if source_schema.endswith("/v1") else manifest.get("pages")
         rows.append(
             {
                 "key": key,
@@ -90,7 +89,9 @@ def _official_template_families_cached() -> tuple[dict[str, Any], ...]:
                     package.get("default_for_new_tenants")
                 )
                 or key == DEFAULT_TEMPLATE_KEY,
-                "surfaces": deepcopy(package.get("surfaces") or {}),
+                "surfaces": deepcopy(surfaces or {}),
+                "source_schema": source_schema,
+                "package_version": package.get("package_version"),
             }
         )
     return tuple(rows)
@@ -155,6 +156,8 @@ async def sync_builtin_template_packages(session: AsyncSession) -> dict[str, Any
                 html_document,
                 expected_surface=surface,
             )
+            if parsed.get('experience'):
+                content['experience'] = deepcopy(parsed['experience'])
             common = {
                 "name": f"{metadata['name']}{SURFACE_SUFFIX.get(surface, '')}",
                 "description": metadata.get("description"),
@@ -226,7 +229,7 @@ async def sync_builtin_template_packages(session: AsyncSession) -> dict[str, Any
     return {
         "default_template_key": DEFAULT_TEMPLATE_KEY,
         "official_keys": list(OFFICIAL_TEMPLATE_KEYS),
-        "surfaces": ["LANDING", "BOOKING", "LOGIN"],
+        "surfaces": ["LANDING", "BOOKING"],
         "templates": results,
         "automatic_tenant_update": False,
     }

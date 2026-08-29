@@ -1,0 +1,60 @@
+from pathlib import Path
+
+from app.services.builtin_template_package_service import OFFICIAL_TEMPLATE_KEYS, builtin_template_archive
+from app.services.html_template_package_service import HtmlTemplatePackageService
+
+
+def _repository_root() -> Path | None:
+    here = Path(__file__).resolve()
+    for parent in here.parents:
+        if (parent / "apps" / "api").is_dir() and (parent / "packages" / "visual-builder").is_dir():
+            return parent
+    return None
+
+
+ROOT = _repository_root()
+
+
+def _source(path: str) -> str:
+    if ROOT is None:
+        import pytest
+
+        pytest.skip("Fontes do monorepo não fazem parte da imagem isolada da API.")
+    return (ROOT / path).read_text(encoding="utf-8")
+
+
+def test_official_packages_are_experience_v2_and_without_legacy_login() -> None:
+    for key in OFFICIAL_TEMPLATE_KEYS:
+        report = HtmlTemplatePackageService.validate(builtin_template_archive(key))
+        assert report["valid"], {key: report["errors"]}
+        assert report["schema"] == "argws-experience-package/v2"
+        assert set(report["surfaces"]) == {"landing", "booking"}
+
+
+def test_visual_builder_html_document_is_not_replaced_by_empty_canvas() -> None:
+    source = _source("packages/visual-builder/src/editor.js")
+    assert "if(!isHtmlDocument(this._document)&&!this._document.builder.root_ids.length)" in source
+    assert ".upb-html-surface-editor iframe,[data-upb-html-document-frame]" in source
+
+
+def test_tenant_visual_builder_autoloads_and_handles_close_event() -> None:
+    source = _source("apps/web/src/TenantVisualPageBuilder.vue")
+    assert "await el.load()" in source
+    assert "addEventListener('upb-close',closeAdvanced" in source
+    assert "scheduler_pro_public_pages_last_surface" in source
+
+
+def test_control_plane_importer_accepts_experience_v2() -> None:
+    source = _source("apps/admin/src/AdminHtmlTemplateImportOverlay.vue")
+    service = _source("apps/api/app/services/html_template_package_service.py")
+    assert "argws-experience-package/v2" in source
+    assert "ExperienceContractService.parse_archive" in service
+    assert "MAX_ARCHIVE_BYTES = 50 * 1024 * 1024" in service
+
+
+def test_mobile_drawer_is_topmost_and_versioned() -> None:
+    console = _source("apps/web/src/TenantConsole.vue")
+    css = _source("apps/web/src/tenant-shell-contract.css")
+    assert "Scheduler Pro · v{{ appVersion }}" in console
+    assert "z-index: 30000 !important" in css
+    assert "mobile-menu-close" in console

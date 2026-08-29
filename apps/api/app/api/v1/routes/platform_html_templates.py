@@ -69,7 +69,7 @@ async def _archive(upload: UploadFile) -> bytes:
     if len(data) > MAX_ARCHIVE_BYTES:
         raise APIError(
             "HTML_TEMPLATE_PACKAGE_TOO_LARGE",
-            "O pacote ZIP excede 20 MB.",
+            "O pacote ZIP excede 50 MB.",
             413,
         )
     return data
@@ -118,6 +118,8 @@ async def import_html_template_package(
         default_for_new_tenants=bool(metadata.get("default_for_new_tenants", False)),
         publish=publish,
         update_existing=update_existing,
+        template_key=str(metadata.get('key') or ''),
+        experience_metadata=parsed.get('experience'),
     )
     return success(
         {

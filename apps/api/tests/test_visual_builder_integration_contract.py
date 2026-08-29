@@ -90,7 +90,8 @@ def test_builder_host_is_route_driven_and_disposable() -> None:
         return
     assert "ExperiencePageAdapter" in source
     assert "document.createElement('argws-visual-builder')" in source
-    assert "advancedElement.value?.remove()" in source
+    assert "advancedElement.value.remove()" in source
+    assert "removeEventListener('upb-close',closeAdvanced" in source
     assert "hashchange" in source
     assert "MutationObserver" not in source
 

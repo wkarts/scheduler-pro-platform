@@ -148,3 +148,66 @@ body.sp-mobile-nav-open { overflow: hidden !important; touch-action: none; }
   .tenant-console .install-top { display: none !important; }
   .tenant-console .page-actions { grid-template-columns: 1fr; }
 }
+
+
+/* AVB 2.4.0 recovery — mobile drawer modal acima de toda a aplicação. */
+@media (max-width: 900px) {
+  .tenant-console .mobile-nav-backdrop {
+    z-index: 29990 !important;
+    background: rgba(15,23,42,.42) !important;
+    backdrop-filter: blur(4px) !important;
+  }
+  .tenant-console .sidebar,
+  .tenant-console.collapsed .sidebar {
+    z-index: 30000 !important;
+    width: min(88vw, 370px) !important;
+    max-width: 370px !important;
+    background: #ffffff !important;
+    color: #334155 !important;
+    border-right: 1px solid #e2e8f0 !important;
+    box-shadow: 28px 0 80px rgba(15,23,42,.22) !important;
+    scrollbar-width: thin;
+    scrollbar-color: transparent transparent;
+  }
+  .tenant-console .sidebar::-webkit-scrollbar { width: 4px; }
+  .tenant-console .sidebar::-webkit-scrollbar-track { background: transparent; }
+  .tenant-console .sidebar::-webkit-scrollbar-thumb { background: transparent; border-radius: 999px; }
+  .tenant-console .sidebar:hover::-webkit-scrollbar-thumb { background: rgba(100,116,139,.22); }
+  .tenant-console.mobileOpen .sidebar .brand,
+  .tenant-console.collapsed.mobileOpen .sidebar .brand {
+    min-height: 86px !important;
+    padding: 14px 16px !important;
+    border-bottom: 1px solid #e2e8f0 !important;
+    background: #fff !important;
+  }
+  .tenant-console .sp-sidebar-logo {
+    display: block;
+    width: 132px;
+    max-width: 132px;
+    height: 42px;
+    object-fit: contain;
+    object-position: left center;
+  }
+  .tenant-console.mobileOpen .sidebar .brand > div strong { color: #0f172a !important; font-size: 15px !important; }
+  .tenant-console.mobileOpen .sidebar .brand > div small { color: #64748b !important; font-size: 10px !important; }
+  .tenant-console .mobile-menu-close {
+    margin-left: auto;
+    width: 44px;
+    height: 44px;
+    flex: 0 0 44px;
+    display: grid;
+    place-items: center;
+    border: 1px solid #cbd5e1;
+    border-radius: 13px;
+    background: #fff;
+    color: #334155;
+  }
+  .tenant-console .nav-list { padding: 14px 12px !important; }
+  .tenant-console.mobileOpen .sidebar .nav-item,
+  .tenant-console.collapsed.mobileOpen .sidebar .nav-item { color: #475569 !important; border-radius: 14px !important; }
+  .tenant-console.mobileOpen .sidebar .nav-item:hover,
+  .tenant-console.mobileOpen .sidebar .nav-item.active { background: #eff6ff !important; color: #1d4ed8 !important; box-shadow: inset 3px 0 #2563eb !important; }
+  .tenant-console .sidebar-footer { border-top: 1px solid #e2e8f0 !important; background: #fff !important; }
+  .tenant-console .version-info { background: #f8fafc !important; color: #334155 !important; border: 1px solid #e2e8f0; }
+  .tenant-console .version-info small { color: #64748b !important; }
+}

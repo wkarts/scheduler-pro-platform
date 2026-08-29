@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 from io import BytesIO
+import base64
 import json
+import mimetypes
 from pathlib import PurePosixPath
 import re
 from typing import Any
@@ -9,12 +11,13 @@ from zipfile import BadZipFile, ZipFile, ZipInfo, is_zipfile
 
 from app.core.errors import APIError
 from app.services.html_template_contract import HtmlTemplateContract
+from app.services.experience_contract_service import EXPERIENCE_SCHEMA, ExperienceContractService
 
 PACKAGE_SCHEMA = "scheduler-pro-template-package/v1"
-MAX_ARCHIVE_BYTES = 20 * 1024 * 1024
-MAX_UNCOMPRESSED_BYTES = 32 * 1024 * 1024
+MAX_ARCHIVE_BYTES = 50 * 1024 * 1024
+MAX_UNCOMPRESSED_BYTES = 80 * 1024 * 1024
 MAX_FILE_BYTES = 16 * 1024 * 1024
-MAX_FILES = 64
+MAX_FILES = 500
 VALID_SCOPES = {"GLOBAL", "SELECTED", "EXCLUSIVE", "INTERNAL", "PLATFORM_DEFAULT"}
 KEY_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,118}[a-z0-9]$")
 
@@ -35,13 +38,13 @@ def _safe_name(raw: str) -> str | None:
 class HtmlTemplatePackageService:
     """Valida o pacote ZIP autoral usado como unidade canônica de templates.
 
-    O pacote guarda o manifesto em ``template.json`` e referencia os HTMLs
-    completos. Os documentos HTML nunca são convertidos em uma árvore JSON
-    durante a importação; o JSON serve apenas como manifesto do pacote.
+    O importador aceita o Experience Contract v2 (canônico) e o Template Package v1 (legado).
+    Em ambos os casos, Landing e Agenda permanecem documentos HTML completos.
+    Assets do v2 são incorporados ao HTML da biblioteca global para manter o pacote autocontido.
     """
 
     @classmethod
-    def _parse(cls, archive: bytes) -> dict[str, Any]:
+    def _parse_v1(cls, archive: bytes) -> dict[str, Any]:
         errors: list[dict[str, str]] = []
         warnings: list[dict[str, str]] = []
         result: dict[str, Any] = {
@@ -57,7 +60,7 @@ class HtmlTemplatePackageService:
             errors.append(_issue("package", "PACKAGE_FILE_REQUIRED", "Selecione um pacote .zip."))
             return result
         if len(archive) > MAX_ARCHIVE_BYTES:
-            errors.append(_issue("package", "PACKAGE_ARCHIVE_TOO_LARGE", "O pacote ZIP excede 20 MB."))
+            errors.append(_issue("package", "PACKAGE_ARCHIVE_TOO_LARGE", "O pacote ZIP excede 50 MB."))
             return result
         if not is_zipfile(BytesIO(archive)):
             errors.append(_issue("package", "PACKAGE_ZIP_INVALID", "O arquivo não é um ZIP válido."))
@@ -126,7 +129,7 @@ class HtmlTemplatePackageService:
                         _issue(
                             "package",
                             "PACKAGE_UNCOMPRESSED_TOO_LARGE",
-                            "O conteúdo descompactado excede 32 MB.",
+                            "O conteúdo descompactado excede 80 MB.",
                         )
                     )
                 if errors:
@@ -390,6 +393,153 @@ class HtmlTemplatePackageService:
                 )
             )
             return result
+
+    @staticmethod
+    def _inline_v2_assets(html_document: str, package_key: str, assets: tuple[Any, ...]) -> str:
+        output = str(html_document)
+        base = f"/api/v1/public/assets/experience/{package_key}/assets/"
+        for asset in assets:
+            logical = str(asset.path)
+            if not logical.startswith("assets/"):
+                continue
+            name = logical[len("assets/") :]
+            media_type = str(asset.content_type or mimetypes.guess_type(name)[0] or "application/octet-stream")
+            data_uri = f"data:{media_type};base64,{base64.b64encode(asset.data).decode('ascii')}"
+            output = output.replace(base + name, data_uri)
+        return output
+
+    @classmethod
+    def _parse_v2(cls, archive: bytes) -> dict[str, Any]:
+        errors: list[dict[str, str]] = []
+        warnings: list[dict[str, str]] = []
+        result: dict[str, Any] = {
+            "valid": False,
+            "schema": EXPERIENCE_SCHEMA,
+            "errors": errors,
+            "warnings": warnings,
+            "package": {},
+            "surfaces": {},
+            "documents": {},
+        }
+        if not archive:
+            errors.append(_issue("package", "PACKAGE_FILE_REQUIRED", "Selecione um pacote .zip."))
+            return result
+        if len(archive) > MAX_ARCHIVE_BYTES:
+            errors.append(_issue("package", "PACKAGE_ARCHIVE_TOO_LARGE", "O pacote ZIP excede 50 MB."))
+            return result
+        try:
+            parsed = ExperienceContractService.parse_archive(archive)
+            if parsed.source_schema != EXPERIENCE_SCHEMA:
+                return cls._parse_v1(archive)
+            with ZipFile(BytesIO(archive)) as zipped:
+                infos = [member for member in zipped.infolist() if not member.is_dir()]
+                manifest = json.loads(zipped.read("experience.json").decode("utf-8"))
+                total = sum(int(item.file_size) for item in infos)
+            package = manifest.get("package") or {}
+            pages = manifest.get("pages") or {}
+            scope = str(package.get("scope") or "INTERNAL").upper()
+            if scope not in VALID_SCOPES:
+                errors.append(_issue("experience.json.package.scope", "PACKAGE_SCOPE_INVALID", "Escopo inválido no Experience Package."))
+            documents = {
+                "LANDING": cls._inline_v2_assets(parsed.landing_html, parsed.package_key, parsed.assets),
+                "BOOKING": cls._inline_v2_assets(parsed.booking_html, parsed.package_key, parsed.assets),
+            }
+            # A biblioteca global não possui storage de assets por pacote. Por isso
+            # defaults de bindings visuais também precisam ficar autocontidos.
+            experience_bindings = json.loads(json.dumps(parsed.bindings, ensure_ascii=False))
+            asset_base = f"/api/v1/public/assets/experience/{parsed.package_key}/assets/"
+            asset_data = {}
+            for asset in parsed.assets:
+                logical = str(asset.path)
+                if logical.startswith("assets/"):
+                    name = logical[len("assets/") :]
+                    media_type = str(asset.content_type or mimetypes.guess_type(name)[0] or "application/octet-stream")
+                    asset_data[asset_base + name] = f"data:{media_type};base64,{base64.b64encode(asset.data).decode('ascii')}"
+            def inline_binding(value: Any) -> Any:
+                if isinstance(value, str):
+                    return asset_data.get(value, value)
+                if isinstance(value, list):
+                    return [inline_binding(item) for item in value]
+                if isinstance(value, dict):
+                    return {key: inline_binding(item) for key, item in value.items()}
+                return value
+            experience_bindings = inline_binding(experience_bindings)
+            pair = HtmlTemplateContract.validate_family(
+                landing_html=documents["LANDING"],
+                booking_html=documents["BOOKING"],
+            )
+            for item in pair.get("errors", []):
+                errors.append({**item, "path": f"html.{item['path']}"})
+            for item in pair.get("warnings", []):
+                warnings.append({**item, "path": f"html.{item['path']}"})
+            for message in parsed.warnings:
+                warnings.append(_issue("experience", "EXPERIENCE_MIGRATION_WARNING", str(message)))
+            summaries: dict[str, Any] = {}
+            for key, surface, route in (("landing", "LANDING", "/pagina"), ("booking", "BOOKING", "/agendar")):
+                page = pages.get(key) or {}
+                entry = str(page.get("entry") or f"pages/{key}.html")
+                summaries[key] = {
+                    "surface": surface,
+                    "entry": entry,
+                    "route": route,
+                    "bytes": len(documents[surface].encode("utf-8")),
+                    "version": 2,
+                }
+            result.update(
+                {
+                    "valid": not errors,
+                    "package": {
+                        "key": parsed.package_key,
+                        "name": parsed.name,
+                        "description": parsed.description or None,
+                        "segment": str(package.get("segment") or "").strip() or None,
+                        "scope": scope,
+                        "default_for_new_tenants": bool(package.get("default_for_new_tenants", False)),
+                        "package_version": str(package.get("package_version") or "2"),
+                        "source_schema": EXPERIENCE_SCHEMA,
+                    },
+                    "surfaces": summaries,
+                    "documents": documents,
+                    "html_validation": pair,
+                    "experience": {
+                        "schema": EXPERIENCE_SCHEMA,
+                        "version": 2,
+                        "bindings": experience_bindings,
+                        "theme": parsed.theme,
+                        "package_version": str(package.get("package_version") or "2"),
+                        "capabilities": list(package.get("capabilities") or []),
+                        "authoring_mode": str(package.get("authoring_mode") or "runtime-html"),
+                        "assets_inlined": len(parsed.assets),
+                    },
+                    "archive_bytes": len(archive),
+                    "uncompressed_bytes": total,
+                    "file_count": len(infos),
+                }
+            )
+            return result
+        except APIError as exc:
+            details = exc.details if isinstance(exc.details, dict) else {}
+            nested = details.get("errors") if isinstance(details, dict) else None
+            if isinstance(nested, list):
+                errors.extend(nested)
+            else:
+                errors.append(_issue("experience", exc.code, exc.message))
+            return result
+        except (BadZipFile, KeyError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+            errors.append(_issue("experience.json", "EXPERIENCE_PACKAGE_INVALID", f"Experience Package inválido: {exc}."))
+            return result
+
+    @classmethod
+    def _parse(cls, archive: bytes) -> dict[str, Any]:
+        if archive and len(archive) <= MAX_ARCHIVE_BYTES and is_zipfile(BytesIO(archive)):
+            try:
+                with ZipFile(BytesIO(archive)) as zipped:
+                    names = {_safe_name(item.filename) for item in zipped.infolist() if not item.is_dir()}
+                if "experience.json" in names:
+                    return cls._parse_v2(archive)
+            except BadZipFile:
+                pass
+        return cls._parse_v1(archive)
 
     @classmethod
     def validate(cls, archive: bytes) -> dict[str, Any]:

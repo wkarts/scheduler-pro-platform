@@ -182,13 +182,13 @@ export class ArgwsVisualBuilder extends HTMLElementBase {
   _scheduleCanvasRender(){if(this._canvasRaf)cancelAnimationFrame(this._canvasRaf);this._canvasRaf=requestAnimationFrame(()=>{this._canvasRaf=null;this._renderCanvas();});}
   _renderCanvas(){
     const preview=this.shadowRoot.getElementById('page-preview'),rendered=renderDocument(this._document,{device:this._device,context:{...this._context,editor:true},responsive:false});preview.innerHTML=`<style>${rendered.css}</style>${rendered.html}`;
-    if(!this._document.builder.root_ids.length)preview.innerHTML=`<style>${baseRenderCss(this._document.global_styles,this._document.settings,this._document.design_system)}</style><div class="empty-canvas"><div><strong>Página vazia</strong>Arraste um elemento da esquerda, toque em um widget ou aplique um modelo.</div></div>`;
+    if(!isHtmlDocument(this._document)&&!this._document.builder.root_ids.length)preview.innerHTML=`<style>${baseRenderCss(this._document.global_styles,this._document.settings,this._document.design_system)}</style><div class="empty-canvas"><div><strong>Página vazia</strong>Arraste um elemento da esquerda, toque em um widget ou aplique um modelo.</div></div>`;
     for(const el of preview.querySelectorAll('[data-upb-node]')){const id=el.getAttribute('data-upb-node');el.setAttribute('draggable','true');if(id===this._selected)el.classList.add('selected');const badge=document.createElement('span');badge.className='node-badge';badge.textContent=widgetDefinition(getNode(this._document,id)?.type||'').label;el.prepend(badge);}
     this._syncHtmlSurfaceFrames(preview);
     this.dispatchEvent(new CustomEvent('upb-preview-rendered',{detail:{root:preview,document:this.document,device:this._device},bubbles:true,composed:true}));
   }
   _syncHtmlSurfaceFrames(preview){
-    for(const frame of preview.querySelectorAll('.upb-html-surface-editor iframe')){
+    for(const frame of preview.querySelectorAll('.upb-html-surface-editor iframe,[data-upb-html-document-frame]')){
       const resize=()=>{try{const doc=frame.contentDocument;if(!doc)return;const body=doc.body,html=doc.documentElement;const height=Math.max(760,body?.scrollHeight||0,body?.offsetHeight||0,html?.scrollHeight||0,html?.offsetHeight||0);if(height)frame.style.height=`${Math.min(height,24000)}px`;}catch{}};
       frame.addEventListener('load',()=>{resize();setTimeout(resize,80);setTimeout(resize,350);},{once:true});
       resize();

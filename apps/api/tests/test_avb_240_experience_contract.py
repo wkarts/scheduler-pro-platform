@@ -21,10 +21,11 @@ def test_default_template_migrates_to_experience_v2_without_login_template() -> 
     assert parsed.landing_html
     assert parsed.booking_html
     assert len(parsed.assets) >= 1
+    assert parsed.source_schema == "argws-experience-package/v2"
     assert parsed.bindings["schema"] == "argws-bindings/v1"
     assert "business.name" in parsed.bindings["bindings"]
-    assert "data-sp-bind" in parsed.landing_html
-    assert any("Login legado foi ignorado" in warning for warning in parsed.warnings)
+    assert "data-sp-bind=\"business.name\"" in parsed.landing_html
+    assert not any("Login legado" in warning for warning in parsed.warnings)
 
 
 def test_schedule_crud_supports_edit_delete_and_blocked_period_update() -> None:

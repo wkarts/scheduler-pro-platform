@@ -295,6 +295,12 @@ class HtmlTemplateContract:
         lowered = html_document.lower()
         has_direct_booking_api = "/api/v1/public/booking" in lowered
         has_declared_booking_bridge = "data-scheduler-pro-booking" in lowered
+        # Experience Contract v2 / Template Runtime SDK v1: o template pode usar
+        # o bridge semântico do host sem hardcode de endpoint público.
+        has_runtime_booking_bridge = (
+            "argwsruntime.booking" in lowered
+            or "schedulerpro.booking" in lowered
+        )
         has_composed_booking_api = (
             "/api/v1/public" in lowered
             and re.search(r"[\"'`]\/booking(?:\/availability)?(?:\?|[\"'`])", lowered)
@@ -303,6 +309,7 @@ class HtmlTemplateContract:
         if surface == "BOOKING" and not (
             has_direct_booking_api
             or has_declared_booking_bridge
+            or has_runtime_booking_bridge
             or has_composed_booking_api
         ):
             errors.append(

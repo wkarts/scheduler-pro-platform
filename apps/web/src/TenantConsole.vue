@@ -136,6 +136,7 @@ const dayLabels = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 
 const view = ref<ViewKey>(hashToView())
 const collapsed = ref(false)
 const mobileOpen = ref(false)
+const appVersion = String(import.meta.env.VITE_APP_VERSION || '0.1.0-alpha.85')
 const manifest = ref<BrandingManifest | null>(null)
 const apiStatus = ref<'connected' | 'degraded' | 'fallback'>('fallback')
 const installPrompt = ref<InstallPromptEvent | null>(null)
@@ -676,9 +677,9 @@ onUnmounted(() => { stopRealtimeConnection(); window.removeEventListener('hashch
 
   <div v-else class="app-shell tenant-console" :class="{ collapsed, mobileOpen }">
     <aside class="sidebar">
-      <div class="brand"><div class="brand-mark"><CalendarClock :size="24" /></div><div v-if="!collapsed || mobileOpen"><strong>{{ appName }}</strong><small>{{ slogan }}</small></div></div>
+      <div class="brand"><img class="sp-sidebar-logo" src="/branding/scheduler-pro-logo-dark.png" alt="Scheduler Pro"><div v-if="!collapsed || mobileOpen"><strong>{{ appName }}</strong><small>Scheduler Pro · v{{ appVersion }}</small></div><button v-if="mobileOpen" type="button" class="mobile-menu-close" aria-label="Fechar menu" @click="closeMobileNav"><X :size="22" /></button></div>
       <nav class="nav-list"><button v-for="item in visibleNavItems" :key="item.key" class="nav-item" :class="{ active: view === item.key }" @click="go(item.key)"><component :is="item.icon" :size="19" /><span v-if="!collapsed || mobileOpen">{{ item.label }}</span></button></nav>
-      <div class="sidebar-footer"><button v-if="installPrompt && !isStandalone" class="nav-item" @click="installWebApp"><Download :size="19" /><span v-if="!collapsed || mobileOpen">Instalar web app</span></button><button class="nav-item" @click="logout()"><LogOut :size="19" /><span v-if="!collapsed || mobileOpen">Sair</span></button><div v-if="!collapsed || mobileOpen" class="version-info"><strong>{{ appName }}</strong><small>{{ apiStatus === 'connected' ? 'Operação conectada' : apiStatus === 'degraded' ? 'Conectado com avisos' : 'API indisponível' }}</small></div></div>
+      <div class="sidebar-footer"><button v-if="installPrompt && !isStandalone" class="nav-item" @click="installWebApp"><Download :size="19" /><span v-if="!collapsed || mobileOpen">Instalar web app</span></button><button class="nav-item" @click="logout()"><LogOut :size="19" /><span v-if="!collapsed || mobileOpen">Sair</span></button><div v-if="!collapsed || mobileOpen" class="version-info"><strong>Scheduler Pro · v{{ appVersion }}</strong><small>{{ apiStatus === 'connected' ? 'Operação conectada' : apiStatus === 'degraded' ? 'Conectado com avisos' : 'API indisponível' }}</small></div></div>
     </aside>
     <button v-if="mobileOpen" class="mobile-nav-backdrop" aria-label="Fechar menu" @click="closeMobileNav"></button>
 

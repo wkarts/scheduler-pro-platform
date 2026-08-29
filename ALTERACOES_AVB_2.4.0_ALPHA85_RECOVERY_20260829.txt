@@ -1,0 +1,32 @@
+Comparação contra scheduler-pro-platform-0.1.0-alpha.85.zip
+
+ADDED	CORRECAO_AVB_2.4.0_ALPHA85_RECOVERY_20260829.md
+ADDED	VALIDACAO_AVB_2.4.0_ALPHA85_RECOVERY_20260829.txt
+CHANGED	apps/admin/src/AdminHtmlTemplateImportOverlay.vue
+CHANGED	apps/api/app/api/v1/routes/experience.py
+CHANGED	apps/api/app/api/v1/routes/platform_html_templates.py
+CHANGED	apps/api/app/services/builtin_template_package_service.py
+CHANGED	apps/api/app/services/experience_contract_service.py
+CHANGED	apps/api/app/services/html_template_contract.py
+CHANGED	apps/api/app/services/html_template_import_service.py
+CHANGED	apps/api/app/services/html_template_package_service.py
+CHANGED	apps/api/resources/template-packages/SHA256SUMS.txt
+CHANGED	apps/api/resources/template-packages/barber-shop-neo-generico.zip
+CHANGED	apps/api/resources/template-packages/clinica-medica-generico.zip
+CHANGED	apps/api/resources/template-packages/clinica-odontologica-generico.zip
+CHANGED	apps/api/resources/template-packages/clinica-veterinaria-generico.zip
+CHANGED	apps/api/resources/template-packages/martelinho-de-ouro-generico.zip
+CHANGED	apps/api/resources/template-packages/scheduler-pro-padrao-generico.zip
+CHANGED	apps/api/resources/template-packages/studio-unhas-generico.zip
+CHANGED	apps/api/resources/template-packages/tecnologia-generico-simples.zip
+ADDED	apps/api/tests/test_avb_240_alpha85_recovery_contract.py
+CHANGED	apps/api/tests/test_landing_templates_contract.py
+CHANGED	apps/web/src/PublicSitePage.vue
+CHANGED	apps/web/src/TenantConsole.vue
+CHANGED	apps/web/src/TenantVisualPageBuilder.vue
+CHANGED	apps/web/src/tenant-shell-contract.css
+CHANGED	packages/visual-builder/src/bindings-v1.js
+CHANGED	packages/visual-builder/src/editor.js
+CHANGED	packages/visual-builder/tests/pr63-final-runtime.test.js
+
+Total funcional antes deste relatório: 28 arquivos.
