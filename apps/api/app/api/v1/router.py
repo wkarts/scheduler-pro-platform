@@ -213,6 +213,13 @@ api_router.include_router(
         Depends(require_permission("landing_pages.manage")),
     ],
 )
+# Compatibilidade: instalações existentes ainda podem apontar para o endereço
+# antigo do manifest. O router protegido deve vir antes do branding legado.
+api_router.include_router(
+    pwa_identity.router,
+    prefix="/branding",
+    tags=["PWA Identity Compatibility"],
+)
 api_router.include_router(branding.router, prefix="/branding", tags=["Branding"])
 api_router.include_router(platform.router, prefix="/platform", tags=["Platform"])
 api_router.include_router(
