@@ -36,12 +36,12 @@ def test_web_pwa_contract_matches_no_cache_registration_and_revalidation_handler
     assert "async function onAppRevalidate()" in console
 
 
-def test_integration_workflow_does_not_double_run_feature_push_and_pull_request() -> None:
+def test_integration_workflow_preserves_canonical_triggers_and_concurrency() -> None:
     repo = _repo_root()
     if repo is None:
         pytest.skip("Monorepo não disponível na imagem isolada da API.")
     workflow = (repo / ".github/workflows/integration-tests.yml").read_text(encoding="utf-8")
-    assert "branches: [main]" in workflow
-    assert "'feat/**'" not in workflow
-    assert "'fix/**'" not in workflow
-    assert "github.event.pull_request.head.ref || github.ref_name" in workflow
+    assert "branches: [main, 'fix/**', 'feat/**']" in workflow
+    assert "group: integration-${{ github.ref }}" in workflow
+    assert "cancel-in-progress: true" in workflow
+    assert "docker compose -f deployments/development/docker-compose.yml up --build -d" in workflow
