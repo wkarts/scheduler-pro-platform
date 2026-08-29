@@ -28,6 +28,7 @@ from app.api.v1.routes import (
     platform_templates,
     professionals,
     public,
+    pwa_identity,
     realtime,
     schedule,
     services,
@@ -41,6 +42,7 @@ from app.api.v1.routes import (
 api_router = APIRouter()
 api_router.include_router(health.router, tags=["Health"])
 api_router.include_router(public.router, prefix="/public", tags=["Public"])
+api_router.include_router(pwa_identity.router, prefix="/pwa", tags=["PWA Identity"])
 api_router.include_router(auth.router, prefix="/auth", tags=["Authentication"])
 api_router.include_router(auth_two_factor.router, prefix="/auth", tags=["Authentication"])
 api_router.include_router(password_reset_pages.router, prefix="/auth", tags=["Authentication"])
