@@ -19,6 +19,7 @@ import TenantVisualPageBuilder from './TenantVisualPageBuilder.vue'
 import './tenantContrast.css'
 import './tenant-shell-desktop-branding-fix.css'
 import './tenant-global-operators.css'
+import './tenant-checkin-mobile-operator.css'
 
 const authenticated=ref(Boolean(localStorage.getItem('scheduler_pro_access_token')))
 const activeView=ref((window.location.hash||'#dashboard').replace(/^#/,'')||'dashboard')
