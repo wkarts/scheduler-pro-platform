@@ -1,0 +1,20 @@
+/*
+ * Scheduler Pro overlay contract.
+ *
+ * Full-screen operational surfaces (como a Central de Check-in) ficam abaixo
+ * de dialogs operacionais invocados a partir delas. Assim, "Abrir operador"
+ * não cria um modal invisível atrás da superfície atual.
+ */
+.sp-agenda-operator-backdrop {
+  z-index: 2147483000 !important;
+}
+
+.sp-checkin-center {
+  z-index: 2147481200;
+}
+
+@media (max-width: 700px) {
+  .sp-agenda-operator-backdrop {
+    z-index: 2147483000 !important;
+  }
+}
