@@ -44,14 +44,18 @@ def test_tenant_visual_builder_autoloads_and_handles_close_event() -> None:
     assert "scheduler_pro_public_pages_last_surface" in source
 
 
-def test_public_pages_workspace_recovers_from_same_hash_and_stuck_loading() -> None:
+def test_public_pages_workspace_never_uses_polling_or_automatic_remount_loop() -> None:
     app = _source("apps/web/src/App.vue")
-    assert "publicPagesEpoch" in app
+    assert "publicPagesEpoch" not in app
+    assert "publicPagesWatchdog" not in app
+    assert "setInterval(publicPages" not in app
+    assert '<TenantVisualPageBuilder :key=' not in app
+    assert '<TenantVisualPageBuilder/>' in app
+    assert "publicPagesRecoveryPending" in app
     assert 'document.addEventListener(\'click\',onPublicPagesNavCapture,true)' in app
-    assert "window.location.hash==='#visual-builder'" in app
-    assert "publicPagesWatchdog" in app
-    assert "now-publicPagesLoadingSince>15000" in app
-    assert '<TenantVisualPageBuilder :key="publicPagesEpoch"/>' in app
+    assert "document.querySelector('.experience-center')" in app
+    assert "window.location.hash='dashboard'" in app
+    assert "window.location.hash='visual-builder'" in app
 
 
 def test_control_plane_importer_accepts_experience_v2() -> None:
