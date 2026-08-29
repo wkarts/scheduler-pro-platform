@@ -6,6 +6,7 @@ import TenantAgendaOperator from './TenantAgendaOperator.vue'
 import TenantBookingAndMessages from './TenantBookingAndMessages.vue'
 import TenantBrandAssetUploader from './TenantBrandAssetUploader.vue'
 import TenantBrandedLogin from './TenantBrandedLogin.vue'
+import TenantCheckInCenter from './TenantCheckInCenter.vue'
 import TenantConfigurationCenter from './TenantConfigurationCenter.vue'
 import TenantConsole from './TenantConsole.vue'
 import TenantDashboardInsights from './TenantDashboardInsights.vue'
@@ -24,11 +25,10 @@ const normalizedPath=window.location.pathname.replace(/\/+$/,'')||'/'
 const sourcePwa=new URLSearchParams(window.location.search).get('source')==='pwa'
 const publicLogin=computed(()=>normalizedPath==='/login'&&!authenticated.value)
 const pwaOpenMode=ref('AUTO')
-// HOTFIX_TENANT_ROOT_ADMIN: a raiz do domínio pertence sempre ao console/login do tenant.
-// Landing e Agenda Pública só existem nas rotas públicas explícitas /pagina e /agendar.
+// A raiz do domínio pertence ao console/login. Superfícies públicas só existem
+// nas rotas explícitas /pagina e /agendar.
 const publicSurface=computed(()=>['/agendar','/pagina'].includes(normalizedPath))
 const forcePwaLogin=computed(()=>sourcePwa&&pwaOpenMode.value==='LOGIN'&&!authenticated.value)
-let publicPagesRecoveryPending=false
 
 function refreshAuthState():void{authenticated.value=Boolean(localStorage.getItem('scheduler_pro_access_token'))}
 function refreshRoute():void{activeView.value=(window.location.hash||'#dashboard').replace(/^#/,'')||'dashboard'}
@@ -39,19 +39,12 @@ function isPublicPagesButton(target:EventTarget|null):boolean{
   return Boolean(button&&button.textContent?.replace(/\s+/g,' ').trim().includes('Páginas públicas'))
 }
 function onPublicPagesNavCapture(event:Event):void{
-  if(window.location.hash!=='#visual-builder'||!isPublicPagesButton(event.target)||publicPagesRecoveryPending)return
-  // A área já existe: não remonta, não reinicia loading e não interfere na edição.
+  if(window.location.hash!=='#visual-builder'||!isPublicPagesButton(event.target))return
+  // Nunca sai temporariamente para Dashboard. Se o workspace já existe, o clique
+  // é idempotente. Se o overlay sumiu, apenas reemite o evento de rota para a
+  // instância persistente recuperar a abertura, sem alterar a URL nem remontar.
   if(document.querySelector('.experience-center'))return
-  // Recuperação apenas sob ação explícita do usuário e somente quando o overlay
-  // realmente sumiu. Uma única reentrada de rota substitui o antigo watchdog.
-  publicPagesRecoveryPending=true
-  queueMicrotask(()=>{
-    window.location.hash='dashboard'
-    window.requestAnimationFrame(()=>{
-      window.location.hash='visual-builder'
-      publicPagesRecoveryPending=false
-    })
-  })
+  queueMicrotask(()=>window.dispatchEvent(new HashChangeEvent('hashchange')))
 }
 onMounted(()=>{
   refreshAuthState();refreshRoute()
@@ -78,15 +71,15 @@ onUnmounted(()=>{
       <TenantConsole/>
       <TenantDashboardInsights v-if="activeView==='dashboard'"/>
       <TenantAgendaCenter v-if="activeView==='agenda'"/>
+      <TenantCheckInCenter v-if="activeView==='agenda'"/>
       <TenantExtensions v-if="activeView==='personalizacao'||activeView==='smtp'"/>
       <TenantConfigurationCenter v-if="activeView==='configuracoes'"/>
-      <!-- Persistente e estável: sem :key, polling ou remount automático. -->
+      <!-- Persistente: sem :key, polling, watchdog ou troca artificial de rota. -->
       <TenantVisualPageBuilder/>
       <TenantBookingAndMessages v-if="activeView==='agenda-publica'||activeView==='mensagens'"/>
       <TenantMailModeSelector v-if="activeView==='smtp'"/>
       <TenantBrandAssetUploader v-if="activeView==='personalizacao'"/>
       <TenantUniversalDownloads v-if="activeView==='builds'"/>
-      <!-- Overlays globais: não são páginas de navegação e permanecem disponíveis em qualquer rota. -->
       <TenantAgendaOperator/>
       <TenantSecondFactorGate/>
     </template>

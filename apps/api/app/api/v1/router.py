@@ -12,6 +12,7 @@ from app.api.v1.routes import (
     availability,
     branding,
     builds,
+    checkin,
     customers,
     downloads,
     experience,
@@ -98,6 +99,15 @@ api_router.include_router(
     agenda.router,
     prefix="/agenda",
     tags=["Agenda"],
+    dependencies=[
+        Depends(require_tenant_capability("appointments")),
+        Depends(require_permission("appointments.create")),
+    ],
+)
+api_router.include_router(
+    checkin.router,
+    prefix="/check-in",
+    tags=["Check-in"],
     dependencies=[
         Depends(require_tenant_capability("appointments")),
         Depends(require_permission("appointments.create")),

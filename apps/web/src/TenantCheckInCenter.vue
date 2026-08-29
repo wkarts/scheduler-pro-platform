@@ -1,0 +1,247 @@
+<script setup lang="ts">
+import { computed, onMounted, onUnmounted, ref } from 'vue'
+import {
+  CalendarCheck2,
+  Check,
+  CheckCheck,
+  ChevronLeft,
+  ChevronRight,
+  CircleX,
+  Clock3,
+  Play,
+  RefreshCw,
+  Search,
+  UserRoundCheck,
+  Users,
+  X,
+} from 'lucide-vue-next'
+import { confirmDialog } from './appDialog'
+import { openAgendaOperator } from './tenantNavigation'
+
+type Appointment={
+  id:string
+  starts_at:string
+  ends_at:string
+  status:string
+  customer_name:string
+  customer_phone?:string|null
+  customer_email?:string|null
+  service_name?:string|null
+  professional_name:string
+}
+type Envelope<T>={data?:T;error?:{message?:string}}
+type BulkAction='check-in'|'no-show'|'cancel'
+
+const FINAL_STATUSES=new Set(['COMPLETED','CANCELLED','NO_SHOW'])
+const statusLabels:Record<string,string>={
+  PENDING:'Pendente',
+  AWAITING_CONFIRMATION:'Aguardando confirmação',
+  CONFIRMED:'Confirmado',
+  CHECKED_IN:'Check-in realizado',
+  IN_PROGRESS:'Em atendimento',
+  COMPLETED:'Concluído',
+  CANCELLED:'Cancelado',
+  RESCHEDULED:'Reagendado',
+  NO_SHOW:'Não compareceu',
+}
+
+const routeVisible=ref(window.location.hash==='#agenda')
+const open=ref(false)
+const loading=ref(false)
+const busy=ref('')
+const error=ref('')
+const message=ref('')
+const day=ref(todayKey())
+const appointments=ref<Appointment[]>([])
+const selected=ref<string[]>([])
+const search=ref('')
+const statusFilter=ref('')
+const professionalFilter=ref('')
+
+function token():string{return localStorage.getItem('scheduler_pro_access_token')||''}
+function todayKey():string{const now=new Date();const offset=now.getTimezoneOffset()*60000;return new Date(now.getTime()-offset).toISOString().slice(0,10)}
+function displayDate(value:string):string{return new Date(`${value}T12:00:00`).toLocaleDateString('pt-BR',{weekday:'long',day:'2-digit',month:'long',year:'numeric'})}
+function time(value:string):string{return new Date(value).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})}
+function normalize(value:string):string{return value.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase()}
+function flash(value:string):void{message.value=value;window.setTimeout(()=>{if(message.value===value)message.value=''},4000)}
+
+async function api<T>(path:string,init:RequestInit={}):Promise<T>{
+  const response=await fetch(`/api/v1${path}`,{
+    ...init,
+    cache:'no-store',
+    headers:{
+      Accept:'application/json',
+      ...(init.body?{'content-type':'application/json'}:{}),
+      Authorization:`Bearer ${token()}`,
+      ...(init.headers||{}),
+    },
+  })
+  const payload=await response.json().catch(()=>({})) as Envelope<T>
+  if(!response.ok)throw new Error(payload.error?.message||`Falha HTTP ${response.status}`)
+  return payload.data as T
+}
+
+const professionals=computed(()=>Array.from(new Set(appointments.value.map(item=>item.professional_name).filter(Boolean))).sort())
+const filtered=computed(()=>{
+  const q=normalize(search.value.trim())
+  return appointments.value
+    .filter(item=>!statusFilter.value||item.status===statusFilter.value)
+    .filter(item=>!professionalFilter.value||item.professional_name===professionalFilter.value)
+    .filter(item=>!q||normalize(`${item.customer_name} ${item.customer_phone||''} ${item.service_name||''} ${item.professional_name}`).includes(q))
+    .sort((a,b)=>+new Date(a.starts_at)-+new Date(b.starts_at))
+})
+const metrics=computed(()=>({
+  waiting:appointments.value.filter(item=>['AWAITING_CONFIRMATION','CONFIRMED'].includes(item.status)).length,
+  checkedIn:appointments.value.filter(item=>item.status==='CHECKED_IN').length,
+  inProgress:appointments.value.filter(item=>item.status==='IN_PROGRESS').length,
+  completed:appointments.value.filter(item=>item.status==='COMPLETED').length,
+  cancelled:appointments.value.filter(item=>item.status==='CANCELLED').length,
+  noShow:appointments.value.filter(item=>item.status==='NO_SHOW').length,
+}))
+const selectable=computed(()=>filtered.value.filter(item=>!FINAL_STATUSES.has(item.status)))
+const allSelected=computed(()=>Boolean(selectable.value.length)&&selectable.value.every(item=>selected.value.includes(item.id)))
+
+function operationalLabel(item:Appointment):string{
+  if(item.status!=='CONFIRMED')return statusLabels[item.status]||item.status
+  const deltaMinutes=Math.round((Date.now()-new Date(item.starts_at).getTime())/60000)
+  if(deltaMinutes<0)return `Confirmado · em ${Math.abs(deltaMinutes)} min`
+  if(deltaMinutes<=15)return 'Horário chegou · aguardando Check-in'
+  return `Atrasado ${deltaMinutes} min · aguardando Check-in`
+}
+function rowClass(item:Appointment):string{
+  if(item.status==='CHECKED_IN')return 'checked-in'
+  if(item.status==='IN_PROGRESS')return 'in-progress'
+  if(item.status==='COMPLETED')return 'completed'
+  if(item.status==='CANCELLED'||item.status==='NO_SHOW')return 'final'
+  if(item.status==='CONFIRMED'&&Date.now()>=new Date(item.starts_at).getTime())return 'arrival'
+  return ''
+}
+function isSelected(id:string):boolean{return selected.value.includes(id)}
+function toggle(id:string):void{selected.value=isSelected(id)?selected.value.filter(value=>value!==id):[...selected.value,id]}
+function toggleAll():void{selected.value=allSelected.value?[]:selectable.value.map(item=>item.id)}
+function selectSlot(startsAt:string):void{
+  const ids=appointments.value.filter(item=>item.starts_at===startsAt&&!FINAL_STATUSES.has(item.status)).map(item=>item.id)
+  selected.value=Array.from(new Set([...selected.value,...ids]))
+  flash(`${ids.length} atendimento(s) deste horário selecionado(s).`)
+}
+
+async function load():Promise<void>{
+  if(!open.value)return
+  loading.value=true;error.value=''
+  try{
+    appointments.value=await api<Appointment[]>(`/appointments?day=${encodeURIComponent(day.value)}`)
+    selected.value=selected.value.filter(id=>appointments.value.some(item=>item.id===id&&!FINAL_STATUSES.has(item.status)))
+  }catch(exc){error.value=exc instanceof Error?exc.message:'Não foi possível carregar o Check-in.'}
+  finally{loading.value=false}
+}
+function show():void{open.value=true;selected.value=[];void load()}
+function hide():void{open.value=false;selected.value=[]}
+function shiftDay(delta:number):void{const value=new Date(`${day.value}T12:00:00`);value.setDate(value.getDate()+delta);const offset=value.getTimezoneOffset()*60000;day.value=new Date(value.getTime()-offset).toISOString().slice(0,10);selected.value=[];void load()}
+function useToday():void{day.value=todayKey();selected.value=[];void load()}
+
+async function runAction(item:Appointment,action:string,reason?:string):Promise<void>{
+  busy.value=item.id;error.value=''
+  try{
+    if(action==='confirm')await api(`/appointments/${item.id}/confirm`,{method:'POST'})
+    else if(action==='check-in')await api(`/check-in/${item.id}`,{method:'POST'})
+    else if(action==='start')await api(`/appointments/${item.id}/start`,{method:'POST'})
+    else if(action==='complete')await api(`/appointments/${item.id}/complete`,{method:'POST'})
+    else if(action==='no-show')await api(`/appointments/${item.id}/no-show`,{method:'POST'})
+    else if(action==='cancel')await api(`/appointments/${item.id}/cancel`,{method:'POST',body:JSON.stringify({reason:reason||'Cancelado pela Central de Check-in'})})
+    flash(action==='check-in'?'Check-in registrado e confirmação enviada ao cliente.':'Atendimento atualizado.')
+    window.dispatchEvent(new CustomEvent('scheduler-pro-appointments-changed'))
+    await load()
+  }catch(exc){error.value=exc instanceof Error?exc.message:'Não foi possível atualizar o atendimento.'}
+  finally{busy.value=''}
+}
+async function confirmNoShow(item:Appointment):Promise<void>{if(await confirmDialog({title:'Registrar ausência',message:`Marcar ${item.customer_name} como não compareceu?`,danger:true,confirmLabel:'Não compareceu'}))await runAction(item,'no-show')}
+async function cancelOne(item:Appointment):Promise<void>{if(await confirmDialog({title:'Cancelar atendimento',message:`Cancelar o atendimento de ${item.customer_name} às ${time(item.starts_at)}?`,danger:true,confirmLabel:'Cancelar atendimento'}))await runAction(item,'cancel')}
+
+async function runBulk(action:BulkAction):Promise<void>{
+  const chosen=appointments.value.filter(item=>selected.value.includes(item.id))
+  const eligible=chosen.filter(item=>action==='check-in'?item.status==='CONFIRMED':!FINAL_STATUSES.has(item.status))
+  if(!eligible.length){flash(action==='check-in'?'Selecione atendimentos confirmados para realizar Check-in.':'Nenhum atendimento elegível selecionado.');return}
+  if(action!=='check-in'){
+    const ok=await confirmDialog({title:action==='no-show'?'Registrar ausências':'Cancelar atendimentos',message:`Aplicar esta ação em ${eligible.length} atendimento(s)?`,danger:true,confirmLabel:action==='no-show'?'Registrar':'Cancelar'})
+    if(!ok)return
+  }
+  busy.value='bulk';error.value=''
+  let success=0
+  const failures:string[]=[]
+  for(const item of eligible){
+    try{
+      if(action==='check-in')await api(`/check-in/${item.id}`,{method:'POST'})
+      else if(action==='no-show')await api(`/appointments/${item.id}/no-show`,{method:'POST'})
+      else await api(`/appointments/${item.id}/cancel`,{method:'POST',body:JSON.stringify({reason:'Cancelado em lote pela Central de Check-in'})})
+      success+=1
+    }catch(exc){failures.push(`${item.customer_name}: ${exc instanceof Error?exc.message:'falha'}`)}
+  }
+  busy.value=''
+  selected.value=[]
+  window.dispatchEvent(new CustomEvent('scheduler-pro-appointments-changed'))
+  await load()
+  if(failures.length)error.value=`${success} atualizado(s). ${failures.length} falha(s): ${failures.join(' | ')}`
+  else flash(`${success} atendimento(s) atualizado(s) com sucesso.`)
+}
+
+function syncRoute():void{routeVisible.value=window.location.hash==='#agenda';if(!routeVisible.value)hide()}
+function onChanged():void{if(open.value)void load()}
+onMounted(()=>{window.addEventListener('hashchange',syncRoute);window.addEventListener('scheduler-pro-appointments-changed',onChanged);syncRoute()})
+onUnmounted(()=>{window.removeEventListener('hashchange',syncRoute);window.removeEventListener('scheduler-pro-appointments-changed',onChanged)})
+</script>
+
+<template>
+  <Teleport v-if="routeVisible" to="body">
+    <button v-if="!open" class="sp-checkin-launcher" type="button" @click="show"><CalendarCheck2 :size="18"/><span>Central de Check-in</span></button>
+    <section v-else class="sp-checkin-center" aria-label="Central de Check-in">
+      <header class="sp-checkin-head">
+        <div class="sp-checkin-title"><CalendarCheck2 :size="24"/><div><span>Operação do dia</span><h1>Central de Check-in</h1><p>Confirme chegadas reais, inicie atendimentos e trate ausências sem alterar status automaticamente pelo horário.</p></div></div>
+        <div class="sp-checkin-head-actions"><button type="button" @click="openAgendaOperator({tab:'manage'})">Abrir operador</button><button class="close" type="button" title="Fechar" @click="hide"><X :size="21"/></button></div>
+      </header>
+
+      <div class="sp-checkin-toolbar">
+        <div class="sp-checkin-date"><button @click="shiftDay(-1)"><ChevronLeft :size="18"/></button><input v-model="day" type="date" @change="load"><button @click="shiftDay(1)"><ChevronRight :size="18"/></button><button class="today" @click="useToday">Hoje</button><strong>{{displayDate(day)}}</strong></div>
+        <div class="sp-checkin-filters"><label><Search :size="16"/><input v-model="search" placeholder="Cliente, telefone, serviço..."></label><select v-model="professionalFilter"><option value="">Todos os responsáveis</option><option v-for="name in professionals" :key="name" :value="name">{{name}}</option></select><select v-model="statusFilter"><option value="">Todos os status</option><option v-for="(label,key) in statusLabels" :key="key" :value="key">{{label}}</option></select><button class="icon" title="Atualizar" @click="load"><RefreshCw :size="17" :class="{spin:loading}"/></button></div>
+      </div>
+
+      <div class="sp-checkin-metrics">
+        <article><Clock3 :size="18"/><div><span>Aguardando</span><strong>{{metrics.waiting}}</strong></div></article>
+        <article><Check :size="18"/><div><span>Check-in</span><strong>{{metrics.checkedIn}}</strong></div></article>
+        <article><Play :size="18"/><div><span>Em atendimento</span><strong>{{metrics.inProgress}}</strong></div></article>
+        <article><CheckCheck :size="18"/><div><span>Concluídos</span><strong>{{metrics.completed}}</strong></div></article>
+        <article><CircleX :size="18"/><div><span>Cancelados</span><strong>{{metrics.cancelled}}</strong></div></article>
+        <article><UserRoundCheck :size="18"/><div><span>Não compareceu</span><strong>{{metrics.noShow}}</strong></div></article>
+      </div>
+
+      <p v-if="message" class="sp-checkin-notice success">{{message}}</p><p v-if="error" class="sp-checkin-notice error">{{error}}</p>
+
+      <div v-if="selected.length" class="sp-checkin-bulk"><strong>{{selected.length}} selecionado(s)</strong><button @click="runBulk('check-in')" :disabled="busy==='bulk'">Check-in selecionados</button><button @click="runBulk('no-show')" :disabled="busy==='bulk'">Não compareceu</button><button class="danger" @click="runBulk('cancel')" :disabled="busy==='bulk'">Cancelar</button><button class="clear" @click="selected=[]">Limpar seleção</button></div>
+
+      <div class="sp-checkin-list-head"><label><input type="checkbox" :checked="allSelected" @change="toggleAll"><span>Selecionar visíveis</span></label><span>{{filtered.length}} atendimento(s)</span></div>
+      <div v-if="loading" class="sp-checkin-empty"><RefreshCw class="spin" :size="28"/><strong>Atualizando Check-in...</strong></div>
+      <div v-else-if="!filtered.length" class="sp-checkin-empty"><Users :size="38"/><strong>Nenhum atendimento encontrado.</strong><span>Altere a data ou os filtros para consultar outro período.</span></div>
+      <div v-else class="sp-checkin-list">
+        <article v-for="item in filtered" :key="item.id" :class="['sp-checkin-row',rowClass(item)]">
+          <label class="select"><input v-if="!FINAL_STATUSES.has(item.status)" type="checkbox" :checked="isSelected(item.id)" @change="toggle(item.id)"></label>
+          <time><strong>{{time(item.starts_at)}}</strong><small>{{time(item.ends_at)}}</small></time>
+          <div class="client"><strong>{{item.customer_name}}</strong><a v-if="item.customer_phone" :href="`tel:${item.customer_phone}`">{{item.customer_phone}}</a><small>{{item.service_name||'Sem serviço específico'}} · {{item.professional_name}}</small></div>
+          <div class="state"><strong>{{operationalLabel(item)}}</strong><button v-if="!FINAL_STATUSES.has(item.status)" class="slot" @click="selectSlot(item.starts_at)">Selecionar este horário</button></div>
+          <div class="actions">
+            <button v-if="['PENDING','AWAITING_CONFIRMATION','RESCHEDULED'].includes(item.status)" @click="runAction(item,'confirm')" :disabled="busy===item.id">Confirmar</button>
+            <button v-if="item.status==='CONFIRMED'" class="primary" @click="runAction(item,'check-in')" :disabled="busy===item.id">Check-in</button>
+            <button v-if="item.status==='CHECKED_IN'" class="primary" @click="runAction(item,'start')" :disabled="busy===item.id">Iniciar</button>
+            <button v-if="item.status==='IN_PROGRESS'" class="primary" @click="runAction(item,'complete')" :disabled="busy===item.id">Concluir</button>
+            <button v-if="item.status==='CONFIRMED'" @click="confirmNoShow(item)" :disabled="busy===item.id">Não compareceu</button>
+            <button v-if="!FINAL_STATUSES.has(item.status)" class="danger" @click="cancelOne(item)" :disabled="busy===item.id">Cancelar</button>
+          </div>
+        </article>
+      </div>
+    </section>
+  </Teleport>
+</template>
+
+<style scoped>
+.sp-checkin-launcher{position:fixed;right:22px;bottom:82px;z-index:1400;display:flex;align-items:center;gap:8px;min-height:44px;padding:0 16px;border:0;border-radius:14px;background:#0f766e;color:#fff;font:inherit;font-size:12px;font-weight:800;box-shadow:0 14px 34px rgba(15,118,110,.26);cursor:pointer}.sp-checkin-center{position:fixed;inset:0;z-index:2147481200;display:flex;flex-direction:column;background:#f5f7fb;color:#0f172a;font-family:Inter,Sora,system-ui,sans-serif}.sp-checkin-head{display:flex;align-items:center;justify-content:space-between;gap:20px;padding:16px 22px;border-bottom:1px solid #dbe3ef;background:#fff}.sp-checkin-title{display:flex;align-items:center;gap:13px}.sp-checkin-title>svg{color:#0f766e}.sp-checkin-title span{font-size:10px;font-weight:900;letter-spacing:.08em;text-transform:uppercase;color:#0f766e}.sp-checkin-title h1{margin:2px 0;font-size:24px;letter-spacing:-.03em}.sp-checkin-title p{margin:0;color:#64748b;font-size:11px}.sp-checkin-head-actions{display:flex;align-items:center;gap:8px}.sp-checkin-head-actions button,.sp-checkin-toolbar button,.sp-checkin-bulk button,.actions button,.slot{min-height:36px;padding:0 12px;border:1px solid #cbd5e1;border-radius:10px;background:#fff;color:#334155;font:inherit;font-size:11px;font-weight:800;cursor:pointer}.sp-checkin-head-actions .close{width:40px;padding:0;display:grid;place-items:center}.sp-checkin-toolbar{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 22px;border-bottom:1px solid #dbe3ef;background:#fff}.sp-checkin-date,.sp-checkin-filters{display:flex;align-items:center;gap:7px}.sp-checkin-date input,.sp-checkin-filters input,.sp-checkin-filters select{height:36px;box-sizing:border-box;border:1px solid #cbd5e1;border-radius:10px;background:#fff;padding:0 10px;font:inherit;font-size:11px}.sp-checkin-date strong{margin-left:5px;font-size:12px;text-transform:capitalize}.sp-checkin-date .today{color:#0f766e}.sp-checkin-filters label{display:flex;align-items:center;gap:6px;border:1px solid #cbd5e1;border-radius:10px;padding:0 9px;background:#fff}.sp-checkin-filters label input{border:0;padding:0;outline:0;width:220px}.sp-checkin-filters .icon{width:38px;padding:0;display:grid;place-items:center}.sp-checkin-metrics{display:grid;grid-template-columns:repeat(6,minmax(130px,1fr));gap:9px;padding:12px 22px}.sp-checkin-metrics article{display:flex;align-items:center;gap:10px;padding:12px;border:1px solid #dbe3ef;border-radius:13px;background:#fff}.sp-checkin-metrics svg{color:#0f766e}.sp-checkin-metrics div{display:grid}.sp-checkin-metrics span{font-size:9px;color:#64748b;text-transform:uppercase;font-weight:800}.sp-checkin-metrics strong{font-size:20px}.sp-checkin-notice{margin:0 22px 10px;padding:9px 12px;border-radius:10px;font-size:11px;font-weight:700}.sp-checkin-notice.success{background:#dcfce7;color:#166534}.sp-checkin-notice.error{background:#fee2e2;color:#991b1b}.sp-checkin-bulk{display:flex;align-items:center;gap:8px;margin:0 22px 10px;padding:10px 12px;border:1px solid #bfdbfe;border-radius:12px;background:#eff6ff}.sp-checkin-bulk strong{margin-right:auto;font-size:12px}.sp-checkin-bulk .danger,.actions .danger{color:#b91c1c;border-color:#fecaca;background:#fff7f7}.sp-checkin-bulk .clear{border-color:transparent;background:transparent}.sp-checkin-list-head{display:flex;justify-content:space-between;align-items:center;padding:0 24px 8px;color:#64748b;font-size:10px;font-weight:700}.sp-checkin-list-head label{display:flex;gap:7px;align-items:center}.sp-checkin-list{min-height:0;overflow:auto;padding:0 22px 26px;scrollbar-width:thin;scrollbar-color:rgba(100,116,139,.2) transparent}.sp-checkin-row{display:grid;grid-template-columns:30px 76px minmax(220px,1.4fr) minmax(180px,1fr) minmax(310px,auto);align-items:center;gap:12px;margin-bottom:8px;padding:12px 14px;border:1px solid #dbe3ef;border-radius:14px;background:#fff}.sp-checkin-row.arrival{border-left:4px solid #f59e0b}.sp-checkin-row.checked-in{border-left:4px solid #0f766e;background:#f0fdfa}.sp-checkin-row.in-progress{border-left:4px solid #2563eb;background:#eff6ff}.sp-checkin-row.completed{border-left:4px solid #16a34a}.sp-checkin-row.final{opacity:.68}.sp-checkin-row time{display:grid}.sp-checkin-row time strong{font-size:18px}.sp-checkin-row time small{color:#94a3b8;font-size:9px}.client{display:grid;gap:2px;min-width:0}.client strong{font-size:13px}.client a{font-size:10px;color:#0f766e;text-decoration:none}.client small{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#64748b;font-size:10px}.state{display:grid;gap:4px}.state strong{font-size:10px;color:#475569}.slot{min-height:26px!important;width:max-content;padding:0!important;border:0!important;background:transparent!important;color:#2563eb!important;font-size:9px!important}.actions{display:flex;justify-content:flex-end;gap:6px;flex-wrap:wrap}.actions button{min-height:32px;padding:0 9px}.actions .primary{border-color:#0f766e;background:#0f766e;color:#fff}.sp-checkin-empty{flex:1;display:grid;place-content:center;justify-items:center;gap:8px;color:#64748b}.sp-checkin-empty strong{color:#334155}.sp-checkin-empty span{font-size:11px}.spin{animation:sp-checkin-spin 1s linear infinite}@keyframes sp-checkin-spin{to{transform:rotate(360deg)}}
+@media(max-width:1100px){.sp-checkin-metrics{grid-template-columns:repeat(3,1fr)}.sp-checkin-toolbar{align-items:flex-start;flex-direction:column}.sp-checkin-filters{width:100%;flex-wrap:wrap}.sp-checkin-row{grid-template-columns:28px 66px 1fr;align-items:start}.sp-checkin-row .state{grid-column:3}.sp-checkin-row .actions{grid-column:2/-1;justify-content:flex-start}}
+@media(max-width:700px){.sp-checkin-launcher{right:14px;bottom:80px}.sp-checkin-center{font-size:14px}.sp-checkin-head{padding:12px}.sp-checkin-title p{display:none}.sp-checkin-title h1{font-size:19px}.sp-checkin-head-actions>button:first-child{display:none}.sp-checkin-toolbar,.sp-checkin-metrics{padding-left:12px;padding-right:12px}.sp-checkin-date{width:100%;flex-wrap:wrap}.sp-checkin-date strong{width:100%;margin:3px 0 0}.sp-checkin-filters label{flex:1 1 100%}.sp-checkin-filters label input{width:100%}.sp-checkin-filters select{flex:1 1 45%;min-width:0}.sp-checkin-metrics{grid-template-columns:repeat(2,1fr)}.sp-checkin-bulk{margin:0 12px 8px;flex-wrap:wrap}.sp-checkin-bulk strong{width:100%}.sp-checkin-list{padding:0 12px 18px}.sp-checkin-list-head{padding:0 14px 8px}.sp-checkin-row{grid-template-columns:26px 60px minmax(0,1fr);padding:11px 9px}.sp-checkin-row time strong{font-size:15px}.sp-checkin-row .state{grid-column:2/-1}.sp-checkin-row .actions{grid-column:1/-1}.actions button{flex:1 1 auto}.client small{white-space:normal}}
+</style>
