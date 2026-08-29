@@ -1,0 +1,61 @@
+/* Ajuste fino exclusivo para desktop/web.
+   Mantém o drawer mobile intacto e corrige a proporção entre logo, nome do tenant
+   e metadados Scheduler Pro/versão na sidebar expandida. */
+@media (min-width: 901px) {
+  .tenant-console:not(.collapsed) .sidebar .brand {
+    display: grid !important;
+    grid-template-columns: 52px minmax(0, 1fr) !important;
+    align-items: center !important;
+    column-gap: 12px !important;
+    min-height: 72px !important;
+    padding: 10px 14px !important;
+  }
+
+  .tenant-console:not(.collapsed) .sidebar .brand::before {
+    width: 52px !important;
+    max-width: 52px !important;
+    height: 48px !important;
+    flex: 0 0 52px !important;
+    margin: 0 !important;
+    background-position: center !important;
+    background-size: contain !important;
+  }
+
+  .tenant-console:not(.collapsed) .sidebar .brand > div:not(.brand-mark) {
+    display: flex !important;
+    flex-direction: column !important;
+    justify-content: center !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: none !important;
+    overflow: hidden !important;
+  }
+
+  .tenant-console:not(.collapsed) .sidebar .brand > div strong {
+    display: block !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    margin: 0 !important;
+    font-size: 14px !important;
+    font-weight: 700 !important;
+    line-height: 1.15 !important;
+    letter-spacing: 0 !important;
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+  }
+
+  .tenant-console:not(.collapsed) .sidebar .brand > div small {
+    display: block !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    margin-top: 3px !important;
+    font-size: 10px !important;
+    font-weight: 500 !important;
+    line-height: 1.2 !important;
+    letter-spacing: 0 !important;
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+  }
+}
