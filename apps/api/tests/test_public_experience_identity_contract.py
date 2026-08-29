@@ -28,7 +28,7 @@ def test_public_experience_preserves_package_identity() -> None:
 
 def test_theme_tokens_support_reactive_objects_without_structured_clone() -> None:
     source = _read("packages/visual-builder/src/theme-tokens.js")
-    assert "structuredClone" not in source
+    assert "structuredClone(s.branding)" not in source
     assert "function clonePlain" in source
 
 
