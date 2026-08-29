@@ -45,9 +45,21 @@ def _dict_value(source: dict[str, Any], key: str) -> dict[str, Any]:
     return value if isinstance(value, dict) else {}
 
 
-def _allow_tenant_pwa_identity(manifest: dict[str, Any]) -> bool:
+def _legacy_identity_override(manifest: dict[str, Any]) -> bool:
     settings = _dict_value(manifest, "settings")
     return bool(settings.get("allow_pwa_identity_override", False))
+
+
+def _allow_tenant_pwa_name(manifest: dict[str, Any]) -> bool:
+    settings = _dict_value(manifest, "settings")
+    value = settings.get("allow_pwa_name_override")
+    return _legacy_identity_override(manifest) if value is None else bool(value)
+
+
+def _allow_tenant_pwa_icon(manifest: dict[str, Any]) -> bool:
+    settings = _dict_value(manifest, "settings")
+    value = settings.get("allow_pwa_icon_override")
+    return _legacy_identity_override(manifest) if value is None else bool(value)
 
 
 def _tenant_icons(manifest: dict[str, Any]) -> list[dict[str, str]]:
@@ -76,18 +88,24 @@ async def pwa_manifest(
     app = _dict_value(manifest, "app")
     theme = _dict_value(manifest, "theme")
     colors = _dict_value(theme, "colors")
-    allow_override = _allow_tenant_pwa_identity(manifest)
+    allow_name_override = _allow_tenant_pwa_name(manifest)
+    allow_icon_override = _allow_tenant_pwa_icon(manifest)
 
-    if allow_override:
+    if allow_name_override:
         name = str(app.get("public_name") or app.get("name") or CORE_PWA_NAME)
         short_name = name[:30]
-        icons = _tenant_icons(manifest)
-        identity_source = "tenant"
     else:
         name = CORE_PWA_NAME
         short_name = CORE_PWA_NAME
-        icons = list(CORE_PWA_ICONS)
-        identity_source = "scheduler-pro"
+
+    icons = _tenant_icons(manifest) if allow_icon_override else list(CORE_PWA_ICONS)
+
+    identity_parts: list[str] = []
+    if allow_name_override:
+        identity_parts.append("tenant-name")
+    if allow_icon_override:
+        identity_parts.append("tenant-icon")
+    identity_source = "+".join(identity_parts) if identity_parts else "scheduler-pro"
 
     branding_version = int(manifest.get("branding_version") or 0)
     payload = {
