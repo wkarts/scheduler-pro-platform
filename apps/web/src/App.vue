@@ -28,6 +28,7 @@ const pwaOpenMode=ref('AUTO')
 // Landing e Agenda Pública só existem nas rotas públicas explícitas /pagina e /agendar.
 const publicSurface=computed(()=>['/agendar','/pagina'].includes(normalizedPath))
 const forcePwaLogin=computed(()=>sourcePwa&&pwaOpenMode.value==='LOGIN'&&!authenticated.value)
+let publicPagesRecoveryPending=false
 
 function refreshAuthState():void{authenticated.value=Boolean(localStorage.getItem('scheduler_pro_access_token'))}
 function refreshRoute():void{activeView.value=(window.location.hash||'#dashboard').replace(/^#/,'')||'dashboard'}
@@ -38,10 +39,19 @@ function isPublicPagesButton(target:EventTarget|null):boolean{
   return Boolean(button&&button.textContent?.replace(/\s+/g,' ').trim().includes('Páginas públicas'))
 }
 function onPublicPagesNavCapture(event:Event):void{
-  // Se a rota já está selecionada não haverá hashchange. Nesse caso pedimos ao
-  // workspace persistente para recarregar seus dados sem destruí-lo/remontá-lo.
-  if(window.location.hash!=='#visual-builder'||!isPublicPagesButton(event.target))return
-  queueMicrotask(()=>window.dispatchEvent(new CustomEvent('scheduler-pro-open-public-pages')))
+  if(window.location.hash!=='#visual-builder'||!isPublicPagesButton(event.target)||publicPagesRecoveryPending)return
+  // A área já existe: não remonta, não reinicia loading e não interfere na edição.
+  if(document.querySelector('.experience-center'))return
+  // Recuperação apenas sob ação explícita do usuário e somente quando o overlay
+  // realmente sumiu. Uma única reentrada de rota substitui o antigo watchdog.
+  publicPagesRecoveryPending=true
+  queueMicrotask(()=>{
+    window.location.hash='dashboard'
+    window.requestAnimationFrame(()=>{
+      window.location.hash='visual-builder'
+      publicPagesRecoveryPending=false
+    })
+  })
 }
 onMounted(()=>{
   refreshAuthState();refreshRoute()
@@ -70,7 +80,7 @@ onUnmounted(()=>{
       <TenantAgendaCenter v-if="activeView==='agenda'"/>
       <TenantExtensions v-if="activeView==='personalizacao'||activeView==='smtp'"/>
       <TenantConfigurationCenter v-if="activeView==='configuracoes'"/>
-      <!-- O Builder permanece montado; reabertura/reload é feita por contrato de evento, nunca por remount em loop. -->
+      <!-- Persistente e estável: sem :key, polling ou remount automático. -->
       <TenantVisualPageBuilder/>
       <TenantBookingAndMessages v-if="activeView==='agenda-publica'||activeView==='mensagens'"/>
       <TenantMailModeSelector v-if="activeView==='smtp'"/>
