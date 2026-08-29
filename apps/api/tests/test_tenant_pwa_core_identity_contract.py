@@ -62,10 +62,19 @@ def test_tenant_default_pwa_icon_is_dark_and_distinct_from_control_plane() -> No
 
         pytest.skip("Fontes do monorepo não estão presentes nesta imagem.")
 
+    tenant_192 = root / "apps/web/public/icons/tenant-pwa-192.png"
+    tenant_512 = root / "apps/web/public/icons/tenant-pwa-512.png"
+    admin_192 = root / "apps/admin/public/icons/icon-192.png"
+    admin_512 = root / "apps/admin/public/icons/icon-512.png"
+
     assert any("/icons/tenant-pwa-192.png" in icon["src"] for icon in TENANT_PWA_ICONS)
     assert any("/icons/tenant-pwa-512.png" in icon["src"] for icon in TENANT_PWA_ICONS)
-    assert (root / "apps/web/public/icons/tenant-pwa-192.png").is_file()
-    assert (root / "apps/web/public/icons/tenant-pwa-512.png").is_file()
+    assert tenant_192.is_file()
+    assert tenant_512.is_file()
+    assert admin_192.is_file()
+    assert admin_512.is_file()
+    assert tenant_192.read_bytes() != admin_192.read_bytes()
+    assert tenant_512.read_bytes() != admin_512.read_bytes()
 
     admin_manifest = _read("apps/admin/public/manifest.webmanifest")
     assert '"src": "/icons/icon-192.png?v=avb240-brand-v3"' in admin_manifest
