@@ -52,9 +52,17 @@ def test_control_plane_importer_accepts_experience_v2() -> None:
     assert "MAX_ARCHIVE_BYTES = 50 * 1024 * 1024" in service
 
 
-def test_mobile_drawer_is_topmost_and_versioned() -> None:
+def test_mobile_drawer_is_topmost_versioned_and_tenant_branded() -> None:
     console = _source("apps/web/src/TenantConsole.vue")
     css = _source("apps/web/src/tenant-shell-contract.css")
+    branding = _source("apps/web/src/branding.ts")
     assert "Scheduler Pro · v{{ appVersion }}" in console
     assert "z-index: 30000 !important" in css
     assert "mobile-menu-close" in console
+    assert "--sp-sidebar-logo-desktop" in branding
+    assert "--sp-sidebar-logo-mobile" in branding
+    assert "tenantCustomLogo" in branding
+    assert ".tenant-console .sidebar .sp-sidebar-logo" in css
+    assert "display: none !important" in css
+    assert "background-image: var(--sp-sidebar-logo-desktop" in css
+    assert "background-image: var(--sp-sidebar-logo-mobile" in css
