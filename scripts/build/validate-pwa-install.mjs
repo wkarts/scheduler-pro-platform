@@ -26,7 +26,8 @@ if (!Array.isArray(manifest.icons) || manifest.icons.length === 0) throw new Err
 
 requireText('pwa.ts', loaded.pwa, 'beforeinstallprompt')
 requireText('pwa.ts', loaded.pwa, 'appinstalled')
-requireText('pwa.ts', loaded.pwa, "navigator.serviceWorker.register('/sw.js')")
+requireText('pwa.ts', loaded.pwa, "navigator.serviceWorker.register('/sw.js'")
+requireText('pwa.ts', loaded.pwa, "updateViaCache: 'none'")
 requireText('App.vue', loaded.app, 'TenantPwaInstallSurface')
 requireText('App.vue', loaded.app, "new URLSearchParams(window.location.search).get('source')==='pwa'")
 requireText('TenantPwaInstallSurface.vue', loaded.surface, '.tenant-login-card')

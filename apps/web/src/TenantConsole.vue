@@ -615,6 +615,41 @@ async function copyText(value: string): Promise<void> { await navigator.clipboar
 function openHostname(): void { const hostname = tenantSettings.value?.hostname || manifest.value?.tenant.hostname || browserHostname; window.open(`https://${hostname}`, '_blank', 'noopener,noreferrer') }
 function desktopInstructions(): string { return `O Desktop carrega https://${tenantSettings.value?.hostname || browserHostname} diretamente. Publicações do WebApp aparecem sem duplicar a interface.` }
 
+let revalidateInFlight = false
+async function onAppRevalidate(): Promise<void> {
+  if (!token.value || document.visibilityState === 'hidden' || revalidateInFlight) return
+  revalidateInFlight = true
+  try {
+    await loadBranding().catch(() => undefined)
+    if (view.value === 'agenda') {
+      const [nextAppointments, nextHours, nextBlocked] = await Promise.all([
+        api<Appointment[]>('/appointments'),
+        api<BusinessHour[]>('/schedule/business-hours'),
+        api<BlockedPeriod[]>('/schedule/blocked-periods'),
+      ])
+      appointments.value = nextAppointments
+      businessHours.value = nextHours
+      blockedPeriods.value = nextBlocked
+      window.dispatchEvent(new CustomEvent('scheduler-pro-appointments-changed'))
+    } else if (view.value === 'clientes') customers.value = await api<Customer[]>('/customers')
+    else if (view.value === 'servicos') services.value = await api<Service[]>('/services')
+    else if (view.value === 'profissionais') {
+      const [nextProfessionals, nextHours, nextBlocked] = await Promise.all([
+        api<Professional[]>('/professionals'),
+        api<BusinessHour[]>('/schedule/business-hours'),
+        api<BlockedPeriod[]>('/schedule/blocked-periods'),
+      ])
+      professionals.value = nextProfessionals
+      businessHours.value = nextHours
+      blockedPeriods.value = nextBlocked
+    }
+  } catch {
+    // Revalidação é best-effort; a view mantém o último estado válido.
+  } finally {
+    revalidateInFlight = false
+  }
+}
+
 let whatsappPoll: number | undefined
 onMounted(async () => {
   await loadBranding()

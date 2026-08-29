@@ -22,6 +22,7 @@ LEGACY_PLATFORM_COLORS = {
     "text": "#0B1D3A",
 }
 DEFAULT_FONT_FAMILY = "Sora, Inter, Segoe UI, Arial, sans-serif"
+LEGACY_PLATFORM_FONT_FAMILY = "Inter, Segoe UI, Arial, sans-serif"
 DEFAULT_SLOGAN = "Mais tempo para o que realmente importa."
 DEFAULT_LOGO_URL = "/branding/scheduler-pro-logo-light.png"
 DEFAULT_LOGO_DARK_URL = "/branding/scheduler-pro-logo-dark.png"
@@ -47,7 +48,7 @@ class BrandingService:
             and _normalized(profile.accent_color) == _normalized(LEGACY_PLATFORM_COLORS["accent"])
             and _normalized(profile.background_color) == _normalized(LEGACY_PLATFORM_COLORS["background"])
             and _normalized(profile.text_color) == _normalized(LEGACY_PLATFORM_COLORS["text"])
-            and str(profile.font_family or "") == DEFAULT_FONT_FAMILY
+            and str(profile.font_family or "") in {LEGACY_PLATFORM_FONT_FAMILY, DEFAULT_FONT_FAMILY}
         )
 
     @classmethod
@@ -59,6 +60,7 @@ class BrandingService:
         profile.accent_color = DEFAULT_COLORS["accent"]
         profile.background_color = DEFAULT_COLORS["background"]
         profile.text_color = DEFAULT_COLORS["text"]
+        profile.font_family = DEFAULT_FONT_FAMILY
         return True
 
     @classmethod

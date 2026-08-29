@@ -31,7 +31,9 @@ from app.services.builtin_template_package_service import DEFAULT_TEMPLATE_KEY
 from app.services.template_contract import TemplateContract
 
 router = APIRouter()
-PUBLIC_ASSET_PREFIXES = ("landing/", "experience/")
+PUBLIC_LANDING_ASSET_PREFIX = "landing/"
+PUBLIC_EXPERIENCE_ASSET_PREFIX = "experience/"
+PUBLIC_ASSET_PREFIXES = (PUBLIC_LANDING_ASSET_PREFIX, PUBLIC_EXPERIENCE_ASSET_PREFIX)
 PUBLIC_ASSET_TYPES = {
     "image/png",
     "image/jpeg",
@@ -152,7 +154,10 @@ async def public_landing_asset(
     context: TenantContext = Depends(get_tenant_context),
 ) -> StreamingResponse:
     normalized = TenantFileService.normalize_key(key)
-    if not normalized.startswith(PUBLIC_ASSET_PREFIXES):
+    if not (
+        normalized.startswith(PUBLIC_LANDING_ASSET_PREFIX)
+        or normalized.startswith(PUBLIC_EXPERIENCE_ASSET_PREFIX)
+    ):
         raise APIError("PUBLIC_ASSET_NOT_FOUND", "Arquivo público não encontrado.", 404)
 
     result = await TenantFileService(context).get_object(normalized)
