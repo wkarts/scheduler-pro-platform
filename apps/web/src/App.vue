@@ -13,6 +13,7 @@ import TenantDashboardInsights from './TenantDashboardInsights.vue'
 import TenantExtensions from './TenantExtensions.vue'
 import TenantMailModeSelector from './TenantMailModeSelector.vue'
 import TenantPwaInstallSurface from './TenantPwaInstallSurface.vue'
+import TenantRuntimeVersion from './TenantRuntimeVersion.vue'
 import TenantSecondFactorGate from './TenantSecondFactorGate.vue'
 import TenantUniversalDownloads from './TenantUniversalDownloads.vue'
 import TenantVisualPageBuilder from './TenantVisualPageBuilder.vue'
@@ -45,6 +46,7 @@ onUnmounted(()=>{window.removeEventListener('storage',onStorage);window.removeEv
     <TenantBrandedLogin v-if="!authenticated" @authenticated="refreshAuthState"/>
     <template v-else>
       <TenantConsole/>
+      <TenantRuntimeVersion/>
       <TenantDashboardInsights v-if="activeView==='dashboard'"/>
       <TenantAgendaCenter v-if="activeView==='agenda'"/>
       <TenantExtensions v-if="activeView==='personalizacao'||activeView==='smtp'"/>
