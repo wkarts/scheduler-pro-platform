@@ -25,41 +25,16 @@ const normalizedPath=window.location.pathname.replace(/\/+$/,'')||'/'
 const sourcePwa=new URLSearchParams(window.location.search).get('source')==='pwa'
 const publicLogin=computed(()=>normalizedPath==='/login'&&!authenticated.value)
 const pwaOpenMode=ref('AUTO')
-// A raiz do domínio pertence ao console/login. Superfícies públicas só existem
-// nas rotas explícitas /pagina e /agendar.
 const publicSurface=computed(()=>['/agendar','/pagina'].includes(normalizedPath))
 const forcePwaLogin=computed(()=>sourcePwa&&pwaOpenMode.value==='LOGIN'&&!authenticated.value)
 
 function refreshAuthState():void{authenticated.value=Boolean(localStorage.getItem('scheduler_pro_access_token'))}
 function refreshRoute():void{activeView.value=(window.location.hash||'#dashboard').replace(/^#/,'')||'dashboard'}
 function onStorage(event:StorageEvent):void{if(event.key==='scheduler_pro_access_token')refreshAuthState()}
-function isPublicPagesButton(target:EventTarget|null):boolean{
-  if(!(target instanceof Element))return false
-  const button=target.closest('button.nav-item')
-  return Boolean(button&&button.textContent?.replace(/\s+/g,' ').trim().includes('Páginas públicas'))
-}
-function onPublicPagesNavCapture(event:Event):void{
-  if(window.location.hash!=='#visual-builder'||!isPublicPagesButton(event.target))return
-  // Nunca sai temporariamente para Dashboard. Se o workspace já existe, o clique
-  // é idempotente. Se o overlay sumiu, apenas reemite o evento de rota para a
-  // instância persistente recuperar a abertura, sem alterar a URL nem remontar.
-  if(document.querySelector('.experience-center'))return
-  queueMicrotask(()=>window.dispatchEvent(new HashChangeEvent('hashchange')))
-}
-onMounted(()=>{
-  refreshAuthState();refreshRoute()
-  window.addEventListener('storage',onStorage)
-  window.addEventListener('hashchange',refreshRoute)
-  window.addEventListener('scheduler-pro-auth-changed',refreshAuthState)
-  document.addEventListener('click',onPublicPagesNavCapture,true)
-  if(sourcePwa)void fetch('/api/v1/public/context',{cache:'no-store',headers:{Accept:'application/json'}}).then(r=>r.json()).then(body=>{pwaOpenMode.value=String(body?.data?.preferences?.pwa_open_mode||'AUTO').toUpperCase()}).catch(()=>undefined)
-})
-onUnmounted(()=>{
-  window.removeEventListener('storage',onStorage)
-  window.removeEventListener('hashchange',refreshRoute)
-  window.removeEventListener('scheduler-pro-auth-changed',refreshAuthState)
-  document.removeEventListener('click',onPublicPagesNavCapture,true)
-})
+function isPublicPagesButton(target:EventTarget|null):boolean{if(!(target instanceof Element))return false;const button=target.closest('button.nav-item');return Boolean(button&&button.textContent?.replace(/\s+/g,' ').trim().includes('Páginas públicas'))}
+function onPublicPagesNavCapture(event:Event):void{if(window.location.hash!=='#visual-builder'||!isPublicPagesButton(event.target))return;if(document.querySelector('.experience-center'))return;queueMicrotask(()=>window.dispatchEvent(new HashChangeEvent('hashchange')))}
+onMounted(()=>{refreshAuthState();refreshRoute();window.addEventListener('storage',onStorage);window.addEventListener('hashchange',refreshRoute);window.addEventListener('scheduler-pro-auth-changed',refreshAuthState);document.addEventListener('click',onPublicPagesNavCapture,true);if(sourcePwa)void fetch('/api/v1/public/context',{cache:'no-store',headers:{Accept:'application/json'}}).then(r=>r.json()).then(body=>{pwaOpenMode.value=String(body?.data?.preferences?.pwa_open_mode||'AUTO').toUpperCase()}).catch(()=>undefined)})
+onUnmounted(()=>{window.removeEventListener('storage',onStorage);window.removeEventListener('hashchange',refreshRoute);window.removeEventListener('scheduler-pro-auth-changed',refreshAuthState);document.removeEventListener('click',onPublicPagesNavCapture,true)})
 </script>
 
 <template>
@@ -71,15 +46,15 @@ onUnmounted(()=>{
       <TenantConsole/>
       <TenantDashboardInsights v-if="activeView==='dashboard'"/>
       <TenantAgendaCenter v-if="activeView==='agenda'"/>
-      <TenantCheckInCenter v-if="activeView==='agenda'"/>
       <TenantExtensions v-if="activeView==='personalizacao'||activeView==='smtp'"/>
       <TenantConfigurationCenter v-if="activeView==='configuracoes'"/>
-      <!-- Persistente: sem :key, polling, watchdog ou troca artificial de rota. -->
       <TenantVisualPageBuilder/>
       <TenantBookingAndMessages v-if="activeView==='agenda-publica'||activeView==='mensagens'"/>
       <TenantMailModeSelector v-if="activeView==='smtp'"/>
       <TenantBrandAssetUploader v-if="activeView==='personalizacao'"/>
       <TenantUniversalDownloads v-if="activeView==='builds'"/>
+      <!-- Operadores globais permanecem disponíveis em qualquer view autenticada. -->
+      <TenantCheckInCenter/>
       <TenantAgendaOperator/>
       <TenantSecondFactorGate/>
     </template>
