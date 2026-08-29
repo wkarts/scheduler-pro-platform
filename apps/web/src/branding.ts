@@ -22,6 +22,52 @@ export type BrandingManifest = {
   branding_version?: number
 }
 
+const PLATFORM_LOGOS = new Set([
+  '/branding/scheduler-pro-logo-light.png',
+  '/branding/scheduler-pro-logo-dark.png',
+])
+
+function versionedAsset(url: string, version: number): string {
+  if (!url || !version || url.startsWith('data:') || url.startsWith('blob:')) return url
+  const separator = url.includes('?') ? '&' : '?'
+  return `${url}${separator}v=${version}`
+}
+
+function cssAsset(url: string): string {
+  return `url(${JSON.stringify(url)})`
+}
+
+function applySidebarBranding(manifest: BrandingManifest): void {
+  const root = document.documentElement
+  const version = Number(manifest.branding_version || 0)
+  const primaryLogo = String(manifest.assets.logo_url || '').trim()
+  const darkLogo = String(manifest.assets.logo_dark_url || '').trim()
+  const icon = String(manifest.assets.icon_url || '').trim()
+  const customPrimary = Boolean(primaryLogo && !PLATFORM_LOGOS.has(primaryLogo))
+  const customDark = Boolean(darkLogo && !PLATFORM_LOGOS.has(darkLogo))
+  const customLogo = customPrimary || customDark
+
+  // Desktop usa a variante apropriada para a sidebar escura. Quando o tenant não
+  // possui logo_dark própria, a logo principal do próprio tenant tem prioridade.
+  const desktopLogo = customDark
+    ? darkLogo
+    : customPrimary
+      ? primaryLogo
+      : darkLogo || '/branding/scheduler-pro-logo-dark.png'
+
+  // Mobile usa fundo claro. Se não houver marca própria, usa o ícone da identidade
+  // acompanhado do nome do tenant, evitando duplicar o wordmark Scheduler Pro.
+  const mobileLogo = customPrimary
+    ? primaryLogo
+    : customDark
+      ? darkLogo
+      : icon || primaryLogo || '/icons/icon-512.png'
+
+  root.dataset.tenantCustomLogo = customLogo ? 'true' : 'false'
+  root.style.setProperty('--sp-sidebar-logo-desktop', cssAsset(versionedAsset(desktopLogo, version)))
+  root.style.setProperty('--sp-sidebar-logo-mobile', cssAsset(versionedAsset(mobileLogo, version)))
+}
+
 export async function loadBrandingManifest(): Promise<BrandingManifest> {
   return apiGet<BrandingManifest>('/branding/manifest')
 }
@@ -37,6 +83,7 @@ export function applyBranding(manifest: BrandingManifest): void {
   root.style.setProperty('--sp-font', manifest.theme.font_family)
   document.title = manifest.app.public_name || manifest.app.name
   root.dataset.tenantTheme = manifest.theme.mode || 'system'
+  applySidebarBranding(manifest)
 
   const favicon = manifest.assets.favicon_url || manifest.assets.icon_url
   if (favicon) {
@@ -47,7 +94,6 @@ export function applyBranding(manifest: BrandingManifest): void {
       document.head.appendChild(link)
     }
     const version = Number(manifest.branding_version || 0)
-    const separator = favicon.includes('?') ? '&' : '?'
-    link.href = version ? `${favicon}${separator}v=${version}` : favicon
+    link.href = versionedAsset(favicon, version)
   }
 }

@@ -2,6 +2,36 @@
    Desktop respeita expandir/colapsar; mobile ignora o estado desktop e sempre
    exibe rótulos enquanto o drawer estiver aberto. Importar por último. */
 
+/* Branding único do tenant no shell.
+   A imagem fixa do template permanece apenas como fallback semântico no DOM;
+   visualmente a marca vem do Branding Manifest aplicado em branding.ts. */
+.tenant-console .sidebar .brand {
+  min-width: 0;
+}
+.tenant-console .sidebar .sp-sidebar-logo {
+  display: none !important;
+}
+.tenant-console .sidebar .brand::before {
+  content: "";
+  display: block;
+  width: 150px;
+  max-width: 150px;
+  height: 44px;
+  flex: 0 1 150px;
+  background-image: var(--sp-sidebar-logo-desktop, url('/branding/scheduler-pro-logo-dark.png'));
+  background-repeat: no-repeat;
+  background-position: left center;
+  background-size: contain;
+}
+.tenant-console .sidebar .brand > div {
+  min-width: 0;
+}
+.tenant-console .sidebar .brand > div strong,
+.tenant-console .sidebar .brand > div small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 @media (min-width: 901px) {
   .tenant-console:not(.collapsed) .sidebar {
     width: 260px !important;
@@ -45,10 +75,13 @@
     padding-left: 0 !important;
     padding-right: 0 !important;
   }
-  .tenant-console.collapsed .sidebar .sp-sidebar-logo {
+  .tenant-console.collapsed .sidebar .brand::before {
     width: 42px !important;
     max-width: 42px !important;
+    height: 42px !important;
+    flex: 0 0 42px !important;
     margin: 0 auto !important;
+    background-position: center !important;
   }
 }
 
@@ -180,16 +213,32 @@ body.sp-mobile-nav-open { overflow: hidden !important; touch-action: none; }
     border-bottom: 1px solid #e2e8f0 !important;
     background: #fff !important;
   }
-  .tenant-console .sp-sidebar-logo {
-    display: block;
-    width: 132px;
-    max-width: 132px;
-    height: 42px;
-    object-fit: contain;
-    object-position: left center;
+  .tenant-console.mobileOpen .sidebar .brand::before,
+  .tenant-console.collapsed.mobileOpen .sidebar .brand::before {
+    display: block !important;
+    width: 72px !important;
+    max-width: 72px !important;
+    height: 56px !important;
+    flex: 0 0 72px !important;
+    background-image: var(--sp-sidebar-logo-mobile, url('/icons/icon-512.png')) !important;
+    background-repeat: no-repeat !important;
+    background-position: center !important;
+    background-size: contain !important;
   }
-  .tenant-console.mobileOpen .sidebar .brand > div strong { color: #0f172a !important; font-size: 15px !important; }
-  .tenant-console.mobileOpen .sidebar .brand > div small { color: #64748b !important; font-size: 10px !important; }
+  .tenant-console.mobileOpen .sidebar .brand > div {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+  .tenant-console.mobileOpen .sidebar .brand > div strong {
+    color: #0f172a !important;
+    font-size: 15px !important;
+    white-space: nowrap;
+  }
+  .tenant-console.mobileOpen .sidebar .brand > div small {
+    color: #64748b !important;
+    font-size: 10px !important;
+    white-space: nowrap;
+  }
   .tenant-console .mobile-menu-close {
     margin-left: auto;
     width: 44px;
