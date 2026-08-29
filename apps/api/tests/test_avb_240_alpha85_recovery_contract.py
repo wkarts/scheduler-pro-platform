@@ -62,7 +62,7 @@ def test_public_pages_preview_cannot_replace_admin_console() -> None:
 
     assert "window.location.hash==='#visual-builder'&&publicTarget" in frame
     assert "window.open(href,'_blank','noopener,noreferrer')" in frame
-    assert "preview nunca pode substituir a aplicação" in frame
+    assert "window.location.assign(href)" in frame
 
 
 def test_public_surface_render_failure_stays_inside_workspace_with_diagnostics() -> None:
