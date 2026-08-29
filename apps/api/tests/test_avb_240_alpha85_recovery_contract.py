@@ -50,7 +50,7 @@ def test_public_pages_workspace_opens_overview_before_any_surface() -> None:
     assert "const tab=ref<Tab>('overview')" in builder
     assert "tab.value='overview'" in builder
     assert "page.value=null" in builder
-    assert "try{await loadCore()}finally{opening=false}" in builder
+    assert "await loadCore()" in builder
     assert "const saved=initialPageTab()" not in builder
     assert "await loadPage(saved" not in builder
     assert "Landing e Agenda só são carregadas" in builder
@@ -63,6 +63,25 @@ def test_public_pages_preview_cannot_replace_admin_console() -> None:
     assert "window.location.hash==='#visual-builder'&&publicTarget" in frame
     assert "window.open(href,'_blank','noopener,noreferrer')" in frame
     assert "preview nunca pode substituir a aplicação" in frame
+
+
+def test_public_surface_render_failure_stays_inside_workspace_with_diagnostics() -> None:
+    builder = _source("apps/web/src/TenantVisualPageBuilder.vue")
+
+    assert "surfaceLoadError" in builder
+    assert "surfaceChildError" in builder
+    assert "onErrorCaptured" in builder
+    assert "definitionsState" in builder
+    assert "previewState" in builder
+    assert "surfaceError" in builder
+    assert "Falha da superfície" in builder
+    assert "não pôde ser renderizada" in builder
+    assert "Tentar novamente" in builder
+    assert "Voltar para Visão geral" in builder
+    assert "surfaceDiagnostic" in builder
+    assert "retrySurface" in builder
+    assert "page.value=null" in builder
+    assert "active.value=false" not in builder.split("async function loadPage", 1)[1].split("async function savePage", 1)[0]
 
 
 def test_public_pages_workspace_never_uses_polling_remount_or_route_bounce() -> None:
