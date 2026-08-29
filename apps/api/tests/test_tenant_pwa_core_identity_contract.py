@@ -1,5 +1,11 @@
 from pathlib import Path
 
+from app.api.v1.routes.pwa_identity import (
+    CORE_PWA_ICONS,
+    CORE_PWA_NAME,
+    _allow_tenant_pwa_identity,
+)
+
 
 def _root() -> Path | None:
     here = Path(__file__).resolve()
@@ -18,30 +24,57 @@ def _read(path: str) -> str:
     return (root / path).read_text(encoding="utf-8")
 
 
-def test_alpha94_pwa_identity_override_is_selectively_removed() -> None:
+def test_tenant_pwa_identity_override_is_opt_in() -> None:
+    assert CORE_PWA_NAME == "Scheduler Pro"
+    assert _allow_tenant_pwa_identity({}) is False
+    assert _allow_tenant_pwa_identity({"settings": {}}) is False
+    assert (
+        _allow_tenant_pwa_identity(
+            {"settings": {"allow_pwa_identity_override": True}}
+        )
+        is True
+    )
+    assert any("/icons/icon-192.png" in icon["src"] for icon in CORE_PWA_ICONS)
+    assert any("/icons/icon-512.png" in icon["src"] for icon in CORE_PWA_ICONS)
+
+
+def test_web_uses_protected_dynamic_pwa_manifest() -> None:
     index = _read("apps/web/index.html")
+    route = _read("apps/api/app/api/v1/routes/pwa_identity.py")
     router = _read("apps/api/app/api/v1/router.py")
-    admin_main = _read("apps/admin/src/main.ts")
-    assert "/api/v1/branding/manifest.webmanifest" in index
-    assert "/api/v1/pwa/manifest.webmanifest" not in index
-    assert "pwa_identity" not in router
-    assert "AdminPwaIdentityControl" not in admin_main
+    assert '/api/v1/pwa/manifest.webmanifest' in index
+    assert 'name = CORE_PWA_NAME' in route
+    assert 'icons = list(CORE_PWA_ICONS)' in route
+    assert 'allow_pwa_identity_override' in route
+    assert 'X-Scheduler-PWA-Identity' in route
+    assert 'pwa_identity.router, prefix="/pwa"' in router
+    assert 'pwa_identity.router,\n    prefix="/branding"' in router
 
 
-def test_tenant_branding_again_controls_experience_title() -> None:
-    branding = _read("apps/web/src/branding.ts")
-    assert "document.title = manifest.app.public_name || manifest.app.name" in branding
-    assert "document.title = 'Scheduler Pro'" not in branding
-
-
-def test_tenant_runtime_version_sync_from_alpha94_is_preserved() -> None:
+def test_tenant_shell_uses_runtime_version_endpoint_like_control_plane() -> None:
     tenant_badge = _read("apps/web/src/tenant-version-badge.ts")
     admin_badge = _read("apps/admin/src/version-badge.ts")
     web_main = _read("apps/web/src/main.ts")
     assert "fetch('/api/v1/version'" in tenant_badge
     assert "fetch('/api/v1/version'" in admin_badge
-    assert "release_tag" in tenant_badge
-    assert "build_sha" in tenant_badge
-    assert "slice(0, 8)" in tenant_badge
-    assert "installTenantVersionBadge()" in web_main
-    assert "import './tenant-overlay-layering.css'" in web_main
+    assert 'release_tag' in tenant_badge
+    assert 'build_sha' in tenant_badge
+    assert 'slice(0, 8)' in tenant_badge
+    assert 'installTenantVersionBadge()' in web_main
+    assert "topVersion.style.display = 'none'" in tenant_badge
+    assert 'Scheduler Pro · ${status}' in tenant_badge
+
+
+def test_global_branding_does_not_rename_native_application() -> None:
+    branding = _read("apps/web/src/branding.ts")
+    assert "document.title = 'Scheduler Pro'" in branding
+    assert "document.title = manifest.app.public_name" not in branding
+
+
+def test_control_plane_exposes_pwa_identity_override_only_as_admin_opt_in() -> None:
+    component = _read("apps/admin/src/AdminPwaIdentityControl.vue")
+    admin_main = _read("apps/admin/src/main.ts")
+    assert 'allow_pwa_identity_override' in component
+    assert 'Permitir identidade própria no PWA' in component
+    assert 'PWA protegido: nome e ícones permanecem Scheduler Pro.' in component
+    assert 'createApp(AdminPwaIdentityControl)' in admin_main
