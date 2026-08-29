@@ -46,8 +46,9 @@ def test_visual_builder_uses_experience_contract_v2_without_login_template() -> 
     assert "pages/landing.html" in experience
     assert "pages/booking.html" in experience
     assert "Template Runtime SDK" in sdk or "booking" in sdk
-    assert "Landing e Agenda usam HTML completo" in host
-    assert "Login permanece nativo" in host
+    assert "createHtmlDocument" in host
+    assert "htmlDocument:value.version.html" in host
+    assert "type Surface='LANDING'|'BOOKING'" in host
     assert "Login não usa template HTML" in host
 
 
