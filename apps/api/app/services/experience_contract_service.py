@@ -237,10 +237,21 @@ class ExperienceContractService:
             raise APIError("EXPERIENCE_PAGE_MISSING", "Landing ou Booking ausente/inválida.", 422) from exc
         bindings_path = _safe_name(str(files.get("bindings") or "bindings.json"))
         theme_path = _safe_name(str(files.get("theme") or "theme.json"))
-        bindings = _rewrite_binding_asset_urls(
+        # Experience v2 também pode trazer campos data-sp-edit além dos bindings
+        # declarados no manifesto. Promovemos esses campos a bindings compatíveis
+        # sem alterar o layout e mantemos as definições explícitas como prioridade.
+        landing_html, landing_inferred = _upgrade_legacy_bindings(landing_html)
+        booking_html, booking_inferred = _upgrade_legacy_bindings(booking_html)
+        bindings_value = _rewrite_binding_asset_urls(
             _json_object(entries.get(bindings_path, b"{}"), bindings_path),
             key,
         )
+        bindings = cast(dict[str, Any], bindings_value) if isinstance(bindings_value, dict) else {}
+        explicit_value = bindings.get("bindings")
+        explicit_bindings = cast(dict[str, Any], explicit_value) if isinstance(explicit_value, dict) else {}
+        bindings["schema"] = str(bindings.get("schema") or "argws-bindings/v1")
+        bindings["version"] = int(bindings.get("version") or 1)
+        bindings["bindings"] = {**landing_inferred, **booking_inferred, **explicit_bindings}
         theme = _json_object(entries.get(theme_path, b"{}"), theme_path)
         assets: list[ExperienceAsset] = []
         for name, raw in entries.items():
