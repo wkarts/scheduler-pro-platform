@@ -1,8 +1,8 @@
 from pathlib import Path
 
 from app.api.v1.routes.pwa_identity import (
-    CORE_PWA_ICONS,
     CORE_PWA_NAME,
+    TENANT_PWA_ICONS,
     _allow_tenant_pwa_icon,
     _allow_tenant_pwa_name,
 )
@@ -53,8 +53,25 @@ def test_tenant_pwa_name_and_icon_overrides_are_independent_and_opt_in() -> None
     }
     assert _allow_tenant_pwa_name(explicit_split) is False
     assert _allow_tenant_pwa_icon(explicit_split) is True
-    assert any("/icons/icon-192.png" in icon["src"] for icon in CORE_PWA_ICONS)
-    assert any("/icons/icon-512.png" in icon["src"] for icon in CORE_PWA_ICONS)
+
+
+def test_tenant_default_pwa_icon_is_dark_and_distinct_from_control_plane() -> None:
+    root = _root()
+    if root is None:
+        import pytest
+
+        pytest.skip("Fontes do monorepo não estão presentes nesta imagem.")
+
+    assert any("/icons/tenant-pwa-192.png" in icon["src"] for icon in TENANT_PWA_ICONS)
+    assert any("/icons/tenant-pwa-512.png" in icon["src"] for icon in TENANT_PWA_ICONS)
+    assert (root / "apps/web/public/icons/tenant-pwa-192.png").is_file()
+    assert (root / "apps/web/public/icons/tenant-pwa-512.png").is_file()
+
+    admin_manifest = _read("apps/admin/public/manifest.webmanifest")
+    assert '"src": "/icons/icon-192.png?v=avb240-brand-v3"' in admin_manifest
+    assert '"src": "/icons/icon-512.png?v=avb240-brand-v3"' in admin_manifest
+    assert "tenant-pwa-192.png" not in admin_manifest
+    assert "tenant-pwa-512.png" not in admin_manifest
 
 
 def test_web_uses_protected_dynamic_pwa_manifest_with_split_permissions() -> None:
@@ -64,7 +81,7 @@ def test_web_uses_protected_dynamic_pwa_manifest_with_split_permissions() -> Non
     assert '/api/v1/pwa/manifest.webmanifest' in index
     assert 'allow_pwa_name_override' in route
     assert 'allow_pwa_icon_override' in route
-    assert 'icons = _tenant_icons(manifest) if allow_icon_override else list(CORE_PWA_ICONS)' in route
+    assert 'icons = _tenant_icons(manifest) if allow_icon_override else list(TENANT_PWA_ICONS)' in route
     assert 'X-Scheduler-PWA-Identity' in route
     assert 'pwa_identity.router, prefix="/pwa"' in router
     assert 'pwa_identity.router,\n    prefix="/branding"' in router
