@@ -25,6 +25,13 @@ test('Theme Tokens geram CSS e tokens de host sem injetar CSS arbitrário',()=>{
   assert.equal(mapThemeToHostTokens(theme)['--sp-primary'],'#c31f62');
 });
 
+test('Theme Tokens aceitam Proxy reativo sem structuredClone/DataCloneError',()=>{
+  const branding=new Proxy({logo:'assets/logo.svg',nested:{name:'Marca do template'}},{});
+  const theme=createThemeTokens({branding});
+  assert.deepEqual(theme.branding,{logo:'assets/logo.svg',nested:{name:'Marca do template'}});
+  assert.doesNotThrow(()=>themeTokensToCss(new Proxy(theme,{})));
+});
+
 test('Template Runtime SDK delega motor de booking ao host',async()=>{
   const calls=[];
   const sdk=createTemplateRuntimeSdk({
