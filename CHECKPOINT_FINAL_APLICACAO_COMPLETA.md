@@ -105,3 +105,9 @@ A suíte `pytest` completa não inicia neste ambiente porque faltam dependência
 Direção final: AVB Universal + Scheduler Pro Experience Contract v2. Landing e Agenda Pública permanecem customizáveis; Login é nativo white-label. Templates v1/Base64 são migrados automaticamente para assets. Esta rodada também inclui CRUD de expediente/bloqueios, resiliência para agendamentos legados, correções de menu/calendário mobile e nova identidade padrão Scheduler Pro/PWA.
 
 Validação desta rodada: AVB 70/70 (universal e integrado), npm check PASS, compileall PASS, contratos 2.4.0 5/5, scripts Vue 28/28 sem falhas sintáticas.
+
+---
+
+## Checkpoint CI + SDK & Template Studio — 90045954647 / 90045954648
+
+A rodada posterior aos logs corrigiu os bloqueios Ruff, TypeScript, PWA e coleta de integration tests. O Control Plane passa a embarcar permanentemente o SDK, contratos, padrão mestre para IA e exemplo Experience v2 enriquecido em **SDK & Template Studio**. Consulte `CORRECAO_CI_90045954647_90045954648_SDK_STUDIO.md`.

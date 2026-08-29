@@ -11,6 +11,7 @@ from app.api.deps import (
     get_platform_session,
     require_platform_permission,
 )
+from app.core.errors import APIError
 from app.core.responses import success
 from app.core.security import AuthPrincipal
 from app.db.session import tenant_session

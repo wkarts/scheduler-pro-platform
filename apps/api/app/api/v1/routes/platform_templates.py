@@ -1,10 +1,13 @@
+from pathlib import Path
 from typing import Any, Literal
 
 from fastapi import APIRouter, Body, Depends, Query
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_platform_session, require_platform_permission
+from app.core.errors import APIError
 from app.core.responses import success
 from app.core.security import AuthPrincipal
 from app.services.global_template_service import GlobalTemplateService
@@ -12,6 +15,46 @@ from app.services.template_contract import TemplateContract
 from app.services.template_import_service import TemplateImportService
 
 router = APIRouter()
+
+DEVELOPER_KIT_DIR = Path(__file__).resolve().parents[4] / "resources" / "avb-template-kit"
+DeveloperKitArtifact = Literal[
+    "ai-standard",
+    "sdk-guide",
+    "experience-contract",
+    "bindings",
+    "theme-tokens",
+    "migration-guide",
+    "example-package",
+    "avb-package",
+]
+DEVELOPER_KIT_ARTIFACTS: dict[str, tuple[str, str, str]] = {
+    "ai-standard": ("ARGWS_Visual_Builder_2.4.0_TEMPLATE_AI_STANDARD.md", "Padrão mestre para IA", "text/markdown"),
+    "sdk-guide": ("TEMPLATE_RUNTIME_SDK_V1.md", "Template Runtime SDK v1", "text/markdown"),
+    "experience-contract": ("EXPERIENCE_CONTRACT_V2.md", "Experience Contract v2", "text/markdown"),
+    "bindings": ("BINDINGS_V1.md", "Bindings v1", "text/markdown"),
+    "theme-tokens": ("THEME_TOKENS_V1.md", "Theme Tokens v1", "text/markdown"),
+    "migration-guide": ("MIGRATION_V1_TO_V2.md", "Migração v1 → v2", "text/markdown"),
+    "example-package": ("ARGWS_Experience_Template_v2_EXEMPLO-ENRIQUECIDO.zip", "Experience Package v2 — exemplo enriquecido", "application/zip"),
+    "avb-package": ("argws-visual-builder-2.4.0.tgz", "ARGWS Visual Builder 2.4.0 — pacote NPM", "application/gzip"),
+}
+
+
+def _developer_artifacts() -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    for key, (filename, label, media_type) in DEVELOPER_KIT_ARTIFACTS.items():
+        path = DEVELOPER_KIT_DIR / filename
+        if not path.is_file():
+            continue
+        rows.append(
+            {
+                "key": key,
+                "label": label,
+                "filename": filename,
+                "media_type": media_type,
+                "size_bytes": path.stat().st_size,
+            }
+        )
+    return rows
 
 
 class TemplateCreate(BaseModel):
@@ -141,6 +184,38 @@ async def create_global_template(
             actor=principal.email,
         )
     )
+
+
+@router.get("/developer-kit")
+async def developer_kit(
+    _: AuthPrincipal = Depends(require_platform_permission("templates.manage")),
+) -> dict[str, Any]:
+    standard_path = DEVELOPER_KIT_DIR / "ARGWS_Visual_Builder_2.4.0_TEMPLATE_AI_STANDARD.md"
+    sdk_path = DEVELOPER_KIT_DIR / "TEMPLATE_RUNTIME_SDK_V1.md"
+    return success(
+        {
+            "version": "2.4.0",
+            "runtime_sdk": "Template Runtime SDK v1",
+            "experience_contract": "argws-experience-package/v2",
+            "bindings_contract": "argws-bindings/v1",
+            "theme_contract": "argws-theme-tokens/v1",
+            "ai_standard": standard_path.read_text(encoding="utf-8") if standard_path.is_file() else "",
+            "sdk_guide": sdk_path.read_text(encoding="utf-8") if sdk_path.is_file() else "",
+            "artifacts": _developer_artifacts(),
+        }
+    )
+
+
+@router.get("/developer-kit/artifacts/{artifact}")
+async def download_developer_kit_artifact(
+    artifact: DeveloperKitArtifact,
+    _: AuthPrincipal = Depends(require_platform_permission("templates.manage")),
+) -> FileResponse:
+    filename, _, media_type = DEVELOPER_KIT_ARTIFACTS[artifact]
+    path = DEVELOPER_KIT_DIR / filename
+    if not path.is_file():
+        raise APIError("AVB_DEVELOPER_ARTIFACT_MISSING", "Material do AVB não está disponível nesta instalação.", 404)
+    return FileResponse(path, filename=filename, media_type=media_type)
 
 
 @router.get("/{template_id}")

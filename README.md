@@ -143,3 +143,7 @@ Nenhum segredo deve ser commitado. Use `.env`, GitHub Actions Secrets e secret m
 `tenant_databases.password_ref` armazena somente uma referência (`secret://...`); a senha é resolvida pelo `SecretResolver` antes da abertura da conexão.
 
 Detalhes: `docs/security/SECURITY.md`, `docs/architecture/AUTHORIZATION.md` e `docs/architecture/MULTITENANCY.md`.
+
+## SDK & Template Studio — Control Plane
+
+O Control Plane embarca permanentemente o kit do ARGWS Visual Builder 2.4.0 em **SDK & Template Studio** (`templates.manage`). O administrador pode copiar o prompt mestre e a SDK ou baixar contratos, exemplo Experience v2 e pacote NPM sem depender dos arquivos da máquina local.

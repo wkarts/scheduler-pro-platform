@@ -1,10 +1,17 @@
 from pathlib import Path
 
+import pytest
+
 from app.services.experience_contract_service import ExperienceContractService
 
-ROOT = Path(__file__).resolve().parents[3]
-API = ROOT / "apps" / "api"
-WEB = ROOT / "apps" / "web"
+API = Path(__file__).resolve().parents[1]
+MONOREPO = API.parents[1] if API.parent.name == "apps" else None
+WEB = MONOREPO / "apps" / "web" if MONOREPO is not None else None
+
+def _web_root() -> Path:
+    if WEB is None or not WEB.is_dir():
+        pytest.skip("Fontes Web não fazem parte da imagem isolada da API.")
+    return WEB
 
 
 def test_default_template_migrates_to_experience_v2_without_login_template() -> None:
@@ -41,9 +48,10 @@ def test_legacy_appointments_are_not_lost_by_inner_joins_or_missing_end_time() -
 
 
 def test_mobile_shell_and_calendar_do_not_require_desktop_width() -> None:
-    shell = (WEB / "src" / "TenantConsole.vue").read_text()
-    css = (WEB / "src" / "tenant-shell-contract.css").read_text()
-    calendar = (WEB / "src" / "TenantAgendaCenter.vue").read_text()
+    web = _web_root()
+    shell = (web / "src" / "TenantConsole.vue").read_text()
+    css = (web / "src" / "tenant-shell-contract.css").read_text()
+    calendar = (web / "src" / "TenantAgendaCenter.vue").read_text()
     assert "toggleShellMenu" in shell
     assert "mobile-nav-backdrop" in shell
     assert "sp-mobile-nav-open" in css
@@ -51,9 +59,47 @@ def test_mobile_shell_and_calendar_do_not_require_desktop_width() -> None:
 
 
 def test_branding_ui_supports_light_dark_pwa_favicon_and_native_login() -> None:
-    source = (WEB / "src" / "TenantVisualPageBuilder.vue").read_text()
+    web = _web_root()
+    source = (web / "src" / "TenantVisualPageBuilder.vue").read_text()
     assert "Logo claro" in source
     assert "Logo escuro" in source
     assert "Ícone PWA" in source
     assert "Favicon" in source
     assert "Login não usa template HTML" in source
+
+
+def test_control_plane_developer_kit_is_embedded_with_master_standard_and_example() -> None:
+    kit = API / "resources" / "avb-template-kit"
+    expected = {
+        "ARGWS_Visual_Builder_2.4.0_TEMPLATE_AI_STANDARD.md",
+        "TEMPLATE_RUNTIME_SDK_V1.md",
+        "EXPERIENCE_CONTRACT_V2.md",
+        "BINDINGS_V1.md",
+        "THEME_TOKENS_V1.md",
+        "MIGRATION_V1_TO_V2.md",
+        "ARGWS_Experience_Template_v2_EXEMPLO-ENRIQUECIDO.zip",
+        "argws-visual-builder-2.4.0.tgz",
+    }
+    assert kit.is_dir()
+    assert expected.issubset({path.name for path in kit.iterdir() if path.is_file()})
+    example = ExperienceContractService.parse_archive(
+        (kit / "ARGWS_Experience_Template_v2_EXEMPLO-ENRIQUECIDO.zip").read_bytes()
+    )
+    assert example.package_key == "premium-client-quickstart"
+    assert example.landing_html
+    assert example.booking_html
+    assert len(example.assets) >= 3
+
+
+def test_control_plane_exposes_sdk_template_studio_when_web_sources_are_available() -> None:
+    web = _web_root()
+    admin = web.parent / "admin"
+    if not admin.is_dir():
+        pytest.skip("Fontes Admin não fazem parte desta árvore de execução.")
+    source = (admin / "src" / "AdminControlPlane.vue").read_text()
+    routes = (API / "app" / "api" / "v1" / "routes" / "platform_templates.py").read_text()
+    assert "SDK & Template Studio" in source
+    assert "template-studio" in source
+    assert "/platform/templates/developer-kit" in source
+    assert '@router.get("/developer-kit")' in routes
+    assert '@router.get("/developer-kit/artifacts/{artifact}")' in routes

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import hashlib
 from copy import deepcopy
 from io import BytesIO
 from typing import Any

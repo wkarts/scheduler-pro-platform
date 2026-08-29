@@ -1,3 +1,7 @@
+# ARGWS Visual Builder 2.4.0 — padrão mestre para IA construir templates
+
+Este documento é o padrão a entregar a qualquer IA para criar uma experiência compatível com o ARGWS Visual Builder 2.4.0 e, quando hospedada no Scheduler Pro, com o Scheduler Pro Experience Contract v2.
+
 # Prompt mestre — construir template compatível com ARGWS Visual Builder 2.4.0
 
 Use este documento como instrução para qualquer IA que for criar um novo template.
@@ -111,3 +115,79 @@ Antes de entregar, valide:
 8. Não há endpoints internos hardcoded.
 9. Não há segredos.
 10. O ZIP pode ser importado diretamente no ARGWS Visual Builder 2.4.0.
+
+---
+
+# Referência complementar — SDK e construção
+
+# Padrão de construção de templates — AVB 2.4.0
+
+Este documento é o contrato técnico resumido para desenvolvimento manual ou por IA.
+
+## Regra de ouro
+
+O template controla a experiência visual. O host controla autenticação, regras de negócio, dados sensíveis e integrações.
+
+## Estrutura obrigatória
+
+```text
+experience.json
+bindings.json
+theme.json
+pages/landing.html
+pages/booking.html
+assets/
+```
+
+Não criar `login.html`.
+
+## HTML
+
+Pode utilizar HTML5, CSS moderno, JavaScript seguro, SVG, Canvas, Web Components, Lottie e animações. Não há obrigação de usar componentes genéricos do AVB.
+
+## Bindings
+
+Tudo que o cliente poderá editar sem alterar estrutura deve ser declarado em `bindings.json` e marcado com `data-sp-bind`, `data-sp-show` ou `data-sp-list`.
+
+## Agenda
+
+A página Booking deve usar `ARGWSRuntime.booking.*`. Nunca codificar endpoints internos do Scheduler Pro.
+
+## Assets
+
+Imagens grandes devem ficar em `assets/`. Evitar Base64 para imagens pesadas.
+
+## Analytics
+
+Eventos devem usar `ARGWSRuntime.analytics.track()`. Pixel/GA/GTM são responsabilidade do host.
+
+## Segurança
+
+Nunca incluir senha, token, secret, credencial, `eval`, `new Function`, script ofuscado ou autenticação paralela.
+
+## Compatibilidade
+
+O visual final deve funcionar sem etapa de build obrigatória. Caso Astro/Svelte/Vue/React sejam usados na autoria, entregar apenas o output compilado final.
+
+
+# Checklist adicional de homologação
+
+Antes de entregar um template para produção, a IA/desenvolvedor deve confirmar:
+
+- [ ] `experience.json` usa `argws-experience-package/v2`.
+- [ ] Não existe `login.html`.
+- [ ] Landing degrada com elegância quando a SDK não está disponível.
+- [ ] Agenda utiliza `ARGWSRuntime.booking.*`.
+- [ ] Nenhuma URL interna `/api/v1/...` está hardcoded no template.
+- [ ] Todos os itens editáveis estão declarados em `bindings.json`.
+- [ ] `theme.json` contém tokens de cores e tipografia.
+- [ ] Imagens grandes estão em `assets/`, não Base64.
+- [ ] Layout funciona em 360px, 768px e desktop.
+- [ ] Eventos de conversão usam `ARGWSRuntime.analytics.track()`.
+- [ ] Não existem segredos, tokens ou credenciais.
+- [ ] O design original não depende do editor para funcionar.
+- [ ] O pacote pode ser importado sem etapa de compilação no runtime.
+
+## Regra para novos clientes
+
+A IA deve priorizar personalização por **bindings, theme tokens e assets**, preservando a estrutura HTML/CSS. Não transformar o template em widgets genéricos e não simplificar a direção visual para facilitar o editor.

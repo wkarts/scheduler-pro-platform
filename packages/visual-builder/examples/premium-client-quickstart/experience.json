@@ -1,0 +1,34 @@
+{
+  "schema": "argws-experience-package/v2",
+  "version": 2,
+  "package": {
+    "key": "premium-client-quickstart",
+    "name": "Premium Client Quickstart",
+    "description": "Exemplo completo para iniciar um novo cliente com Landing, Agenda, bindings, theme, assets e Runtime SDK.",
+    "package_version": "1.1.0",
+    "authoring_mode": "runtime-html",
+    "capabilities": [
+      "booking",
+      "branding",
+      "analytics",
+      "bindings",
+      "theme"
+    ]
+  },
+  "pages": {
+    "landing": {
+      "entry": "pages/landing.html",
+      "route": "/pagina",
+      "surface": "LANDING"
+    },
+    "booking": {
+      "entry": "pages/booking.html",
+      "route": "/agendar",
+      "surface": "BOOKING"
+    }
+  },
+  "files": {
+    "bindings": "bindings.json",
+    "theme": "theme.json"
+  }
+}

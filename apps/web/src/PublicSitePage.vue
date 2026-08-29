@@ -45,6 +45,8 @@ const bookingHtml=computed(()=>{const content=catalog.value?.config.booking_temp
 const loginHtml=computed(()=>loginPage.value?.html_document||'')
 const templateGlobals=computed<Record<string,unknown>>(()=>{const content=catalog.value?.config.booking_template?.content;return content&&!isHtmlContent(content)?content.global_styles||{}:{}})
 const widgetCatalog=computed<WidgetCatalog|null>(()=>{const current=catalog.value;if(!current)return null;return{config:{...current.config,booking_template:widgetTemplate(current.config.booking_template)},services:current.services,professionals:current.professionals}})
+const visualLandingContent=computed<BlockPageContent>(()=>landing.value?blockContent(landing.value.content):({version:3,blocks:[]} as BlockPageContent))
+const catalogView=computed<Catalog>(()=>catalog.value??({config:{} as BookingConfig,services:[],professionals:[],branding:{} as BrandingManifest} as Catalog))
 const bookingPageStyle=computed<CSSProperties>(()=>{const g=templateGlobals.value;return{'--booking-page-primary':String(g.primary||'var(--sp-primary,#2563eb)'),'--booking-page-secondary':String(g.secondary||'#071426'),'--booking-page-accent':String(g.accent||'var(--sp-accent,#7c3aed)'),'--booking-page-bg':String(g.background||'#f5f7fb'),'--booking-page-text':String(g.text||'#0f172a'),'--booking-page-radius':`${Number(g.radius||26)}px`} as CSSProperties})
 
 async function request<T>(resource:string):Promise<T>{const response=await fetch(`${window.location.origin}/api/v1/public${resource}`,{cache:'no-store',headers:{Accept:'application/json'}});const payload=await response.json().catch(()=>({})) as Envelope<T>;if(!response.ok||payload.data===undefined)throw new Error(payload.error?.message||`Falha HTTP ${response.status}`);return payload.data}
@@ -106,7 +108,7 @@ onMounted(()=>{window.addEventListener('scheduler-pro-analytics-event',onAnalyti
     <template v-else-if="landingMode&&(experienceHtml||landing)">
       <HtmlTemplateFrame v-if="experienceHtml" :html="experienceHtml" mode="landing" :context="runtimeContext"/>
       <HtmlTemplateFrame v-else-if="landingHtml" :html="landingHtml" mode="landing" :context="runtimeContext"/>
-      <PublicVisualLandingRenderer v-else :content="blockContent(landing.content)" :services="catalog?.services||[]" :professionals="catalog?.professionals||[]">
+      <PublicVisualLandingRenderer v-else-if="landing" :content="visualLandingContent" :services="catalog?.services||[]" :professionals="catalog?.professionals||[]">
         <template #booking><PublicBookingWidget v-if="widgetCatalog&&runtimeContext.features?.public_booking" :catalog="widgetCatalog"/><div v-else class="booking-unavailable"><CalendarDays :size="30"/><strong>Agenda online indisponível neste momento.</strong><span>Você ainda pode usar os contatos desta página.</span></div></template>
       </PublicVisualLandingRenderer>
     </template>
@@ -114,7 +116,7 @@ onMounted(()=>{window.addEventListener('scheduler-pro-analytics-event',onAnalyti
     <template v-else-if="bookingMode&&(experienceHtml||catalog)">
       <HtmlTemplateFrame v-if="experienceHtml" :html="experienceHtml" mode="booking" :context="runtimeContext"/>
       <HtmlTemplateFrame v-else-if="bookingHtml" :html="bookingHtml" mode="booking" :context="runtimeContext"/>
-      <section v-else class="direct-booking-shell" :data-template="catalog.config.booking_template?.key||''"><header class="direct-booking-header"><div class="direct-brand"><img v-if="catalog.branding.assets.logo_url" :src="catalog.branding.assets.logo_url" :alt="catalog.branding.app.public_name"/><div v-else class="direct-mark">SP</div><div><strong>{{catalog.branding.app.public_name||'Scheduler Pro'}}</strong><small>{{catalog.branding.app.slogan||'Agendamento online'}}</small></div></div><div class="direct-copy"><span>Agenda online</span><h1>{{catalog.config.title}}</h1><p>{{catalog.config.subtitle}}</p></div></header><PublicBookingWidget v-if="widgetCatalog" :catalog="widgetCatalog"/></section>
+      <section v-else-if="catalog" class="direct-booking-shell" :data-template="catalogView.config.booking_template?.key||''"><header class="direct-booking-header"><div class="direct-brand"><img v-if="catalogView.branding.assets.logo_url" :src="catalogView.branding.assets.logo_url" :alt="catalogView.branding.app.public_name"/><div v-else class="direct-mark">SP</div><div><strong>{{catalogView.branding.app.public_name||'Scheduler Pro'}}</strong><small>{{catalogView.branding.app.slogan||'Agendamento online'}}</small></div></div><div class="direct-copy"><span>Agenda online</span><h1>{{catalogView.config.title}}</h1><p>{{catalogView.config.subtitle}}</p></div></header><PublicBookingWidget v-if="widgetCatalog" :catalog="widgetCatalog"/></section>
     </template>
     <section v-else class="public-state unavailable"><LogIn v-if="loginMode" :size="48"/><CalendarDays v-else :size="48"/><h1>{{loginMode?'Login indisponível':landingMode?'Página em preparação':'Agenda indisponível'}}</h1><p>{{error||'Este conteúdo ainda não está disponível.'}}</p></section>
   </main>

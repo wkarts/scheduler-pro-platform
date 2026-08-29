@@ -1,0 +1,26 @@
+{
+  "schema": "argws-theme-tokens/v1",
+  "version": 1,
+  "name": "Premium Quickstart",
+  "colors": {
+    "primary": "#2563eb",
+    "secondary": "#0b0f1a",
+    "accent": "#7c3aed",
+    "background": "#f6f8fc",
+    "surface": "#ffffff",
+    "text": "#0f172a",
+    "muted": "#64748b"
+  },
+  "typography": {
+    "heading": "Sora, Inter, sans-serif",
+    "body": "Inter, system-ui, sans-serif"
+  },
+  "radius": {
+    "sm": 10,
+    "md": 18,
+    "lg": 30
+  },
+  "spacing": {
+    "section": "clamp(64px,8vw,120px)"
+  }
+}

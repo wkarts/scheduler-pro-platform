@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from 'vue'
-import { apiDelete, apiGet, apiPost, apiPut, type ApiError } from './api/client'
+import { apiDelete, apiDownloadFile, apiGet, apiPost, apiPut, type ApiError } from './api/client'
 import { confirmDialog, promptDialog } from './appDialog'
 
 type LoginResponse = {
@@ -239,6 +239,25 @@ type CreatedTenant = {
   status: string
 }
 
+type DeveloperKitArtifact = {
+  key: string
+  label: string
+  filename: string
+  media_type: string
+  size_bytes: number
+}
+
+type DeveloperKit = {
+  version: string
+  runtime_sdk: string
+  experience_contract: string
+  bindings_contract: string
+  theme_contract: string
+  ai_standard: string
+  sdk_guide: string
+  artifacts: DeveloperKitArtifact[]
+}
+
 type PwaInstaller = {
   canInstall: boolean
   isInstalled: boolean
@@ -255,6 +274,7 @@ type ModuleKey =
   | 'builds'
   | 'logs'
   | 'branding'
+  | 'template-studio'
   | 'integrations'
   | 'audit'
   | 'settings'
@@ -281,6 +301,7 @@ const modules: NavItem[] = [
   { key: 'builds', label: 'Builds e distribuições', icon: '⬢', description: 'PWA, desktop e mobile', permissions: ['builds.read'] },
   { key: 'logs', label: 'Logs e observabilidade', icon: '◫', description: 'Plataforma, tenants e console', permissions: ['observability.read'] },
   { key: 'branding', label: 'Marca e aplicativos', icon: '◇', description: 'Perfis de distribuição', permissions: ['builds.read', 'branding.manage'] },
+  { key: 'template-studio', label: 'SDK & Template Studio', icon: '⌘', description: 'SDK, padrão mestre, contratos e exemplos para novos clientes', permissions: ['templates.manage'] },
   { key: 'integrations', label: 'Integrações', icon: '⌁', description: 'Domínios, ARGWS WhatsApp API, armazenamento e filas', permissions: ['integrations.read'] },
   { key: 'audit', label: 'Auditoria', icon: '☷', description: 'Ações administrativas', permissions: ['audit.read'] },
   { key: 'settings', label: 'Configurações', icon: '⚙', description: 'Feature flags e parâmetros', permissions: ['settings.manage'] },
@@ -330,6 +351,7 @@ const provisioning = ref<ProvisioningJob[]>([])
 const builds = ref<BuildJob[]>([])
 const profiles = ref<BuildProfile[]>([])
 const integrations = ref<Record<string, unknown>>({})
+const developerKit = ref<DeveloperKit | null>(null)
 const flags = ref<FeatureFlag[]>([])
 const auditEntries = ref<AuditEntry[]>([])
 const createdTenant = ref<CreatedTenant | null>(null)
@@ -555,11 +577,54 @@ async function refreshBase(): Promise<void> {
   errorMessage.value = failures.length ? `Alguns dados não puderam ser atualizados. ${failures[0]}` : ''
 }
 
+async function loadDeveloperKit(): Promise<void> {
+  developerKit.value = await apiGet<DeveloperKit>('/platform/templates/developer-kit', token())
+}
+
+async function downloadDeveloperKitArtifact(item: DeveloperKitArtifact): Promise<void> {
+  try {
+    await apiDownloadFile(`/platform/templates/developer-kit/artifacts/${encodeURIComponent(item.key)}`, item.filename, token())
+  } catch (error) {
+    handleApiError(error, `Falha ao baixar ${item.label}.`)
+  }
+}
+
+async function copyDeveloperText(value: string, label: string): Promise<void> {
+  if (!value) return
+  try {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(value)
+    } else {
+      const input = document.createElement('textarea')
+      input.value = value
+      input.style.position = 'fixed'
+      input.style.opacity = '0'
+      document.body.appendChild(input)
+      input.select()
+      document.execCommand('copy')
+      input.remove()
+    }
+    showToast(`${label} copiado.`)
+  } catch {
+    errorMessage.value = `Não foi possível copiar ${label.toLowerCase()}.`
+  }
+}
+
+function formatBytes(value: number): string {
+  if (!Number.isFinite(value) || value <= 0) return '0 B'
+  const units = ['B', 'KB', 'MB', 'GB']
+  let size = value
+  let unit = 0
+  while (size >= 1024 && unit < units.length - 1) { size /= 1024; unit += 1 }
+  return `${size.toFixed(unit === 0 ? 0 : 1)} ${units[unit]}`
+}
+
 async function refreshCurrentModule(): Promise<void> {
   try {
     if (activeModule.value === 'access') await loadAccess()
     if (activeModule.value === 'capabilities') await loadCapabilities()
     if (activeModule.value === 'logs') await loadLogView()
+    if (activeModule.value === 'template-studio' && hasPermission('templates.manage')) await loadDeveloperKit()
     if (activeModule.value === 'integrations' && hasPermission('integrations.read')) {
       integrations.value = await apiGet('/platform/integrations/status', token())
     }
@@ -1311,6 +1376,37 @@ onUnmounted(() => {
             </section>
 
             <article v-if="logSummary" class="panel table-panel"><div class="panel-title"><div><h3>Isolamento por tenant</h3><p>Banco, storage e artefatos individualizados</p></div></div><div class="responsive-table"><table><thead><tr><th>Tenant</th><th>Banco</th><th>Storage</th><th>Artefatos</th><th>Status</th></tr></thead><tbody><tr v-for="boundary in logSummary.tenant_boundaries" :key="boundary.tenant_id"><td>{{ boundary.tenant_name }}</td><td><strong>{{ boundary.database_name }}</strong><small>{{ boundary.database_user }}</small></td><td><strong>{{ boundary.storage_bucket }}</strong><small>{{ boundary.storage_prefix }}</small></td><td>{{ boundary.artifact_prefix }}</td><td><span class="status-pill" :class="statusClass(boundary.isolation_status)">{{ boundary.isolation_status }}</span></td></tr></tbody></table></div></article>
+          </section>
+
+          <section v-else-if="activeModule === 'template-studio'" class="view-stack sdk-studio">
+            <section class="metric-grid compact">
+              <article class="metric-card"><div><span>ARGWS Visual Builder</span><strong>{{ developerKit?.version || '2.4.0' }}</strong></div></article>
+              <article class="metric-card"><div><span>Runtime</span><strong>{{ developerKit?.runtime_sdk || 'Template Runtime SDK v1' }}</strong></div></article>
+              <article class="metric-card"><div><span>Contrato</span><strong>{{ developerKit?.experience_contract || 'argws-experience-package/v2' }}</strong></div></article>
+            </section>
+            <article class="panel sdk-studio-intro">
+              <div class="panel-title"><div><h3>Kit permanente para novos clientes</h3><p>Use este material remotamente para iniciar uma Landing/Agenda compatível sem depender dos arquivos da sua máquina.</p></div><button class="btn primary" :disabled="!developerKit?.ai_standard" @click="copyDeveloperText(developerKit?.ai_standard || '', 'Prompt mestre')">Copiar prompt mestre</button></div>
+              <div class="sdk-studio-flow"><span>HTML/CSS/JS</span><b>→</b><span>Experience Contract v2</span><b>→</b><span>ARGWSRuntime</span><b>→</b><span>Host Adapter</span></div>
+            </article>
+            <article class="panel">
+              <div class="panel-title"><div><h3>Downloads oficiais</h3><p>Documentação, SDK e exemplo enriquecido, sempre na mesma versão da plataforma.</p></div></div>
+              <div class="sdk-artifact-grid">
+                <article v-for="item in developerKit?.artifacts || []" :key="item.key" class="sdk-artifact-card">
+                  <div><strong>{{ item.label }}</strong><small>{{ item.filename }} • {{ formatBytes(item.size_bytes) }}</small></div>
+                  <button class="btn small" @click="downloadDeveloperKitArtifact(item)">Baixar</button>
+                </article>
+              </div>
+            </article>
+            <section class="dashboard-grid sdk-doc-grid">
+              <article class="panel">
+                <div class="panel-title"><div><h3>Padrão mestre para IA</h3><p>Copie e envie junto com a identidade/conteúdo do novo cliente.</p></div><button class="btn small" :disabled="!developerKit?.ai_standard" @click="copyDeveloperText(developerKit?.ai_standard || '', 'Prompt mestre')">Copiar</button></div>
+                <textarea class="sdk-document" readonly :value="developerKit?.ai_standard || 'Carregando…'"></textarea>
+              </article>
+              <article class="panel">
+                <div class="panel-title"><div><h3>Template Runtime SDK v1</h3><p>Referência rápida para Booking, contexto, branding, navegação e analytics.</p></div><button class="btn small" :disabled="!developerKit?.sdk_guide" @click="copyDeveloperText(developerKit?.sdk_guide || '', 'SDK')">Copiar</button></div>
+                <textarea class="sdk-document" readonly :value="developerKit?.sdk_guide || 'Carregando…'"></textarea>
+              </article>
+            </section>
           </section>
 
           <section v-else-if="activeModule === 'branding'" class="panel table-panel"><div class="panel-title"><div><h3>Perfis de distribuição</h3><p>Desktop reflete Web; mobile permanece dedicado.</p></div></div><div class="responsive-table"><table><thead><tr><th>Tenant</th><th>Alvo</th><th>Nome</th><th>Endpoint</th></tr></thead><tbody><tr v-for="profile in filteredProfiles" :key="profile.id"><td>{{ tenants.find(item => item.id === profile.tenant)?.name || profile.tenant }}</td><td>{{ profile.target }}</td><td>{{ profile.name }}</td><td>{{ profile.api_url }}</td></tr></tbody></table></div></section>

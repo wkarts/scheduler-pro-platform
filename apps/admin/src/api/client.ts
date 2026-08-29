@@ -126,3 +126,31 @@ export async function apiPostForm<T>(path: string, form: FormData, token?: strin
     'POST',
   )
 }
+
+export async function apiDownloadFile(path: string, filename: string, token?: string): Promise<void> {
+  const response = await fetch(`${API_BASE_URL}${path}`, {
+    headers: { Accept: '*/*', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+  })
+  if (!response.ok) {
+    const payload = (await response.json().catch(() => ({}))) as ApiErrorPayload
+    throw new ApiError(
+      payload.error?.message || `Erro HTTP ${response.status}`,
+      response.status,
+      payload.error?.code,
+      payload.error?.details,
+    )
+  }
+  const blob = await response.blob()
+  const url = URL.createObjectURL(blob)
+  try {
+    const anchor = document.createElement('a')
+    anchor.href = url
+    anchor.download = filename
+    anchor.style.display = 'none'
+    document.body.appendChild(anchor)
+    anchor.click()
+    anchor.remove()
+  } finally {
+    window.setTimeout(() => URL.revokeObjectURL(url), 1000)
+  }
+}
