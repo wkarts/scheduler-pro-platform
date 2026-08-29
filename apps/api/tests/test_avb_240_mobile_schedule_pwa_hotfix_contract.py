@@ -77,11 +77,11 @@ def test_pwa_update_and_branding_manifest_bypass_stale_cache() -> None:
     assert "updateViaCache: 'none'" in pwa
 
     sw = (web / "public" / "sw.js").read_text(encoding="utf-8")
-    assert "avb-2.4.0-final-mobile-agenda-v5" in sw
+    assert "avb-2.4.0-pr63-final-runtime-v6" in sw
 
     branding = (API_ROOT / "app" / "api" / "v1" / "routes" / "branding.py").read_text(encoding="utf-8")
     assert '"Cache-Control": "no-store, max-age=0"' in branding
-    assert "avb240-brand-v2" in branding
+    assert "avb240-brand-v3" in branding
 
 
 def test_multitenant_ci_keeps_the_stable_stack_workflow() -> None:
