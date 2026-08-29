@@ -68,6 +68,13 @@ class MarketingRequest(BaseModel):
     tiktok_pixel_id: str | None = Field(default=None, max_length=80)
 
 
+def _dict_str_any(value: Any) -> dict[str, Any]:
+    """Normaliza JSON dinâmico para o tipo de metadado usado pelo Experience Contract."""
+    if not isinstance(value, dict):
+        return {}
+    return {str(key): item for key, item in value.items()}
+
+
 async def _service(session: AsyncSession, context: TenantContext) -> ExperienceService:
     return ExperienceService(session, context)
 
@@ -230,7 +237,7 @@ async def import_official_experience(
         booking_content = booking["version"]["content"]
         if not HtmlTemplateContract.is_html_content(landing_content) or not HtmlTemplateContract.is_html_content(booking_content):
             raise APIError("EXPERIENCE_TEMPLATE_INVALID", "O modelo do Control Plane não é uma experiência HTML compatível.", 409)
-        meta = landing_content.get("experience") if isinstance(landing_content.get("experience"), dict) else {}
+        meta = _dict_str_any(landing_content.get("experience"))
         parsed = ParsedExperience(
             source_schema=str(meta.get("schema") or "argws-experience-package/v2"),
             package_key=template_key,
@@ -238,8 +245,8 @@ async def import_official_experience(
             description="",
             landing_html=str(landing_content["html_document"]),
             booking_html=str(booking_content["html_document"]),
-            bindings=meta.get("bindings") if isinstance(meta.get("bindings"), dict) else {},
-            theme=meta.get("theme") if isinstance(meta.get("theme"), dict) else {},
+            bindings=_dict_str_any(meta.get("bindings")),
+            theme=_dict_str_any(meta.get("theme")),
             assets=(),
             warnings=("Modelo carregado da biblioteca do Control Plane; assets já incorporados ao HTML.",),
         )
