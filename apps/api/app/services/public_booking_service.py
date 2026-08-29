@@ -437,11 +437,8 @@ class PublicBookingService:
             email=email,
             phone_mode=phone_mode,
         )
-        duration = (
-            int(service["duration_minutes"])
-            if service
-            else int(config["default_duration_minutes"])
-        )
+        service_duration = int(service["duration_minutes"] or 0) if service else 0
+        duration = service_duration if service_duration > 0 else int(config["default_duration_minutes"])
         ends_at = aware_start + timedelta(minutes=max(5, duration))
         appointment = await self.appointments.create(
             {

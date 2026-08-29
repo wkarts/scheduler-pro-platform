@@ -19,6 +19,7 @@ export type BrandingManifest = {
   settings: Record<string, unknown>
   status: string
   published_at?: string | null
+  branding_version?: number
 }
 
 export async function loadBrandingManifest(): Promise<BrandingManifest> {
@@ -45,6 +46,8 @@ export function applyBranding(manifest: BrandingManifest): void {
       link.rel = 'icon'
       document.head.appendChild(link)
     }
-    link.href = favicon
+    const version = Number(manifest.branding_version || 0)
+    const separator = favicon.includes('?') ? '&' : '?'
+    link.href = version ? `${favicon}${separator}v=${version}` : favicon
   }
 }

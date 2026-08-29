@@ -408,7 +408,7 @@ class AppointmentService:
                 raise APIError("APPOINTMENT_RANGE_INVALID", "Período de agenda inválido.", 422)
             if range_end - range_start > timedelta(days=370):
                 raise APIError("APPOINTMENT_RANGE_TOO_LARGE", "Consulte no máximo 370 dias por vez.", 422)
-            clauses.append("a.starts_at < :range_end and coalesce(a.ends_at, a.starts_at + interval '60 minutes') > :range_start")
+            clauses.append("a.starts_at >= :range_start and a.starts_at < :range_end")
             params["range_start"] = range_start
             params["range_end"] = range_end
         elif day:
@@ -432,12 +432,12 @@ class AppointmentService:
                     f"""
                     select a.id::text, a.customer_id::text, a.service_id::text,
                            a.professional_id::text, a.starts_at,
-                           coalesce(a.ends_at, a.starts_at + interval '60 minutes') as ends_at,
+                           case when a.ends_at is null or a.ends_at <= a.starts_at then a.starts_at + interval '60 minutes' else a.ends_at end as ends_at,
                            a.status, a.source, a.created_at,
                            coalesce(c.name,'Cliente legado') as customer_name,
                            c.phone as customer_phone, c.email as customer_email,
                            coalesce(s.name,'Atendimento') as service_name,
-                           coalesce(s.duration_minutes, greatest(5, extract(epoch from (coalesce(a.ends_at, a.starts_at + interval '60 minutes')-a.starts_at))/60)::integer) as duration_minutes,
+                           case when coalesce(s.duration_minutes, 0) > 0 then s.duration_minutes else greatest(5, extract(epoch from ((case when a.ends_at is null or a.ends_at <= a.starts_at then a.starts_at + interval '60 minutes' else a.ends_at end)-a.starts_at))/60)::integer end as duration_minutes,
                            s.price, coalesce(p.name,'Agenda geral') as professional_name
                     from appointments a
                     left join customers c on c.id = a.customer_id
@@ -460,12 +460,12 @@ class AppointmentService:
                     """
                     select a.id::text, a.customer_id::text, a.service_id::text,
                            a.professional_id::text, a.starts_at,
-                           coalesce(a.ends_at, a.starts_at + interval '60 minutes') as ends_at,
+                           case when a.ends_at is null or a.ends_at <= a.starts_at then a.starts_at + interval '60 minutes' else a.ends_at end as ends_at,
                            a.status, a.source, a.created_at,
                            coalesce(c.name,'Cliente legado') as customer_name,
                            c.phone as customer_phone, c.email as customer_email,
                            coalesce(s.name,'Atendimento') as service_name,
-                           coalesce(s.duration_minutes, greatest(5, extract(epoch from (coalesce(a.ends_at, a.starts_at + interval '60 minutes')-a.starts_at))/60)::integer) as duration_minutes,
+                           case when coalesce(s.duration_minutes, 0) > 0 then s.duration_minutes else greatest(5, extract(epoch from ((case when a.ends_at is null or a.ends_at <= a.starts_at then a.starts_at + interval '60 minutes' else a.ends_at end)-a.starts_at))/60)::integer end as duration_minutes,
                            s.price, coalesce(p.name,'Agenda geral') as professional_name
                     from appointments a
                     left join customers c on c.id = a.customer_id

@@ -83,15 +83,17 @@ async def tenant_pwa_manifest(
     app = manifest["app"]
     assets = manifest["assets"]
     theme = manifest["theme"]
+    branding_version = int(manifest.get("branding_version") or 0)
     icon_url = str(assets.get("icon_url") or "")
+    version_suffix = f"?v={branding_version}" if branding_version else ""
     if icon_url and icon_url not in {"/icons/icon-512.png", "/icons/icon.svg"}:
-        icons = [{"src": icon_url, "sizes": "any", "type": "image/png", "purpose": "any maskable"}]
+        icons = [{"src": f"{icon_url}{version_suffix}", "sizes": "any", "type": "image/png", "purpose": "any maskable"}]
     else:
         icons = [
-            {"src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any"},
-            {"src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any"},
-            {"src": "/icons/maskable-192.png", "sizes": "192x192", "type": "image/png", "purpose": "maskable"},
-            {"src": "/icons/maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable"},
+            {"src": "/icons/icon-192.png?v=avb240-brand-v2", "sizes": "192x192", "type": "image/png", "purpose": "any"},
+            {"src": "/icons/icon-512.png?v=avb240-brand-v2", "sizes": "512x512", "type": "image/png", "purpose": "any"},
+            {"src": "/icons/maskable-192.png?v=avb240-brand-v2", "sizes": "192x192", "type": "image/png", "purpose": "maskable"},
+            {"src": "/icons/maskable-512.png?v=avb240-brand-v2", "sizes": "512x512", "type": "image/png", "purpose": "maskable"},
         ]
     payload = {
         "id": f"/{context.slug}",
@@ -112,7 +114,7 @@ async def tenant_pwa_manifest(
             {"name": "Agendar", "url": "/agendar"},
         ],
     }
-    return JSONResponse(payload, media_type="application/manifest+json", headers={"Cache-Control": "public, max-age=300, must-revalidate"})
+    return JSONResponse(payload, media_type="application/manifest+json", headers={"Cache-Control": "no-store, max-age=0", "X-Scheduler-Branding-Version": str(branding_version)})
 
 
 @router.get("/assets/{kind}")
@@ -125,7 +127,7 @@ async def public_brand_asset(
         _stream(result["Body"]),
         media_type=str(result.get("ContentType") or "application/octet-stream"),
         headers={
-            "Cache-Control": "public, max-age=300, must-revalidate",
+            "Cache-Control": "no-cache, max-age=0, must-revalidate",
             "ETag": str(result.get("ETag", "")),
         },
     )

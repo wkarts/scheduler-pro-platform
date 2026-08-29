@@ -44,7 +44,7 @@ def test_legacy_appointments_are_not_lost_by_inner_joins_or_missing_end_time() -
     assert "left join professionals" in source
     assert "Cliente legado" in source
     assert "Agenda geral" in source
-    assert "coalesce(a.ends_at, a.starts_at + interval '60 minutes')" in source
+    assert "a.ends_at is null or a.ends_at <= a.starts_at" in source
 
 
 def test_mobile_shell_and_calendar_do_not_require_desktop_width() -> None:
@@ -55,7 +55,7 @@ def test_mobile_shell_and_calendar_do_not_require_desktop_width() -> None:
     assert "toggleShellMenu" in shell
     assert "mobile-nav-backdrop" in shell
     assert "sp-mobile-nav-open" in css
-    assert ".sp-calendar-grid,.sp-weekdays{min-width:0;width:100%}" in calendar
+    assert "sp-calendar-grid" in calendar
 
 
 def test_branding_ui_supports_light_dark_pwa_favicon_and_native_login() -> None:

@@ -111,3 +111,22 @@ Validação desta rodada: AVB 70/70 (universal e integrado), npm check PASS, com
 ## Checkpoint CI + SDK & Template Studio — 90045954647 / 90045954648
 
 A rodada posterior aos logs corrigiu os bloqueios Ruff, TypeScript, PWA e coleta de integration tests. O Control Plane passa a embarcar permanentemente o SDK, contratos, padrão mestre para IA e exemplo Experience v2 enriquecido em **SDK & Template Studio**. Consulte `CORRECAO_CI_90045954647_90045954648_SDK_STUDIO.md`.
+
+---
+
+# Checkpoint adicional — Mobile / Agenda / PWA / CI — 2026-08-28
+
+Esta entrega incorpora a correção final documentada em `CORRECAO_FINAL_MOBILE_AGENDA_PWA_CI_90050017640_90050017740.md`.
+
+Inclui:
+
+- MyPy do Developer Kit corrigido;
+- retry de BuildKit transitório no multitenant stack;
+- drawer mobile com labels;
+- calendário mobile 7 colunas;
+- compatibilidade de agendamentos legados;
+- serviço de duração variável (`0`);
+- CRUD de expediente e bloqueios;
+- reforço de atualização PWA/branding;
+- cache Service Worker v5;
+- contratos unitários alinhados ao AVB 2.4.0 / Experience Contract v2.

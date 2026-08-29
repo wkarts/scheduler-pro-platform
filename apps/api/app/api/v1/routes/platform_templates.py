@@ -211,7 +211,7 @@ async def download_developer_kit_artifact(
     artifact: DeveloperKitArtifact,
     _: AuthPrincipal = Depends(require_platform_permission("templates.manage")),
 ) -> FileResponse:
-    filename, _, media_type = DEVELOPER_KIT_ARTIFACTS[artifact]
+    filename, _label, media_type = DEVELOPER_KIT_ARTIFACTS[artifact]
     path = DEVELOPER_KIT_DIR / filename
     if not path.is_file():
         raise APIError("AVB_DEVELOPER_ARTIFACT_MISSING", "Material do AVB não está disponível nesta instalação.", 404)
