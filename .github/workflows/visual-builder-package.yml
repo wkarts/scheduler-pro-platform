@@ -1,0 +1,248 @@
+name: ARGWS Visual Builder Package
+
+on:
+  workflow_run:
+    workflows: ['Release']
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: 'Release do Scheduler Pro que receberá o pacote (ex.: 1.0.0)'
+        required: true
+      source_ref:
+        description: 'Ref do código a empacotar. Vazio usa a própria release_tag.'
+        required: false
+        default: ''
+
+permissions:
+  contents: write
+
+concurrency:
+  group: visual-builder-package-${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.event.workflow_run.id }}
+  cancel-in-progress: false
+
+jobs:
+  package:
+    name: Package standalone ARGWS Visual Builder
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Resolve Scheduler Pro release and source ref
+        id: source
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          EVENT_NAME: ${{ github.event_name }}
+          INPUT_RELEASE_TAG: ${{ inputs.release_tag || '' }}
+          INPUT_SOURCE_REF: ${{ inputs.source_ref || '' }}
+          RELEASE_RUN_SHA: ${{ github.event.workflow_run.head_sha || '' }}
+        run: |
+          set -euo pipefail
+
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            RELEASE_TAG="$INPUT_RELEASE_TAG"
+            SOURCE_REF="${INPUT_SOURCE_REF:-$RELEASE_TAG}"
+          else
+            SOURCE_REF="$RELEASE_RUN_SHA"
+            RELEASE_TAG="$(
+              gh api --paginate "repos/${GITHUB_REPOSITORY}/releases?per_page=100" \
+                --jq ".[] | select(.target_commitish == \"${RELEASE_RUN_SHA}\") | .tag_name" \
+                | head -n 1
+            )"
+
+            if [ -z "$RELEASE_TAG" ]; then
+              while IFS= read -r candidate; do
+                [ -n "$candidate" ] || continue
+                candidate_sha="$(
+                  gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/${candidate}" \
+                    --jq '.object.sha' 2>/dev/null || true
+                )"
+                if [ "$candidate_sha" = "$RELEASE_RUN_SHA" ]; then
+                  RELEASE_TAG="$candidate"
+                  break
+                fi
+              done < <(gh release list --limit 100 --json tagName --jq '.[].tagName')
+            fi
+          fi
+
+          if [ -z "$RELEASE_TAG" ] || [ -z "$SOURCE_REF" ]; then
+            echo "Não foi possível resolver a Release/ref do Scheduler Pro." >&2
+            exit 2
+          fi
+
+          gh release view "$RELEASE_TAG" >/dev/null
+          echo "release_tag=${RELEASE_TAG}" >> "$GITHUB_OUTPUT"
+          echo "ref=${SOURCE_REF}" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.source.outputs.ref }}
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Resolve and validate ARGWS Visual Builder version
+        id: visual_builder
+        shell: bash
+        run: |
+          set -euo pipefail
+          AVB_VERSION="$(node -p "require('./packages/visual-builder/package.json').version")"
+          AVB_NAME="$(node -p "require('./packages/visual-builder/package.json').name")"
+          if [ "$AVB_NAME" != "@argws/visual-builder" ]; then
+            echo "Pacote inesperado: ${AVB_NAME}" >&2
+            exit 2
+          fi
+          if [[ ! "$AVB_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+([-.][0-9A-Za-z.-]+)?$ ]]; then
+            echo "Versão inválida do ARGWS Visual Builder: ${AVB_VERSION}" >&2
+            exit 2
+          fi
+          echo "version=${AVB_VERSION}" >> "$GITHUB_OUTPUT"
+          echo "ARGWS_VISUAL_BUILDER_VERSION=${AVB_VERSION}" >> "$GITHUB_ENV"
+
+      - name: Validate ARGWS Visual Builder
+        run: |
+          npm --workspace packages/visual-builder run check
+          npm --workspace packages/visual-builder test
+
+      - name: Build standalone packages
+        id: pack
+        shell: bash
+        env:
+          RELEASE_TAG: ${{ steps.source.outputs.release_tag }}
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts
+
+          npm pack --workspace packages/visual-builder --pack-destination artifacts >/tmp/avb-pack-output.txt
+          PACK_FILE="$(find artifacts -maxdepth 1 -type f -name '*visual-builder*.tgz' -printf '%f\n' | sort | head -n 1)"
+          if [ -z "$PACK_FILE" ]; then
+            echo "npm pack não gerou o pacote esperado do ARGWS Visual Builder." >&2
+            cat /tmp/avb-pack-output.txt >&2 || true
+            exit 2
+          fi
+
+          SOURCE_ARCHIVE="argws-visual-builder-${ARGWS_VISUAL_BUILDER_VERSION}-source.tar.gz"
+          MANIFEST="argws-visual-builder-${ARGWS_VISUAL_BUILDER_VERSION}-manifest.json"
+          CHECKSUMS="argws-visual-builder-${ARGWS_VISUAL_BUILDER_VERSION}-SHA256SUMS.txt"
+
+          git archive \
+            --format=tar.gz \
+            --prefix="argws-visual-builder-${ARGWS_VISUAL_BUILDER_VERSION}/" \
+            --output="artifacts/${SOURCE_ARCHIVE}" \
+            HEAD:packages/visual-builder
+
+          cat > "artifacts/${MANIFEST}" <<JSON
+          {
+            "name": "ARGWS Visual Builder",
+            "package": "@argws/visual-builder",
+            "version": "${ARGWS_VISUAL_BUILDER_VERSION}",
+            "scheduler_pro_release": "${RELEASE_TAG}",
+            "source_ref": "${{ steps.source.outputs.ref }}",
+            "source_sha": "$(git rev-parse HEAD)",
+            "npm_package": "${PACK_FILE}",
+            "source_archive": "${SOURCE_ARCHIVE}"
+          }
+          JSON
+
+          (
+            cd artifacts
+            sha256sum "$PACK_FILE" "$SOURCE_ARCHIVE" "$MANIFEST" > "$CHECKSUMS"
+          )
+
+          echo "pack_file=${PACK_FILE}" >> "$GITHUB_OUTPUT"
+          echo "source_archive=${SOURCE_ARCHIVE}" >> "$GITHUB_OUTPUT"
+          echo "manifest=${MANIFEST}" >> "$GITHUB_OUTPUT"
+          echo "checksums=${CHECKSUMS}" >> "$GITHUB_OUTPUT"
+
+      - name: Attach standalone package to Scheduler Pro Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ steps.source.outputs.release_tag }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh release view "$RELEASE_TAG" >/dev/null
+          gh release upload "$RELEASE_TAG" artifacts/* --clobber
+
+      - name: Backfill canonical 1.0.0 when Visual Builder source is identical
+        if: ${{ steps.source.outputs.release_tag != '1.0.0' }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if ! gh release view 1.0.0 >/dev/null 2>&1; then
+            exit 0
+          fi
+          if ! git rev-parse '1.0.0^{commit}' >/dev/null 2>&1; then
+            exit 0
+          fi
+          if ! git diff --quiet '1.0.0^{commit}' HEAD -- packages/visual-builder; then
+            echo "ARGWS Visual Builder mudou desde 1.0.0; backfill automático recusado por segurança."
+            exit 0
+          fi
+
+          PACK_FILE="${{ steps.pack.outputs.pack_file }}"
+          if gh release view 1.0.0 --json assets --jq '.assets[].name' | grep -Fxq "$PACK_FILE"; then
+            echo "Release 1.0.0 já contém ${PACK_FILE}."
+            exit 0
+          fi
+
+          mkdir -p backfill
+          cp "artifacts/${PACK_FILE}" "backfill/${PACK_FILE}"
+          SOURCE_ARCHIVE="argws-visual-builder-${ARGWS_VISUAL_BUILDER_VERSION}-source.tar.gz"
+          MANIFEST="argws-visual-builder-${ARGWS_VISUAL_BUILDER_VERSION}-manifest.json"
+          CHECKSUMS="argws-visual-builder-${ARGWS_VISUAL_BUILDER_VERSION}-SHA256SUMS.txt"
+          git archive \
+            --format=tar.gz \
+            --prefix="argws-visual-builder-${ARGWS_VISUAL_BUILDER_VERSION}/" \
+            --output="backfill/${SOURCE_ARCHIVE}" \
+            '1.0.0^{commit}:packages/visual-builder'
+          cat > "backfill/${MANIFEST}" <<JSON
+          {
+            "name": "ARGWS Visual Builder",
+            "package": "@argws/visual-builder",
+            "version": "${ARGWS_VISUAL_BUILDER_VERSION}",
+            "scheduler_pro_release": "1.0.0",
+            "source_ref": "1.0.0",
+            "source_sha": "$(git rev-parse '1.0.0^{commit}')",
+            "npm_package": "${PACK_FILE}",
+            "source_archive": "${SOURCE_ARCHIVE}"
+          }
+          JSON
+          (
+            cd backfill
+            sha256sum "$PACK_FILE" "$SOURCE_ARCHIVE" "$MANIFEST" > "$CHECKSUMS"
+          )
+          gh release upload 1.0.0 backfill/* --clobber
+          echo "Release 1.0.0 recebeu o pacote independente do ARGWS Visual Builder."
+
+      - name: Upload ARGWS Visual Builder build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: argws-visual-builder-${{ steps.visual_builder.outputs.version }}-scheduler-${{ steps.source.outputs.release_tag }}
+          path: artifacts/*
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: Package summary
+        shell: bash
+        env:
+          RELEASE_TAG: ${{ steps.source.outputs.release_tag }}
+        run: |
+          {
+            echo "## ARGWS Visual Builder"
+            echo
+            echo "Versão do Visual Builder: \`${ARGWS_VISUAL_BUILDER_VERSION}\`"
+            echo "Release Scheduler Pro: \`${RELEASE_TAG}\`"
+            echo "Ref empacotada: \`${{ steps.source.outputs.ref }}\`"
+            echo
+            echo "O Visual Builder mantém versionamento próprio e foi anexado separadamente à Release do Scheduler Pro."
+          } >> "$GITHUB_STEP_SUMMARY"
