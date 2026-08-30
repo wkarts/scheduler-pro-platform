@@ -1,3 +1,7 @@
+# Builds nativos pausados por decisão de produto.
+# Manter este workflow preservado para futura reativação quando Android/iOS
+# tiverem uma experiência utilizável e validada. Enquanto isso, nenhum job
+# abaixo deve gerar APK ou IPA.
 name: Mobile Artifacts
 run-name: Mobile ${{ inputs.correlation_id || github.sha }}
 
@@ -21,7 +25,8 @@ env:
 
 jobs:
   android:
-    if: inputs.target == 'all' || inputs.target == 'android' || inputs.target == 'admin-android'
+    # PAUSADO: não gerar APK até existir uma experiência Android pronta para homologação real.
+    if: ${{ false }}
     runs-on: ubuntu-24.04
     timeout-minutes: 120
     strategy:
@@ -105,7 +110,8 @@ jobs:
           compression-level: 0
 
   ios:
-    if: inputs.target == 'all' || inputs.target == 'ios' || inputs.target == 'admin-ios'
+    # PAUSADO: não gerar IPA até existir uma experiência iOS pronta para homologação real.
+    if: ${{ false }}
     runs-on: macos-15
     timeout-minutes: 120
     strategy:
