@@ -1,70 +1,90 @@
 # Scheduler Pro — Versionamento Canônico
 
-A linha oficial do Scheduler Pro passa a iniciar em **1.0.0**.
-
-A partir desta versão, releases oficiais utilizam **Semantic Versioning (SemVer)** no formato:
-
-`MAJOR.MINOR.PATCH`
+A linha oficial do Scheduler Pro inicia em **1.0.0** e utiliza Semantic Versioning no formato `MAJOR.MINOR.PATCH`.
 
 Exemplos:
 
 - `1.0.0`
 - `1.0.1`
+- `1.0.2`
 - `1.1.0`
-- `1.2.0`
 - `2.0.0`
 
-## Regras
+## Regra automática por merge
 
-- `PATCH`: correções compatíveis e melhorias incrementais sem quebra de contrato. É o incremento padrão para merges canônicos.
-- `MINOR`: funcionalidades novas compatíveis. Pode ser solicitado pelo label `semver:minor` na PR.
-- `MAJOR`: alterações incompatíveis ou uma nova geração do produto. Pode ser solicitado pelo label `semver:major` na PR.
-- O label `semver:patch` pode ser usado explicitamente, mas PATCH já é o comportamento padrão.
-- Tags canônicas não usam prefixo `v`: a versão oficial é `1.0.0`, e não `v1.0.0`.
-- Uma versão publicada nunca deve ser reapontada para outro commit. O histórico canônico é imutável.
+Toda PR mesclada em `main` que altere código/produto passa pelo workflow `Canonical Merge Release`.
 
-## GitHub Release e artefatos
+A sequência canônica é:
 
-Cada versão canônica publica uma GitHub Release com a mesma tag SemVer e artefatos contendo a versão no nome.
+1. resolver a próxima versão;
+2. persistir a versão no repositório;
+3. construir e publicar todas as imagens GHCR;
+4. validar o conjunto completo;
+5. criar a Git tag imutável;
+6. criar a GitHub Release;
+7. gerar os artefatos de distribuição;
+8. publicar o pacote independente do ARGWS Visual Builder.
 
-Exemplo para `1.0.0`:
+A GitHub Release **não é criada** se a publicação das imagens falhar.
 
-- `scheduler-pro-web-1.0.0.tar.gz`
-- `scheduler-pro-admin-1.0.0.tar.gz`
-- `scheduler-pro-cloudpanel-1.0.0.tar.gz`
-- `scheduler-pro-dockge-1.0.0.tar.gz`
-- `scheduler-pro-source-1.0.0.tar.gz`
+## Cálculo da versão
 
-APK e IPA permanecem pausados até que as experiências Android e iOS estejam aptas para homologação real.
+Sem label, o workflow considera o título/body da PR.
 
-## ARGWS Visual Builder — pacote independente em cada Release
+Labels oficiais:
 
-O ARGWS Visual Builder possui linha própria de versionamento e **não herda a versão do Scheduler Pro**.
+- `version:patch`
+- `version:minor`
+- `version:major`
 
-Exemplo válido:
+Os labels antigos `semver:patch`, `semver:minor` e `semver:major` continuam aceitos para compatibilidade.
 
-- Scheduler Pro `1.0.2`;
-- ARGWS Visual Builder `2.4.1`.
+Sem label explícito:
 
-Após toda execução bem-sucedida do workflow `Release`, o workflow `ARGWS Visual Builder Package` empacota a versão do Visual Builder presente naquele commit e publica separadamente:
+- `feat: ...` ou `feat(scope): ...` → MINOR;
+- `feat!: ...` → MAJOR;
+- `BREAKING CHANGE:` no corpo da PR → MAJOR;
+- qualquer outro título → PATCH.
 
-- pacote npm instalável, por exemplo `argws-visual-builder-2.4.0.tgz`;
-- source archive, por exemplo `argws-visual-builder-2.4.0-source.tar.gz`;
-- manifest do pacote com versão, Release Scheduler Pro, ref e SHA de origem;
-- `SHA256SUMS` específico do Visual Builder;
-- artifact separado no GitHub Actions, além dos assets anexados à GitHub Release do Scheduler Pro.
+PATCH permanece o fallback, garantindo evolução progressiva:
 
-Antes do empacotamento são executados `check` e testes do próprio Visual Builder. Uma falha nessa validação impede a publicação do pacote independente.
+```text
+1.0.0 -> 1.0.1 -> 1.0.2
+```
 
-O workflow também pode ser executado manualmente para backfill de uma Release existente. A Release canônica `1.0.0` só pode ser preenchida automaticamente a partir de uma versão posterior quando o conteúdo de `packages/visual-builder` for **idêntico** ao existente na tag `1.0.0`; caso exista qualquer diferença, o backfill é recusado por segurança.
+## Persistência da versão
+
+A versão calculada é gravada antes da publicação em:
+
+- `VERSION`;
+- `RELEASE-MANIFEST.json`;
+- `package.json` e `package-lock.json` da raiz;
+- packages do Tenant/Control Plane/Desktop/Mobile;
+- Tauri e Cargo correspondentes;
+- `@scheduler-pro/api-client`;
+- `@scheduler-pro/types`;
+- defaults de versão da API/Worker e health/version endpoint.
+
+O **ARGWS Visual Builder não é alterado por essa sincronização**; ele mantém linha independente, atualmente `2.4.x`.
 
 ## GHCR
 
-Cada imagem própria do Scheduler Pro é mantida com três referências:
+Para uma versão `1.4.3`, cada imagem própria recebe:
 
-1. **SemVer imutável**, por exemplo `:1.0.0`;
-2. **SHA imutável**, por exemplo `:<git-sha>`;
-3. **`latest`**, alias móvel para a versão canônica mais recente.
+```text
+:1.4.3
+:1.4
+:1
+:latest
+:<git-sha>
+```
+
+As imagens são publicadas para:
+
+```text
+linux/amd64
+linux/arm64
+```
 
 O conjunto inclui:
 
@@ -77,37 +97,49 @@ O conjunto inclui:
 - `acme`
 - `cloudpanel-agent`
 
-A promoção para `1.0.0` e `latest` só ocorre depois que todas as imagens do mesmo commit tiverem sido construídas e validadas.
+A promoção é feita em duas etapas: primeiro todas as tags SemVer completas são criadas e verificadas; só depois os aliases móveis `MAJOR.MINOR`, `MAJOR` e `latest` avançam.
 
 ## Rollback
 
-O Compose já utiliza `APP_IMAGE_TAG`. Para retornar todo o Scheduler Pro a uma versão canônica específica, fixe a variável no ambiente:
+O Compose utiliza `APP_IMAGE_TAG`.
+
+Para voltar exatamente a uma versão canônica:
 
 ```env
 APP_IMAGE_TAG=1.0.0
 ```
 
-Depois atualize o conjunto normalmente:
+Depois:
 
 ```bash
 docker compose pull
 docker compose up -d
 ```
 
-Para voltar a acompanhar a versão canônica mais recente:
+Para acompanhar a versão canônica mais recente:
 
 ```env
 APP_IMAGE_TAG=latest
 ```
 
-`latest` é conveniente para atualização contínua; versões SemVer e SHAs são as referências recomendadas para rollback, auditoria e reprodução exata de uma implantação.
+## ARGWS Visual Builder — pacote independente
 
-## Fonte canônica inicial
+O ARGWS Visual Builder possui linha própria de versionamento e **não herda a versão do Scheduler Pro**.
 
-O arquivo `VERSION` na raiz registra a versão-base oficial desta nova linha:
+Exemplo válido:
 
-```text
-1.0.0
-```
+- Scheduler Pro `1.0.2`;
+- ARGWS Visual Builder `2.4.1`.
 
-Os workflows de publicação utilizam essa versão como ponto inicial e passam a calcular as próximas versões estáveis a partir do histórico de releases SemVer.
+Após uma execução bem-sucedida do workflow `Release`, o workflow `ARGWS Visual Builder Package` valida e publica separadamente:
+
+- pacote npm instalável;
+- source archive;
+- manifest próprio;
+- checksums SHA-256;
+- artifact separado no GitHub Actions;
+- assets anexados à mesma GitHub Release do Scheduler Pro.
+
+## Android e iOS
+
+APK e IPA permanecem pausados até existir uma experiência mobile apta para homologação real. A alteração de versionamento não reativa os jobs nativos.

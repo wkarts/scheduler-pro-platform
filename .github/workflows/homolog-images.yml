@@ -1,0 +1,104 @@
+name: Homolog Images
+run-name: Homolog ${{ github.sha }}
+
+on:
+  push:
+    branches: [develop]
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: homolog-images
+  cancel-in-progress: true
+
+env:
+  REGISTRY_PREFIX: ghcr.io/${{ github.repository }}
+
+jobs:
+  base:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: infrastructure/docker/base/python/Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ env.REGISTRY_PREFIX }}/python-base:${{ github.sha }}
+          labels: |
+            org.opencontainers.image.version=homolog
+            org.opencontainers.image.revision=${{ github.sha }}
+
+  services:
+    needs: base
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {name: api, file: infrastructure/docker/api/Dockerfile, tag: api, build_args: "PYTHON_BASE_IMAGE=ghcr.io/${{ github.repository }}/python-base:${{ github.sha }}"}
+          - {name: worker, file: infrastructure/docker/worker/Dockerfile, tag: worker, build_args: "PYTHON_BASE_IMAGE=ghcr.io/${{ github.repository }}/python-base:${{ github.sha }}"}
+          - {name: web, file: infrastructure/docker/web/Dockerfile, tag: web, build_args: "APP_DIR=apps/web"}
+          - {name: admin, file: infrastructure/docker/web/Dockerfile, tag: admin, build_args: "APP_DIR=apps/admin"}
+          - {name: proxy, file: infrastructure/docker/proxy/Dockerfile, tag: proxy, build_args: ""}
+          - {name: acme, file: infrastructure/docker/acme/Dockerfile, tag: acme, build_args: ""}
+          - {name: cloudpanel-agent, file: infrastructure/docker/cloudpanel-agent/Dockerfile, tag: cloudpanel-agent, build_args: ""}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ${{ matrix.file }}
+          platforms: linux/amd64,linux/arm64
+          push: true
+          build-args: |
+            ${{ matrix.build_args }}
+            APP_VERSION=homolog
+            APP_RELEASE_TAG=homolog
+            APP_BUILD_SHA=${{ github.sha }}
+          tags: ${{ env.REGISTRY_PREFIX }}/${{ matrix.tag }}:${{ github.sha }}
+          labels: |
+            org.opencontainers.image.version=homolog
+            org.opencontainers.image.revision=${{ github.sha }}
+
+  promote:
+    needs: services
+    runs-on: ubuntu-latest
+    steps:
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Promote validated SHA set to homolog
+        shell: bash
+        run: |
+          set -euo pipefail
+          for image in python-base api worker web admin proxy acme cloudpanel-agent; do
+            source_ref="${REGISTRY_PREFIX}/${image}:${GITHUB_SHA}"
+            docker buildx imagetools inspect "$source_ref" >/dev/null
+          done
+          for image in python-base api worker web admin proxy acme cloudpanel-agent; do
+            source_ref="${REGISTRY_PREFIX}/${image}:${GITHUB_SHA}"
+            target_ref="${REGISTRY_PREFIX}/${image}:homolog"
+            docker buildx imagetools create --tag "$target_ref" "$source_ref"
+            docker buildx imagetools inspect "$target_ref" >/dev/null
+          done

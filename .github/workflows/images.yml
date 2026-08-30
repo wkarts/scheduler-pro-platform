@@ -1,4 +1,5 @@
 name: Images
+run-name: Images ${{ inputs.image_tag || 'VERSION' }} / ${{ inputs.source_sha && format('{0}', inputs.source_sha) || github.sha }}
 
 on:
   workflow_dispatch:
@@ -7,10 +8,14 @@ on:
         description: 'Versão SemVer do conjunto completo de imagens GHCR. Vazio usa VERSION.'
         required: false
         default: ''
+      source_sha:
+        description: 'Commit exato a construir. Vazio usa o SHA do workflow.'
+        required: false
+        default: ''
 
 concurrency:
-  group: images-${{ github.ref }}
-  cancel-in-progress: true
+  group: images-${{ inputs.image_tag || github.ref }}
+  cancel-in-progress: false
 
 permissions:
   contents: read
@@ -25,16 +30,24 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.resolve.outputs.version }}
+      minor_tag: ${{ steps.resolve.outputs.minor_tag }}
+      major_tag: ${{ steps.resolve.outputs.major_tag }}
+      source_sha: ${{ steps.resolve.outputs.source_sha }}
     steps:
       - uses: actions/checkout@v4
-      - name: Resolve e valida SemVer
+        with:
+          fetch-depth: 0
+      - name: Resolve e valida SemVer/SHA
         id: resolve
         env:
           INPUT_TAG: ${{ inputs.image_tag || '' }}
+          INPUT_SOURCE_SHA: ${{ inputs.source_sha || '' }}
         shell: bash
         run: |
           set -euo pipefail
           version="${INPUT_TAG#v}"
+          source_sha="${INPUT_SOURCE_SHA:-$GITHUB_SHA}"
+
           if [ -z "$version" ]; then
             version="$(tr -d '[:space:]' < VERSION)"
           fi
@@ -42,15 +55,29 @@ jobs:
             echo "Versão GHCR inválida: ${version}. Esperado MAJOR.MINOR.PATCH." >&2
             exit 2
           fi
+          if [[ ! "$source_sha" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "SHA de origem inválido: ${source_sha}" >&2
+            exit 3
+          fi
+
+          git fetch origin "$source_sha" --depth=1 || true
+          git cat-file -e "${source_sha}^{commit}"
+          IFS='.' read -r major minor patch <<< "$version"
+
           echo "version=${version}" >> "$GITHUB_OUTPUT"
-          echo "Versão canônica das imagens: ${version}"
+          echo "minor_tag=${major}.${minor}" >> "$GITHUB_OUTPUT"
+          echo "major_tag=${major}" >> "$GITHUB_OUTPUT"
+          echo "source_sha=${source_sha}" >> "$GITHUB_OUTPUT"
 
   base:
-    name: Build base imutável
+    name: Build base multiarch imutável
     needs: version
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.version.outputs.source_sha }}
+      - uses: docker/setup-qemu-action@v3
       - uses: docker/setup-buildx-action@v3
       - uses: docker/login-action@v3
         with:
@@ -62,17 +89,18 @@ jobs:
         with:
           context: .
           file: infrastructure/docker/base/python/Dockerfile
+          platforms: linux/amd64,linux/arm64
           push: true
-          tags: ${{ env.REGISTRY_PREFIX }}/python-base:${{ github.sha }}
+          tags: ${{ env.REGISTRY_PREFIX }}/python-base:${{ needs.version.outputs.source_sha }}
           labels: |
             org.opencontainers.image.version=${{ needs.version.outputs.version }}
-            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.revision=${{ needs.version.outputs.source_sha }}
             org.opencontainers.image.source=https://github.com/${{ github.repository }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
   services:
-    name: Build ${{ matrix.name }} imutável
+    name: Build ${{ matrix.name }} multiarch imutável
     needs: [version, base]
     runs-on: ubuntu-latest
     strategy:
@@ -82,11 +110,11 @@ jobs:
           - name: api
             file: infrastructure/docker/api/Dockerfile
             tag: api
-            build_args: "PYTHON_BASE_IMAGE=ghcr.io/${{ github.repository }}/python-base:${{ github.sha }}"
+            build_args: "PYTHON_BASE_IMAGE=ghcr.io/${{ github.repository }}/python-base:${{ needs.version.outputs.source_sha }}"
           - name: worker
             file: infrastructure/docker/worker/Dockerfile
             tag: worker
-            build_args: "PYTHON_BASE_IMAGE=ghcr.io/${{ github.repository }}/python-base:${{ github.sha }}"
+            build_args: "PYTHON_BASE_IMAGE=ghcr.io/${{ github.repository }}/python-base:${{ needs.version.outputs.source_sha }}"
           - name: web
             file: infrastructure/docker/web/Dockerfile
             tag: web
@@ -109,6 +137,9 @@ jobs:
             build_args: ""
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.version.outputs.source_sha }}
+      - uses: docker/setup-qemu-action@v3
       - uses: docker/setup-buildx-action@v3
       - uses: docker/login-action@v3
         with:
@@ -120,22 +151,23 @@ jobs:
         with:
           context: .
           file: ${{ matrix.file }}
+          platforms: linux/amd64,linux/arm64
           push: true
           build-args: |
             ${{ matrix.build_args }}
             APP_VERSION=${{ needs.version.outputs.version }}
             APP_RELEASE_TAG=${{ needs.version.outputs.version }}
-            APP_BUILD_SHA=${{ github.sha }}
-          tags: ${{ env.REGISTRY_PREFIX }}/${{ matrix.tag }}:${{ github.sha }}
+            APP_BUILD_SHA=${{ needs.version.outputs.source_sha }}
+          tags: ${{ env.REGISTRY_PREFIX }}/${{ matrix.tag }}:${{ needs.version.outputs.source_sha }}
           labels: |
             org.opencontainers.image.version=${{ needs.version.outputs.version }}
-            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.revision=${{ needs.version.outputs.source_sha }}
             org.opencontainers.image.source=https://github.com/${{ github.repository }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
   promote:
-    name: Promover conjunto validado para SemVer e latest
+    name: Promover conjunto validado para SemVer aliases e latest
     needs: [version, base, services]
     runs-on: ubuntu-latest
     steps:
@@ -145,47 +177,52 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - name: Validar todos os manifests imutáveis antes da promoção
+      - name: Validar todos os manifests multiarch antes da promoção
         shell: bash
+        env:
+          SOURCE_SHA: ${{ needs.version.outputs.source_sha }}
         run: |
           set -euo pipefail
           for image in python-base api worker web admin proxy acme cloudpanel-agent; do
-            docker buildx imagetools inspect "${REGISTRY_PREFIX}/${image}:${GITHUB_SHA}" >/dev/null
+            ref="${REGISTRY_PREFIX}/${image}:${SOURCE_SHA}"
+            docker buildx imagetools inspect "$ref" >/tmp/inspect.txt
+            grep -q 'linux/amd64' /tmp/inspect.txt
+            grep -q 'linux/arm64' /tmp/inspect.txt
           done
-      - name: Publicar versão imutável e atualizar latest atomicamente por conjunto
+      - name: Publicar version, minor, major e latest somente após conjunto completo
         shell: bash
         env:
           RELEASE_VERSION: ${{ needs.version.outputs.version }}
+          MINOR_TAG: ${{ needs.version.outputs.minor_tag }}
+          MAJOR_TAG: ${{ needs.version.outputs.major_tag }}
+          SOURCE_SHA: ${{ needs.version.outputs.source_sha }}
         run: |
           set -euo pipefail
-          if [[ ! "${RELEASE_VERSION}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-            echo "Versão GHCR inválida: ${RELEASE_VERSION}" >&2
-            exit 2
-          fi
 
-          # Primeiro publica todas as tags SemVer. Somente depois que o conjunto
-          # versionado inteiro existe, move latest para o mesmo SHA.
           for image in python-base api worker web admin proxy acme cloudpanel-agent; do
-            source_ref="${REGISTRY_PREFIX}/${image}:${GITHUB_SHA}"
+            source_ref="${REGISTRY_PREFIX}/${image}:${SOURCE_SHA}"
             version_ref="${REGISTRY_PREFIX}/${image}:${RELEASE_VERSION}"
-            docker buildx imagetools create --tag "${version_ref}" "${source_ref}"
-            docker buildx imagetools inspect "${version_ref}" >/dev/null
+            docker buildx imagetools create --tag "$version_ref" "$source_ref"
+            docker buildx imagetools inspect "$version_ref" >/dev/null
           done
 
-          for image in python-base api worker web admin proxy acme cloudpanel-agent; do
-            source_ref="${REGISTRY_PREFIX}/${image}:${GITHUB_SHA}"
-            latest_ref="${REGISTRY_PREFIX}/${image}:latest"
-            docker buildx imagetools create --tag "${latest_ref}" "${source_ref}"
-            docker buildx imagetools inspect "${latest_ref}" >/dev/null
+          # Aliases móveis só avançam depois que TODAS as tags completas existem.
+          for alias in "$MINOR_TAG" "$MAJOR_TAG" latest; do
+            for image in python-base api worker web admin proxy acme cloudpanel-agent; do
+              source_ref="${REGISTRY_PREFIX}/${image}:${SOURCE_SHA}"
+              target_ref="${REGISTRY_PREFIX}/${image}:${alias}"
+              docker buildx imagetools create --tag "$target_ref" "$source_ref"
+              docker buildx imagetools inspect "$target_ref" >/dev/null
+            done
           done
 
           {
             echo "## Conjunto de imagens promovido"
             echo
-            echo "Versão: \`${RELEASE_VERSION}\`"
-            echo "Alias: \`latest\`"
-            echo "SHA imutável: \`${GITHUB_SHA}\`"
-            echo
-            echo "Cada imagem possui as referências \`${RELEASE_VERSION}\`, \`latest\` e \`${GITHUB_SHA}\`."
-            echo "A tag latest somente foi movida depois que o conjunto SemVer completo foi validado."
-          } >> "${GITHUB_STEP_SUMMARY}"
+            echo "SemVer: \`${RELEASE_VERSION}\`"
+            echo "Minor: \`${MINOR_TAG}\`"
+            echo "Major: \`${MAJOR_TAG}\`"
+            echo "Latest: \`latest\`"
+            echo "SHA: \`${SOURCE_SHA}\`"
+            echo "Platforms: \`linux/amd64\`, \`linux/arm64\`"
+          } >> "$GITHUB_STEP_SUMMARY"
