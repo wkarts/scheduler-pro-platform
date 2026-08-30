@@ -18,10 +18,52 @@ from app.workers.celery_app import celery_app
 
 router = APIRouter()
 
+OPERATIONAL_NOTIFICATION_KEYS = {
+    AppointmentStatus.checked_in.value: (
+        "appointment_checked_in",
+        "appointment_checked_in_email",
+    ),
+    AppointmentStatus.in_progress.value: (
+        "appointment_in_progress",
+        "appointment_in_progress_email",
+    ),
+    AppointmentStatus.completed.value: (
+        "appointment_completed",
+        "appointment_completed_email",
+    ),
+    AppointmentStatus.cancelled.value: (
+        "appointment_cancelled",
+        "appointment_cancelled_email",
+    ),
+    AppointmentStatus.no_show.value: (
+        "appointment_no_show",
+        "appointment_no_show_email",
+    ),
+}
+
 
 def _public_base_url(context: TenantContext) -> str:
     scheme = "http" if context.hostname in {"localhost", "127.0.0.1"} else "https"
     return f"{scheme}://{context.hostname}"
+
+
+def _undo_target(current_status: str, *, simplified: bool) -> str | None:
+    if current_status == AppointmentStatus.checked_in.value:
+        return AppointmentStatus.confirmed.value
+    if current_status == AppointmentStatus.in_progress.value:
+        return AppointmentStatus.checked_in.value
+    if current_status == AppointmentStatus.completed.value:
+        return (
+            AppointmentStatus.confirmed.value
+            if simplified
+            else AppointmentStatus.in_progress.value
+        )
+    if current_status in {
+        AppointmentStatus.cancelled.value,
+        AppointmentStatus.no_show.value,
+    }:
+        return AppointmentStatus.confirmed.value
+    return None
 
 
 async def _publish_realtime(
@@ -29,16 +71,14 @@ async def _publish_realtime(
     session: AsyncSession,
     appointment_id: str,
     *,
-    completed_by_checkin: bool,
+    event_type: str,
+    extra: dict[str, Any] | None = None,
 ) -> None:
     event = await RealtimeEventService(session).emit_appointment(
         appointment_id,
-        "appointment.checked_in",
+        event_type,
         actor="tenant-check-in-center",
-        extra={
-            "source": "check-in-center",
-            "completed_by_checkin": completed_by_checkin,
-        },
+        extra={"source": "check-in-center", **(extra or {})},
     )
     event_id = str(event.get("id") or "") if event else ""
     if event_id:
@@ -105,6 +145,50 @@ async def _schedule_check_in_notification(
             payload={**payload, "subject": "Check-in registrado — Scheduler Pro"},
             scheduled_at=scheduled_at,
         )
+
+
+async def _cancel_pending_notifications(
+    session: AsyncSession,
+    appointment_id: str,
+    template_keys: tuple[str, ...],
+) -> tuple[int, int]:
+    if not template_keys:
+        return 0, 0
+    sent = int(
+        await session.scalar(
+            text(
+                """
+                select count(*)
+                from notification_jobs
+                where appointment_id=cast(:appointment_id as uuid)
+                  and template_key=any(:template_keys)
+                  and status='SENT'
+                """
+            ),
+            {
+                "appointment_id": appointment_id,
+                "template_keys": list(template_keys),
+            },
+        )
+        or 0
+    )
+    result = await session.execute(
+        text(
+            """
+            update notification_jobs
+            set status='CANCELLED',
+                error='Etapa operacional desfeita antes do envio.'
+            where appointment_id=cast(:appointment_id as uuid)
+              and template_key=any(:template_keys)
+              and status='PENDING'
+            """
+        ),
+        {
+            "appointment_id": appointment_id,
+            "template_keys": list(template_keys),
+        },
+    )
+    return int(result.rowcount or 0), sent
 
 
 @router.post("/{appointment_id}")
@@ -177,6 +261,94 @@ async def check_in(
         context,
         session,
         appointment_id,
-        completed_by_checkin=simplified,
+        event_type="appointment.checked_in",
+        extra={"completed_by_checkin": simplified},
     )
     return success(await service.get(appointment_id))
+
+
+@router.post("/{appointment_id}/undo")
+async def undo_check_in_stage(
+    appointment_id: str,
+    context: TenantContext = Depends(get_tenant_context),
+    session: AsyncSession = Depends(get_tenant_session),
+) -> dict[str, Any]:
+    """Recua exatamente uma etapa operacional do atendimento."""
+    parameters = await BookingParametersService(session).get()
+    simplified = parameters.get("checkin_flow_mode") == "SIMPLE"
+    service = AppointmentService(
+        session,
+        public_base_url=_public_base_url(context),
+    )
+    current = await service.get(appointment_id)
+    current_status = str(current.get("status") or "").upper()
+    target_status = _undo_target(current_status, simplified=simplified)
+    if target_status is None:
+        raise APIError(
+            "CHECKIN_STAGE_NOT_REVERSIBLE",
+            "Não existe uma etapa operacional anterior para desfazer.",
+            409,
+            {"current_status": current_status},
+        )
+
+    keys = OPERATIONAL_NOTIFICATION_KEYS.get(current_status, ())
+    if simplified and current_status == AppointmentStatus.completed.value:
+        keys = (
+            "appointment_checked_in",
+            "appointment_checked_in_email",
+            "appointment_completed",
+            "appointment_completed_email",
+        )
+    cancelled_notifications, already_sent = await _cancel_pending_notifications(
+        session,
+        appointment_id,
+        keys,
+    )
+    result = await session.execute(
+        text(
+            """
+            update appointments
+            set status=:target_status
+            where id=cast(:appointment_id as uuid)
+              and status=:current_status
+            """
+        ),
+        {
+            "appointment_id": appointment_id,
+            "current_status": current_status,
+            "target_status": target_status,
+        },
+    )
+    if int(result.rowcount or 0) != 1:
+        raise APIError(
+            "CHECKIN_STAGE_CHANGED",
+            "O atendimento foi alterado por outro operador. Atualize a Central de Check-in.",
+            409,
+        )
+    await service._add_history(
+        appointment_id,
+        target_status,
+        f"Etapa {current_status} desfeita pela Central de Check-in",
+    )
+    await session.commit()
+    await _publish_realtime(
+        context,
+        session,
+        appointment_id,
+        event_type="appointment.status_reverted",
+        extra={
+            "from_status": current_status,
+            "to_status": target_status,
+            "notifications_cancelled": cancelled_notifications,
+            "notifications_already_sent": already_sent,
+        },
+    )
+    return success(
+        {
+            "appointment": await service.get(appointment_id),
+            "from_status": current_status,
+            "to_status": target_status,
+            "notifications_cancelled": cancelled_notifications,
+            "notifications_already_sent": already_sent,
+        }
+    )
