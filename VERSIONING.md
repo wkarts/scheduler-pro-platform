@@ -37,6 +37,27 @@ Exemplo para `1.0.0`:
 
 APK e IPA permanecem pausados até que as experiências Android e iOS estejam aptas para homologação real.
 
+## ARGWS Visual Builder — pacote independente em cada Release
+
+O ARGWS Visual Builder possui linha própria de versionamento e **não herda a versão do Scheduler Pro**.
+
+Exemplo válido:
+
+- Scheduler Pro `1.0.2`;
+- ARGWS Visual Builder `2.4.1`.
+
+Após toda execução bem-sucedida do workflow `Release`, o workflow `ARGWS Visual Builder Package` empacota a versão do Visual Builder presente naquele commit e publica separadamente:
+
+- pacote npm instalável, por exemplo `argws-visual-builder-2.4.0.tgz`;
+- source archive, por exemplo `argws-visual-builder-2.4.0-source.tar.gz`;
+- manifest do pacote com versão, Release Scheduler Pro, ref e SHA de origem;
+- `SHA256SUMS` específico do Visual Builder;
+- artifact separado no GitHub Actions, além dos assets anexados à GitHub Release do Scheduler Pro.
+
+Antes do empacotamento são executados `check` e testes do próprio Visual Builder. Uma falha nessa validação impede a publicação do pacote independente.
+
+O workflow também pode ser executado manualmente para backfill de uma Release existente. A Release canônica `1.0.0` só pode ser preenchida automaticamente a partir de uma versão posterior quando o conteúdo de `packages/visual-builder` for **idêntico** ao existente na tag `1.0.0`; caso exista qualquer diferença, o backfill é recusado por segurança.
+
 ## GHCR
 
 Cada imagem própria do Scheduler Pro é mantida com três referências:
