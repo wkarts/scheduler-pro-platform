@@ -1,3 +1,4 @@
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from sqlalchemy import text
@@ -9,6 +10,19 @@ from app.services.phone_normalization import PhoneNormalizationService
 from app.services.tenant_event_log import record_tenant_event
 from app.services.tenant_mail_service import TenantMailService
 from app.services.whatsapp_provider import WhatsAppProviderFactory
+
+OPERATIONAL_TEMPLATE_KEYS = (
+    "appointment_checked_in",
+    "appointment_checked_in_email",
+    "appointment_in_progress",
+    "appointment_in_progress_email",
+    "appointment_completed",
+    "appointment_completed_email",
+    "appointment_cancelled",
+    "appointment_cancelled_email",
+    "appointment_no_show",
+    "appointment_no_show_email",
+)
 
 
 def _recipient_hint(value: str, channel: str) -> str:
@@ -35,10 +49,25 @@ class TenantNotificationDispatcher:
         )
         return str(value) if value else None
 
+    async def _operational_delay_seconds(self) -> int:
+        value = await self.session.scalar(
+            text(
+                "select value from tenant_settings "
+                "where key='checkin_notification_delay_seconds' limit 1"
+            )
+        )
+        try:
+            parsed = int(value if value is not None else 120)
+        except (TypeError, ValueError):
+            parsed = 120
+        return max(0, min(600, parsed))
+
     async def process_due(self, *, limit: int = 100) -> dict[str, Any]:
         confirmation = await AppointmentConfirmationService(self.session).expire_due(
             limit=min(max(limit, 1), 500)
         )
+        operational_delay = await self._operational_delay_seconds()
+        operational_cutoff = datetime.now(UTC) - timedelta(seconds=operational_delay)
 
         rows = (
             await self.session.execute(
@@ -46,13 +75,22 @@ class TenantNotificationDispatcher:
                     """
                     select id::text, channel, recipient, template_key, payload
                     from notification_jobs
-                    where status='PENDING' and scheduled_at <= now()
+                    where status='PENDING'
+                      and scheduled_at <= now()
+                      and (
+                        not (template_key = any(:operational_templates))
+                        or scheduled_at <= :operational_cutoff
+                      )
                     order by scheduled_at asc
                     limit :limit
                     for update skip locked
                     """
                 ),
-                {"limit": min(max(limit, 1), 500)},
+                {
+                    "limit": min(max(limit, 1), 500),
+                    "operational_templates": list(OPERATIONAL_TEMPLATE_KEYS),
+                    "operational_cutoff": operational_cutoff,
+                },
             )
         ).mappings().all()
         instance_name = await self._instance_name()
@@ -161,6 +199,7 @@ class TenantNotificationDispatcher:
             "failed": failed,
             "total": len(rows),
             "instance_name": instance_name,
+            "operational_delay_seconds": operational_delay,
             "confirmations_expired": confirmation["expired"],
             "confirmation_expiry_failures": confirmation["failed"],
         }
