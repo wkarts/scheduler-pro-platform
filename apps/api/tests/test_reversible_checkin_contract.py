@@ -35,7 +35,7 @@ def test_operational_notifications_have_configurable_grace_window() -> None:
     parameters = _read("apps/api/app/services/booking_parameters_service.py")
     dispatcher = _read("apps/api/app/services/notification_dispatcher.py")
     assert '"checkin_notification_delay_seconds"' in parameters
-    assert "0 and notification_delay > 600" in parameters
+    assert "notification_delay < 0 or notification_delay > 600" in parameters
     assert "OPERATIONAL_TEMPLATE_KEYS" in dispatcher
     assert "_operational_delay_seconds" in dispatcher
     assert "operational_cutoff" in dispatcher
