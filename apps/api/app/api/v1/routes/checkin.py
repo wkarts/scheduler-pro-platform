@@ -188,7 +188,7 @@ async def _cancel_pending_notifications(
             "template_keys": list(template_keys),
         },
     )
-    return int(result.rowcount or 0), sent
+    return int(getattr(result, "rowcount", 0) or 0), sent
 
 
 @router.post("/{appointment_id}")
@@ -291,7 +291,7 @@ async def undo_check_in_stage(
             {"current_status": current_status},
         )
 
-    keys = OPERATIONAL_NOTIFICATION_KEYS.get(current_status, ())
+    keys: tuple[str, ...] = OPERATIONAL_NOTIFICATION_KEYS.get(current_status, ())
     if simplified and current_status == AppointmentStatus.completed.value:
         keys = (
             "appointment_checked_in",
@@ -319,7 +319,7 @@ async def undo_check_in_stage(
             "target_status": target_status,
         },
     )
-    if int(result.rowcount or 0) != 1:
+    if int(getattr(result, "rowcount", 0) or 0) != 1:
         raise APIError(
             "CHECKIN_STAGE_CHANGED",
             "O atendimento foi alterado por outro operador. Atualize a Central de Check-in.",
