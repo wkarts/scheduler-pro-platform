@@ -57,7 +57,8 @@ def test_ghcr_has_full_minor_major_latest_sha_and_multiarch() -> None:
     assert "linux/amd64,linux/arm64" in workflow
     assert "minor_tag" in workflow
     assert "major_tag" in workflow
-    assert 'for alias in "$MINOR_TAG" "$MAJOR_TAG" latest' in workflow
+    assert 'for alias in "$MINOR_TAG" "$MAJOR_TAG"' in workflow
+    assert 'latest_ref="${REGISTRY_PREFIX}/${image}:latest"' in workflow
     assert "SOURCE_SHA" in workflow
     assert "docker buildx imagetools inspect" in workflow
     assert "linux/amd64" in workflow
