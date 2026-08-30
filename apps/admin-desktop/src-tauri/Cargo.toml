@@ -1,6 +1,6 @@
 [package]
 name = "scheduler_pro_admin_desktop"
-version = "0.1.0-alpha.1"
+version = "1.0.0"
 description = "Scheduler Pro Admin Desktop"
 authors = ["Wallace Kleiton <wkarts@gmail.com>"]
 edition = "2021"
