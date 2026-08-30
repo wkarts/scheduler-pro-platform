@@ -12,6 +12,8 @@ from app.services.tenant_mail_service import TenantMailService
 from app.services.whatsapp_provider import WhatsAppProviderFactory
 
 OPERATIONAL_TEMPLATE_KEYS = (
+    "appointment_checkin_center_confirmed",
+    "appointment_checkin_center_confirmed_email",
     "appointment_checked_in",
     "appointment_checked_in_email",
     "appointment_in_progress",

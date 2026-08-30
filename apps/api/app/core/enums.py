@@ -26,6 +26,7 @@ class AppointmentStatus(StrEnum):
     in_progress = "IN_PROGRESS"
     completed = "COMPLETED"
     cancelled = "CANCELLED"
+    rescheduled = "RESCHEDULED"
     no_show = "NO_SHOW"
 
 
