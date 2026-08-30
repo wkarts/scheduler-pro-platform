@@ -206,14 +206,22 @@ jobs:
             docker buildx imagetools inspect "$version_ref" >/dev/null
           done
 
-          # Aliases móveis só avançam depois que TODAS as tags completas existem.
-          for alias in "$MINOR_TAG" "$MAJOR_TAG" latest; do
+          # Aliases MAJOR.MINOR e MAJOR só avançam depois que TODAS as tags completas existem.
+          for alias in "$MINOR_TAG" "$MAJOR_TAG"; do
             for image in python-base api worker web admin proxy acme cloudpanel-agent; do
               source_ref="${REGISTRY_PREFIX}/${image}:${SOURCE_SHA}"
               target_ref="${REGISTRY_PREFIX}/${image}:${alias}"
               docker buildx imagetools create --tag "$target_ref" "$source_ref"
               docker buildx imagetools inspect "$target_ref" >/dev/null
             done
+          done
+
+          # latest permanece explícito para compatibilidade com contratos e deploys existentes.
+          for image in python-base api worker web admin proxy acme cloudpanel-agent; do
+            source_ref="${REGISTRY_PREFIX}/${image}:${SOURCE_SHA}"
+            latest_ref="${REGISTRY_PREFIX}/${image}:latest"
+            docker buildx imagetools create --tag "$latest_ref" "$source_ref"
+            docker buildx imagetools inspect "$latest_ref" >/dev/null
           done
 
           {
