@@ -48,6 +48,21 @@ def test_manual_confirmation_from_checkin_is_confirmed_and_reversible() -> None:
     assert "previous_status" in route
 
 
+def test_client_confirmation_supersedes_old_manual_confirmation() -> None:
+    route = _read("apps/api/app/api/v1/routes/checkin.py")
+    # O lookup deve examinar a confirmação CONFIRMED mais recente, qualquer que seja
+    # a origem. Filtrar primeiro pelo prefixo manual faria uma marca antiga sobreviver
+    # indevidamente a uma confirmação posterior realizada pelo próprio cliente.
+    manual_lookup = route.split(
+        "async def _manual_confirmation_previous_status", 1
+    )[1].split("async def _publish_realtime", 1)[0]
+    assert "and status=:confirmed" in manual_lookup
+    assert "and reason like :prefix" not in manual_lookup
+    assert "order by created_at desc" in manual_lookup
+    assert "value.startswith(MANUAL_CONFIRM_REASON_PREFIX)" in manual_lookup
+    assert "confirmação mais nova passa a ser soberana" in manual_lookup
+
+
 def test_operational_notifications_have_configurable_grace_window() -> None:
     parameters = _read("apps/api/app/services/booking_parameters_service.py")
     dispatcher = _read("apps/api/app/services/notification_dispatcher.py")
