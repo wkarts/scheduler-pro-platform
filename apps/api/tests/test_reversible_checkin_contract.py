@@ -31,6 +31,23 @@ def test_checkin_has_one_step_undo_and_pending_message_cancellation() -> None:
     assert "notifications_already_sent" in route
 
 
+def test_manual_confirmation_from_checkin_is_confirmed_and_reversible() -> None:
+    route = _read("apps/api/app/api/v1/routes/checkin.py")
+    dispatcher = _read("apps/api/app/services/notification_dispatcher.py")
+    assert '@router.post("/{appointment_id}/confirm")' in route
+    assert '@router.get("/{appointment_id}/undo-state")' in route
+    assert "MANUAL_CONFIRMABLE_STATUSES" in route
+    assert "MANUAL_CONFIRM_REASON_PREFIX" in route
+    assert "CHECKIN_CENTER_MANUAL_CONFIRM previous_status=" in route
+    assert "_manual_confirmation_previous_status" in route
+    assert "appointment_checkin_center_confirmed" in route
+    assert "appointment_checkin_center_confirmed_email" in route
+    assert "appointment_checkin_center_confirmed" in dispatcher
+    assert "appointment_checkin_center_confirmed_email" in dispatcher
+    assert "manual_confirmation" in route
+    assert "previous_status" in route
+
+
 def test_operational_notifications_have_configurable_grace_window() -> None:
     parameters = _read("apps/api/app/services/booking_parameters_service.py")
     dispatcher = _read("apps/api/app/services/notification_dispatcher.py")
@@ -40,16 +57,23 @@ def test_operational_notifications_have_configurable_grace_window() -> None:
     assert "_operational_delay_seconds" in dispatcher
     assert "operational_cutoff" in dispatcher
     assert "scheduled_at <= :operational_cutoff" in dispatcher
+    assert "appointment_checkin_center_confirmed" in dispatcher
 
 
 def test_checkin_ui_confirms_and_uses_cancel_as_contextual_undo() -> None:
     center = _read("apps/web/src/TenantCheckInCenter.vue")
+    assert "async function confirmManual" in center
+    assert "title:'Confirmar atendimento'" in center
+    assert "`/check-in/${item.id}/confirm`" in center
     assert "async function confirmCheckIn" in center
     assert "Confirmar Check-in" in center
+    assert "async function resolveUndoState" in center
+    assert "`/check-in/${item.id}/undo-state`" in center
     assert "async function cancelOne" in center
-    assert "if(canUndo(item))" in center
     assert "`/check-in/${item.id}/undo`" in center
     assert "checkin_notification_delay_seconds" in center
+    assert "Confirmar selecionados" in center
     assert "Confirmar Check-in em lote" in center
     assert "Cancelar / desfazer em lote" in center
+    assert '@click="confirmManual(item)"' in center
     assert "mobile-tab-history .sp-checkin-row .actions" in center
