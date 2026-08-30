@@ -17,6 +17,7 @@ import TenantRuntimeVersion from './TenantRuntimeVersion.vue'
 import TenantSecondFactorGate from './TenantSecondFactorGate.vue'
 import TenantUniversalDownloads from './TenantUniversalDownloads.vue'
 import TenantVisualPageBuilder from './TenantVisualPageBuilder.vue'
+import { installTenantStaticVersionGuard } from './tenantStaticVersionGuard'
 import './tenantContrast.css'
 import './tenant-shell-desktop-branding-fix.css'
 import './tenant-global-operators.css'
@@ -31,14 +32,15 @@ const publicLogin=computed(()=>normalizedPath==='/login'&&!authenticated.value)
 const pwaOpenMode=ref('AUTO')
 const publicSurface=computed(()=>['/agendar','/pagina'].includes(normalizedPath))
 const forcePwaLogin=computed(()=>sourcePwa&&pwaOpenMode.value==='LOGIN'&&!authenticated.value)
+let stopStaticVersionGuard:(()=>void)|undefined
 
 function refreshAuthState():void{authenticated.value=Boolean(localStorage.getItem('scheduler_pro_access_token'))}
 function refreshRoute():void{activeView.value=(window.location.hash||'#dashboard').replace(/^#/,'')||'dashboard'}
 function onStorage(event:StorageEvent):void{if(event.key==='scheduler_pro_access_token')refreshAuthState()}
 function isPublicPagesButton(target:EventTarget|null):boolean{if(!(target instanceof Element))return false;const button=target.closest('button.nav-item');return Boolean(button&&button.textContent?.replace(/\s+/g,' ').trim().includes('Páginas públicas'))}
 function onPublicPagesNavCapture(event:Event):void{if(window.location.hash!=='#visual-builder'||!isPublicPagesButton(event.target))return;if(document.querySelector('.experience-center'))return;queueMicrotask(()=>window.dispatchEvent(new HashChangeEvent('hashchange')))}
-onMounted(()=>{refreshAuthState();refreshRoute();window.addEventListener('storage',onStorage);window.addEventListener('hashchange',refreshRoute);window.addEventListener('scheduler-pro-auth-changed',refreshAuthState);document.addEventListener('click',onPublicPagesNavCapture,true);if(sourcePwa)void fetch('/api/v1/public/context',{cache:'no-store',headers:{Accept:'application/json'}}).then(r=>r.json()).then(body=>{pwaOpenMode.value=String(body?.data?.preferences?.pwa_open_mode||'AUTO').toUpperCase()}).catch(()=>undefined)})
-onUnmounted(()=>{window.removeEventListener('storage',onStorage);window.removeEventListener('hashchange',refreshRoute);window.removeEventListener('scheduler-pro-auth-changed',refreshAuthState);document.removeEventListener('click',onPublicPagesNavCapture,true)})
+onMounted(()=>{stopStaticVersionGuard=installTenantStaticVersionGuard();refreshAuthState();refreshRoute();window.addEventListener('storage',onStorage);window.addEventListener('hashchange',refreshRoute);window.addEventListener('scheduler-pro-auth-changed',refreshAuthState);document.addEventListener('click',onPublicPagesNavCapture,true);if(sourcePwa)void fetch('/api/v1/public/context',{cache:'no-store',headers:{Accept:'application/json'}}).then(r=>r.json()).then(body=>{pwaOpenMode.value=String(body?.data?.preferences?.pwa_open_mode||'AUTO').toUpperCase()}).catch(()=>undefined)})
+onUnmounted(()=>{stopStaticVersionGuard?.();window.removeEventListener('storage',onStorage);window.removeEventListener('hashchange',refreshRoute);window.removeEventListener('scheduler-pro-auth-changed',refreshAuthState);document.removeEventListener('click',onPublicPagesNavCapture,true)})
 </script>
 
 <template>
