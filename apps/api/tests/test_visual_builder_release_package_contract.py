@@ -1,11 +1,21 @@
 from pathlib import Path
 
 
-ROOT = Path(__file__).resolve().parents[2]
+def _root() -> Path | None:
+    here = Path(__file__).resolve()
+    for parent in here.parents:
+        if (parent / "apps" / "web").is_dir() and (parent / "packages" / "visual-builder").is_dir():
+            return parent
+    return None
 
 
 def _read(path: str) -> str:
-    return (ROOT / path).read_text(encoding="utf-8")
+    root = _root()
+    if root is None:
+        import pytest
+
+        pytest.skip("Fontes completas do monorepo não estão presentes nesta imagem.")
+    return (root / path).read_text(encoding="utf-8")
 
 
 def test_visual_builder_keeps_independent_version_line() -> None:
