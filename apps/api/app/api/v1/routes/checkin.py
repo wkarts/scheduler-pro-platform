@@ -81,6 +81,9 @@ async def _manual_confirmation_previous_status(
     session: AsyncSession,
     appointment_id: str,
 ) -> str | None:
+    # A confirmação manual só é reversível enquanto ela for a confirmação
+    # CONFIRMED mais recente. Se o cliente (ou outro fluxo) confirmar depois,
+    # essa confirmação mais nova passa a ser soberana e invalida o undo manual.
     reason = await session.scalar(
         text(
             """
@@ -88,7 +91,6 @@ async def _manual_confirmation_previous_status(
             from appointment_status_history
             where appointment_id=cast(:appointment_id as uuid)
               and status=:confirmed
-              and reason like :prefix
             order by created_at desc
             limit 1
             """
@@ -96,7 +98,6 @@ async def _manual_confirmation_previous_status(
         {
             "appointment_id": appointment_id,
             "confirmed": AppointmentStatus.confirmed.value,
-            "prefix": f"{MANUAL_CONFIRM_REASON_PREFIX}%",
         },
     )
     if not reason:
