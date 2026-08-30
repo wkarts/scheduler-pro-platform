@@ -5,7 +5,7 @@ on:
   workflow_dispatch:
     inputs:
       artifact_suffix:
-        description: 'Sufixo dos artefatos'
+        description: 'Versão/sufixo dos artefatos'
         required: false
         default: 'manual'
       correlation_id:
@@ -41,7 +41,7 @@ jobs:
           npm --workspace apps/admin run build
           npm --workspace apps/mobile run build
           npm --workspace apps/admin-mobile run build
-      - name: Pack artifacts
+      - name: Pack versioned artifacts
         run: |
           set -euo pipefail
           mkdir -p artifacts/deploy artifacts/apps
@@ -54,11 +54,13 @@ jobs:
           cat > artifacts/distribution-manifest.json <<JSON
           {
             "product": "Scheduler Pro",
+            "version_or_suffix": "${ARTIFACT_SUFFIX}",
             "source_sha": "${GITHUB_SHA}",
             "delivery_strategy": "pwa-first",
             "web_architecture": "installable-pwa",
-            "mobile_architecture": "dedicated-api-client",
-            "native_targets": ["android", "ios"],
+            "mobile_architecture": "dedicated-api-client-ui",
+            "native_artifact_generation": "paused",
+            "native_targets_paused": ["android", "ios"],
             "desktop_installers": null
           }
           JSON

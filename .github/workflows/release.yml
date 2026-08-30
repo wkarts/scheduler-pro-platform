@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: 'Release tag. Leave empty to generate v0.1.0-alpha.<run_number>'
+        description: 'Versão SemVer da release. Vazio usa VERSION.'
         required: false
         default: ''
 
@@ -36,15 +36,23 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
-      - name: Resolve release tag
+      - name: Resolve canonical SemVer release
         id: version
         env:
           INPUT_TAG: ${{ inputs.tag || '' }}
         shell: bash
         run: |
           set -euo pipefail
-          if [ -n "${INPUT_TAG}" ]; then TAG="${INPUT_TAG}"; else TAG="v0.1.0-alpha.${GITHUB_RUN_NUMBER}"; fi
+          TAG="${INPUT_TAG#v}"
+          if [ -z "$TAG" ]; then
+            TAG="$(tr -d '[:space:]' < VERSION)"
+          fi
+          if [[ ! "$TAG" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Release inválida: ${TAG}. Esperado MAJOR.MINOR.PATCH estável, sem prefixo v." >&2
+            exit 2
+          fi
           echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+          echo "SCHEDULER_PRO_VERSION=${TAG}" >> "$GITHUB_ENV"
           echo "SCHEDULER_PRO_RELEASE_TAG=${TAG}" >> "$GITHUB_ENV"
       - name: Install JS dependencies
         run: npm install
@@ -52,7 +60,7 @@ jobs:
         run: |
           npm --workspace apps/web run build
           npm --workspace apps/admin run build
-      - name: Pack web/admin/deploy/source artifacts
+      - name: Pack versioned web/admin/deploy/source artifacts
         shell: bash
         run: |
           set -euo pipefail
@@ -63,19 +71,78 @@ jobs:
           tar -C deployments/dockge -czf "artifacts/scheduler-pro-dockge-${SCHEDULER_PRO_RELEASE_TAG}.tar.gz" .
           git archive --format=tar.gz --output="artifacts/scheduler-pro-source-${SCHEDULER_PRO_RELEASE_TAG}.tar.gz" HEAD
           cat > artifacts/distribution-manifest.json <<JSON
-          {"name":"Scheduler Pro","tag":"${SCHEDULER_PRO_RELEASE_TAG}","commit":"${GITHUB_SHA}","origin_port":18080,"domains":{"platform":"scheduler.argws.com.br","admin":"admin.scheduler.argws.com.br","api":"api.scheduler.argws.com.br","tenant_pattern":"<codigo-curto>.scheduler.argws.com.br"},"images":{"api":"${IMAGE_NAMESPACE}/api:latest","worker":"${IMAGE_NAMESPACE}/worker:latest","web":"${IMAGE_NAMESPACE}/web:latest","admin":"${IMAGE_NAMESPACE}/admin:latest","proxy":"${IMAGE_NAMESPACE}/proxy:latest"}}
+          {
+            "name": "Scheduler Pro",
+            "version": "${SCHEDULER_PRO_VERSION}",
+            "tag": "${SCHEDULER_PRO_RELEASE_TAG}",
+            "commit": "${GITHUB_SHA}",
+            "origin_port": 18080,
+            "domains": {
+              "platform": "scheduler.argws.com.br",
+              "admin": "admin.scheduler.argws.com.br",
+              "api": "api.scheduler.argws.com.br",
+              "tenant_pattern": "<codigo-curto>.scheduler.argws.com.br"
+            },
+            "images": {
+              "python_base": {
+                "version": "${IMAGE_NAMESPACE}/python-base:${SCHEDULER_PRO_VERSION}",
+                "latest": "${IMAGE_NAMESPACE}/python-base:latest",
+                "sha": "${IMAGE_NAMESPACE}/python-base:${GITHUB_SHA}"
+              },
+              "api": {
+                "version": "${IMAGE_NAMESPACE}/api:${SCHEDULER_PRO_VERSION}",
+                "latest": "${IMAGE_NAMESPACE}/api:latest",
+                "sha": "${IMAGE_NAMESPACE}/api:${GITHUB_SHA}"
+              },
+              "worker": {
+                "version": "${IMAGE_NAMESPACE}/worker:${SCHEDULER_PRO_VERSION}",
+                "latest": "${IMAGE_NAMESPACE}/worker:latest",
+                "sha": "${IMAGE_NAMESPACE}/worker:${GITHUB_SHA}"
+              },
+              "web": {
+                "version": "${IMAGE_NAMESPACE}/web:${SCHEDULER_PRO_VERSION}",
+                "latest": "${IMAGE_NAMESPACE}/web:latest",
+                "sha": "${IMAGE_NAMESPACE}/web:${GITHUB_SHA}"
+              },
+              "admin": {
+                "version": "${IMAGE_NAMESPACE}/admin:${SCHEDULER_PRO_VERSION}",
+                "latest": "${IMAGE_NAMESPACE}/admin:latest",
+                "sha": "${IMAGE_NAMESPACE}/admin:${GITHUB_SHA}"
+              },
+              "proxy": {
+                "version": "${IMAGE_NAMESPACE}/proxy:${SCHEDULER_PRO_VERSION}",
+                "latest": "${IMAGE_NAMESPACE}/proxy:latest",
+                "sha": "${IMAGE_NAMESPACE}/proxy:${GITHUB_SHA}"
+              },
+              "acme": {
+                "version": "${IMAGE_NAMESPACE}/acme:${SCHEDULER_PRO_VERSION}",
+                "latest": "${IMAGE_NAMESPACE}/acme:latest",
+                "sha": "${IMAGE_NAMESPACE}/acme:${GITHUB_SHA}"
+              },
+              "cloudpanel_agent": {
+                "version": "${IMAGE_NAMESPACE}/cloudpanel-agent:${SCHEDULER_PRO_VERSION}",
+                "latest": "${IMAGE_NAMESPACE}/cloudpanel-agent:latest",
+                "sha": "${IMAGE_NAMESPACE}/cloudpanel-agent:${GITHUB_SHA}"
+              }
+            },
+            "rollback": {
+              "compose_variable": "APP_IMAGE_TAG",
+              "recommended_value": "${SCHEDULER_PRO_VERSION}"
+            }
+          }
           JSON
           (cd artifacts && sha256sum * > SHA256SUMS.txt)
-      - name: Create or update GitHub Release
+      - name: Create or update canonical GitHub Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         shell: bash
         run: |
           set -euo pipefail
           TAG="${SCHEDULER_PRO_RELEASE_TAG}"
-          NOTES='Release PWA-first do Scheduler Pro. Web/Admin PWA são a experiência principal. A geração de APK Android e IPA iOS está temporariamente pausada até existir uma experiência mobile suficientemente madura para homologação e distribuição.'
+          NOTES="Release canônica Scheduler Pro ${TAG}. Esta release inaugura/continua a linha SemVer estável do produto. As imagens GHCR são publicadas com ${TAG}, latest e o SHA imutável do commit. Para rollback, fixe APP_IMAGE_TAG=${TAG}. APK Android e IPA iOS permanecem pausados até existir experiência mobile apta para homologação real."
           if gh release view "$TAG" >/dev/null 2>&1; then
             gh release upload "$TAG" artifacts/* --clobber
+            gh release edit "$TAG" --title "Scheduler Pro ${TAG}" --notes "$NOTES" --latest
           else
             gh release create "$TAG" artifacts/* --target "$GITHUB_SHA" --title "Scheduler Pro ${TAG}" --notes "$NOTES" --latest
           fi
@@ -84,7 +151,6 @@ jobs:
           name: scheduler-pro-release-${{ steps.version.outputs.tag }}
           path: artifacts/*
           if-no-files-found: error
-
 
   android-debug-apks:
     name: Android debug installable ${{ matrix.app_name }}

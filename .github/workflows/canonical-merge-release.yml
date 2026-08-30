@@ -23,7 +23,13 @@ jobs:
     if: github.event.pull_request.merged == true
     runs-on: ubuntu-24.04
     steps:
-      - name: Resolve canonical merge and next alpha tag
+      - name: Checkout canonical merge
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.merge_commit_sha }}
+          fetch-depth: 0
+
+      - name: Resolve canonical merge and next SemVer tag
         id: version
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -38,43 +44,79 @@ jobs:
             exit 1
           fi
 
+          base_version="$(tr -d '[:space:]' < VERSION)"
+          if [[ ! "$base_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "VERSION inválido: ${base_version}" >&2
+            exit 2
+          fi
+
           existing_tag="$(
             gh api --paginate "repos/${GITHUB_REPOSITORY}/releases?per_page=100" \
               --jq ".[] | select(.target_commitish == \"${MERGE_SHA}\") | .tag_name" \
-              | head -n 1
+              | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' \
+              | head -n 1 || true
           )"
 
           if [ -n "$existing_tag" ]; then
-            echo "O merge ${MERGE_SHA} já possui a release ${existing_tag}; nenhuma duplicata será criada."
+            echo "O merge ${MERGE_SHA} já possui a release SemVer ${existing_tag}; nenhuma duplicata será criada."
             echo "tag=${existing_tag}" >> "$GITHUB_OUTPUT"
             echo "already_published=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
-          max_alpha="$(
+          latest_stable="$(
             gh api --paginate "repos/${GITHUB_REPOSITORY}/releases?per_page=100" --jq '.[].tag_name' \
-              | sed -nE 's/^v0\.1\.0-alpha\.([0-9]+)$/\1/p' \
-              | sort -n \
-              | tail -n 1
+              | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' \
+              | sort -V \
+              | tail -n 1 || true
           )"
-          max_alpha="${max_alpha:-0}"
-          next_alpha=$((max_alpha + 1))
-          tag="v0.1.0-alpha.${next_alpha}"
 
-          while gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/${tag}" >/dev/null 2>&1; do
-            next_alpha=$((next_alpha + 1))
-            tag="v0.1.0-alpha.${next_alpha}"
-          done
+          if [ -z "$latest_stable" ]; then
+            tag="$base_version"
+            bump="initial"
+          else
+            IFS='.' read -r major minor patch <<< "$latest_stable"
+            labels="$(gh pr view "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --json labels --jq '.labels[].name' || true)"
 
-          echo "Criando tag canônica ${tag} em ${MERGE_SHA} para a PR #${PR_NUMBER}."
-          gh api --method POST "repos/${GITHUB_REPOSITORY}/git/refs" \
-            -f ref="refs/tags/${tag}" \
-            -f sha="${MERGE_SHA}" >/dev/null
+            if grep -qx 'semver:major' <<< "$labels" && grep -qx 'semver:minor' <<< "$labels"; then
+              echo "A PR não pode solicitar semver:major e semver:minor ao mesmo tempo." >&2
+              exit 3
+            fi
+
+            if grep -qx 'semver:major' <<< "$labels"; then
+              major=$((major + 1)); minor=0; patch=0; bump="major"
+            elif grep -qx 'semver:minor' <<< "$labels"; then
+              minor=$((minor + 1)); patch=0; bump="minor"
+            else
+              patch=$((patch + 1)); bump="patch"
+            fi
+            tag="${major}.${minor}.${patch}"
+          fi
+
+          if [[ ! "$tag" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Tag SemVer calculada inválida: ${tag}" >&2
+            exit 4
+          fi
+
+          if ref_json="$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/${tag}" 2>/dev/null)"; then
+            ref_sha="$(jq -r '.object.sha' <<< "$ref_json")"
+            if [ "$ref_sha" != "$MERGE_SHA" ]; then
+              echo "A tag ${tag} já existe e aponta para ${ref_sha}, não para ${MERGE_SHA}. Recusando sobrescrita." >&2
+              exit 5
+            fi
+            echo "Tag ${tag} já aponta para o merge atual; retomando a publicação."
+          else
+            echo "Criando tag canônica ${tag} em ${MERGE_SHA} para a PR #${PR_NUMBER} (${bump})."
+            gh api --method POST "repos/${GITHUB_REPOSITORY}/git/refs" \
+              -f ref="refs/tags/${tag}" \
+              -f sha="${MERGE_SHA}" >/dev/null
+          fi
 
           echo "tag=${tag}" >> "$GITHUB_OUTPUT"
+          echo "bump=${bump}" >> "$GITHUB_OUTPUT"
           echo "already_published=false" >> "$GITHUB_OUTPUT"
 
-      - name: Dispatch canonical release, images and distribution
+      - name: Dispatch canonical release, versioned GHCR images and distribution
         if: steps.version.outputs.already_published != 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -86,19 +128,19 @@ jobs:
           set -euo pipefail
           correlation="canonical-pr-${PR_NUMBER}-${MERGE_SHA:0:12}"
 
-          echo "Disparando Release para ${TAG} / ${MERGE_SHA}"
+          echo "Disparando GitHub Release ${TAG} / ${MERGE_SHA}"
           gh workflow run release.yml \
             --repo "$GITHUB_REPOSITORY" \
             --ref "$TAG" \
             -f tag="$TAG"
 
-          echo "Disparando imagens GHCR canônicas para ${MERGE_SHA}"
+          echo "Disparando imagens GHCR ${TAG} + latest para ${MERGE_SHA}"
           gh workflow run images.yml \
             --repo "$GITHUB_REPOSITORY" \
             --ref "$TAG" \
-            -f image_tag="latest"
+            -f image_tag="$TAG"
 
-          echo "Disparando pacote de distribuição canônico para ${TAG}"
+          echo "Disparando pacote de distribuição ${TAG}"
           gh workflow run distribution-artifacts.yml \
             --repo "$GITHUB_REPOSITORY" \
             --ref "$TAG" \
@@ -108,9 +150,11 @@ jobs:
       - name: Canonical publication summary
         env:
           TAG: ${{ steps.version.outputs.tag }}
+          BUMP: ${{ steps.version.outputs.bump }}
           MERGE_SHA: ${{ github.event.pull_request.merge_commit_sha }}
           ALREADY_PUBLISHED: ${{ steps.version.outputs.already_published }}
         run: |
           echo "Canonical merge: ${MERGE_SHA}"
           echo "Canonical tag:   ${TAG}"
+          echo "SemVer bump:     ${BUMP:-existing}"
           echo "Already exists:  ${ALREADY_PUBLISHED}"
