@@ -21,6 +21,7 @@ import './tenantContrast.css'
 import './tenant-shell-desktop-branding-fix.css'
 import './tenant-global-operators.css'
 import './tenant-checkin-mobile-operator.css'
+import './tenant-version-dedup.css'
 
 const authenticated=ref(Boolean(localStorage.getItem('scheduler_pro_access_token')))
 const activeView=ref((window.location.hash||'#dashboard').replace(/^#/,'')||'dashboard')

@@ -1,0 +1,12 @@
+/* Tenant App — versão única.
+ * A versão real é renderizada por TenantRuntimeVersion via GET /api/v1/version.
+ * Estes seletores removem somente as exibições estáticas legadas do TenantConsole
+ * em desktop e mobile, sem afetar o Control Plane.
+ */
+.tenant-console .brand > div > small {
+  display: none !important;
+}
+
+.tenant-console .sidebar-footer > .version-info {
+  display: none !important;
+}
