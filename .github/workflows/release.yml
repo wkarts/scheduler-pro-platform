@@ -73,7 +73,7 @@ jobs:
         run: |
           set -euo pipefail
           TAG="${SCHEDULER_PRO_RELEASE_TAG}"
-          NOTES='Release PWA-first do Scheduler Pro. Web/Admin PWA são a experiência principal. Android publica APK ARM64 para homologação e iOS publica IPA ARM64; não são gerados instaladores desktop.'
+          NOTES='Release PWA-first do Scheduler Pro. Web/Admin PWA são a experiência principal. A geração de APK Android e IPA iOS está temporariamente pausada até existir uma experiência mobile suficientemente madura para homologação e distribuição.'
           if gh release view "$TAG" >/dev/null 2>&1; then
             gh release upload "$TAG" artifacts/* --clobber
           else
@@ -89,6 +89,8 @@ jobs:
   android-debug-apks:
     name: Android debug installable ${{ matrix.app_name }}
     needs: prepare-release
+    # PAUSADO: reativar somente quando a experiência Android estiver pronta para homologação real.
+    if: ${{ false }}
     runs-on: ubuntu-24.04
     timeout-minutes: 120
     strategy:
@@ -151,6 +153,8 @@ jobs:
   ios-unsigned-ipas:
     name: iOS unsigned IPA ${{ matrix.app_name }}
     needs: prepare-release
+    # PAUSADO: reativar somente quando a experiência iOS estiver pronta para homologação real.
+    if: ${{ false }}
     runs-on: macos-15
     timeout-minutes: 120
     strategy:
