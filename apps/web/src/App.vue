@@ -7,6 +7,7 @@ import TenantBookingAndMessages from './TenantBookingAndMessages.vue'
 import TenantBrandAssetUploader from './TenantBrandAssetUploader.vue'
 import TenantBrandedLogin from './TenantBrandedLogin.vue'
 import TenantCheckInCenter from './TenantCheckInCenter.vue'
+import TenantConfirmationAssistant from './TenantConfirmationAssistant.vue'
 import TenantConfigurationCenter from './TenantConfigurationCenter.vue'
 import TenantConsole from './TenantConsole.vue'
 import TenantDashboardInsights from './TenantDashboardInsights.vue'
@@ -62,6 +63,7 @@ onUnmounted(()=>{stopStaticVersionGuard?.();window.removeEventListener('storage'
       <TenantUniversalDownloads v-if="activeView==='builds'"/>
       <!-- Operadores globais permanecem disponíveis em qualquer view autenticada. -->
       <TenantCheckInCenter/>
+      <TenantConfirmationAssistant/>
       <TenantAgendaOperator/>
       <TenantSecondFactorGate/>
     </template>
