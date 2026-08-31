@@ -1,18 +1,36 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Scheduler Pro Admin Mobile",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "identifier": "br.com.argws.schedulerpro.admin.mobile",
   "build": {
     "beforeDevCommand": "npm run dev",
     "devUrl": "http://localhost:5177",
     "beforeBuildCommand": "npm run build",
-    "features": ["mobile"],
+    "features": [
+      "mobile"
+    ],
     "frontendDist": "../dist"
   },
   "app": {
-    "windows": [{ "label": "main", "title": "Scheduler Pro Admin Mobile", "width": 420, "height": 860, "resizable": true, "visible": true }],
-    "security": { "csp": null }
+    "windows": [
+      {
+        "label": "main",
+        "title": "Scheduler Pro Admin Mobile",
+        "width": 420,
+        "height": 860,
+        "resizable": true,
+        "visible": true
+      }
+    ],
+    "security": {
+      "csp": null
+    }
   },
-  "bundle": { "active": true, "targets": "all", "publisher": "ARGWS Sistemas", "category": "Business" }
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "publisher": "ARGWS Sistemas",
+    "category": "Business"
+  }
 }

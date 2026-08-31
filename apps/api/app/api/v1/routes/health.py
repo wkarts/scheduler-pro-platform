@@ -20,7 +20,7 @@ from app.services.tenant_resolver import TenantResolver
 router = APIRouter()
 PLATFORM_MIGRATION_HEAD = "platform_0012_login_surface"
 TENANT_MIGRATION_HEAD = "tenant_0011_experience_v2"
-APP_VERSION = os.getenv("APP_VERSION", "0.1.0-alpha.1")
+APP_VERSION = os.getenv("APP_VERSION", "2.0.0")
 APP_RELEASE_TAG = os.getenv("APP_RELEASE_TAG", "").strip()
 APP_BUILD_SHA = os.getenv("APP_BUILD_SHA", "").strip()
 

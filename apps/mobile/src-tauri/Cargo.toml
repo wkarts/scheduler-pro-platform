@@ -1,6 +1,6 @@
 [package]
 name = "scheduler_pro_mobile"
-version = "1.0.0"
+version = "2.0.0"
 description = "Scheduler Pro Mobile baseado no template Tauri/Rust"
 authors = ["Wallace Kleiton <wkarts@gmail.com>"]
 edition = "2021"

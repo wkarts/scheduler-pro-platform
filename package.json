@@ -1,7 +1,7 @@
 {
   "name": "scheduler-pro-platform",
   "private": true,
-  "version": "1.0.0",
+  "version": "2.0.0",
   "packageManager": "npm@10.9.8",
   "workspaces": [
     "apps/web",
