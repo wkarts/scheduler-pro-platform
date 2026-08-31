@@ -23,8 +23,8 @@ def test_visual_builder_keeps_independent_version_line() -> None:
     scheduler_version = _read("VERSION").strip()
     assert '"name": "@argws/visual-builder"' in package
     assert '"version": "2.4.0"' in package
-    assert scheduler_version == "1.0.0"
-    assert '"version": "1.0.0"' not in package
+    assert scheduler_version == "2.0.0"
+    assert '"version": "2.0.0"' not in package
 
 
 def test_every_successful_release_can_package_visual_builder_separately() -> None:
