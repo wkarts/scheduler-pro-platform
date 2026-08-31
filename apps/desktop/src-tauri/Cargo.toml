@@ -1,6 +1,6 @@
 [package]
 name = "scheduler_pro_desktop"
-version = "2.0.0"
+version = "2.1.0"
 description = "Scheduler Pro Desktop baseado no template Tauri/Rust"
 authors = ["Wallace Kleiton <wkarts@gmail.com>"]
 edition = "2021"
