@@ -16,7 +16,7 @@ from app.services.two_factor_service import TwoFactorService
 pytestmark = pytest.mark.integration
 
 PLATFORM_MIGRATION_HEAD = "platform_0012_login_surface"
-TENANT_MIGRATION_HEAD = "tenant_0011_experience_v2"
+TENANT_MIGRATION_HEAD = "tenant_0012_confirmation_resend"
 
 
 async def tenant_login(client: httpx.AsyncClient, host: str = "localhost") -> dict:
