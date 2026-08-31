@@ -13,134 +13,250 @@ on:
 permissions:
   contents: write
   actions: write
+  pull-requests: read
+  issues: write
 
 concurrency:
-  group: canonical-release-${{ github.event.pull_request.merge_commit_sha }}
+  group: canonical-release
   cancel-in-progress: false
 
 jobs:
   publish-canonical:
     if: github.event.pull_request.merged == true
     runs-on: ubuntu-24.04
+    timeout-minutes: 180
     steps:
-      - name: Checkout canonical merge
+      - name: Checkout canonical main
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.pull_request.merge_commit_sha }}
+          ref: main
           fetch-depth: 0
 
-      - name: Resolve canonical merge and next SemVer tag
+      - name: Ensure canonical version labels
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh label create 'version:patch' --repo "$GITHUB_REPOSITORY" --color '0E8A16' --description 'Próxima release incrementa PATCH' --force
+          gh label create 'version:minor' --repo "$GITHUB_REPOSITORY" --color '1D76DB' --description 'Próxima release incrementa MINOR' --force
+          gh label create 'version:major' --repo "$GITHUB_REPOSITORY" --color 'B60205' --description 'Próxima release incrementa MAJOR' --force
+
+      - name: Resolve and persist next canonical SemVer
         id: version
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           MERGE_SHA: ${{ github.event.pull_request.merge_commit_sha }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_BODY: ${{ github.event.pull_request.body || '' }}
         shell: bash
         run: |
           set -euo pipefail
 
-          if [ -z "$MERGE_SHA" ] || [ "$MERGE_SHA" = "null" ]; then
-            echo "Merge SHA ausente; recusando publicação canônica." >&2
-            exit 1
-          fi
-
-          base_version="$(tr -d '[:space:]' < VERSION)"
-          if [[ ! "$base_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-            echo "VERSION inválido: ${base_version}" >&2
+          if [[ ! "$MERGE_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "Merge SHA inválido: ${MERGE_SHA}" >&2
             exit 2
           fi
 
-          existing_tag="$(
-            gh api --paginate "repos/${GITHUB_REPOSITORY}/releases?per_page=100" \
-              --jq ".[] | select(.target_commitish == \"${MERGE_SHA}\") | .tag_name" \
-              | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' \
-              | head -n 1 || true
+          git fetch origin main --tags --force
+          git reset --hard origin/main
+
+          existing_commit="$(
+            git log origin/main \
+              --grep="Scheduler-Pro-Source-Merge: ${MERGE_SHA}" \
+              --format='%H' -n 1 || true
           )"
 
-          if [ -n "$existing_tag" ]; then
-            echo "O merge ${MERGE_SHA} já possui a release SemVer ${existing_tag}; nenhuma duplicata será criada."
-            echo "tag=${existing_tag}" >> "$GITHUB_OUTPUT"
-            echo "already_published=true" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-
-          latest_stable="$(
-            gh api --paginate "repos/${GITHUB_REPOSITORY}/releases?per_page=100" --jq '.[].tag_name' \
-              | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' \
-              | sort -V \
-              | tail -n 1 || true
-          )"
-
-          if [ -z "$latest_stable" ]; then
-            tag="$base_version"
-            bump="initial"
-          else
-            IFS='.' read -r major minor patch <<< "$latest_stable"
-            labels="$(gh pr view "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --json labels --jq '.labels[].name' || true)"
-
-            if grep -qx 'semver:major' <<< "$labels" && grep -qx 'semver:minor' <<< "$labels"; then
-              echo "A PR não pode solicitar semver:major e semver:minor ao mesmo tempo." >&2
+          if [ -n "$existing_commit" ]; then
+            tag="$(git show "${existing_commit}:VERSION" | tr -d '[:space:]')"
+            if [[ ! "$tag" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+              echo "Commit de retry possui VERSION inválido: ${tag}" >&2
               exit 3
             fi
-
-            if grep -qx 'semver:major' <<< "$labels"; then
-              major=$((major + 1)); minor=0; patch=0; bump="major"
-            elif grep -qx 'semver:minor' <<< "$labels"; then
-              minor=$((minor + 1)); patch=0; bump="minor"
-            else
-              patch=$((patch + 1)); bump="patch"
-            fi
-            tag="${major}.${minor}.${patch}"
-          fi
-
-          if [[ ! "$tag" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-            echo "Tag SemVer calculada inválida: ${tag}" >&2
-            exit 4
-          fi
-
-          if ref_json="$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/${tag}" 2>/dev/null)"; then
-            ref_sha="$(jq -r '.object.sha' <<< "$ref_json")"
-            if [ "$ref_sha" != "$MERGE_SHA" ]; then
-              echo "A tag ${tag} já existe e aponta para ${ref_sha}, não para ${MERGE_SHA}. Recusando sobrescrita." >&2
-              exit 5
-            fi
-            echo "Tag ${tag} já aponta para o merge atual; retomando a publicação."
+            release_sha="$existing_commit"
+            bump="retry"
+            echo "Reutilizando versão ${tag} do commit ${release_sha}."
           else
-            echo "Criando tag canônica ${tag} em ${MERGE_SHA} para a PR #${PR_NUMBER} (${bump})."
-            gh api --method POST "repos/${GITHUB_REPOSITORY}/git/refs" \
-              -f ref="refs/tags/${tag}" \
-              -f sha="${MERGE_SHA}" >/dev/null
+            base_version="$(tr -d '[:space:]' < VERSION)"
+            if [[ ! "$base_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+              echo "VERSION inválido: ${base_version}" >&2
+              exit 4
+            fi
+
+            latest_stable="$(
+              gh api --paginate "repos/${GITHUB_REPOSITORY}/releases?per_page=100" --jq '.[].tag_name' \
+                | sed 's/^v//' \
+                | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' \
+                | sort -V \
+                | tail -n 1 || true
+            )"
+
+            if [ -z "$latest_stable" ]; then
+              tag="$base_version"
+              bump="initial"
+            else
+              IFS='.' read -r major minor patch <<< "$latest_stable"
+              labels="$(gh pr view "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --json labels --jq '.labels[].name' || true)"
+
+              requested=()
+              if grep -Eqx 'version:major|semver:major' <<< "$labels"; then requested+=(major); fi
+              if grep -Eqx 'version:minor|semver:minor' <<< "$labels"; then requested+=(minor); fi
+              if grep -Eqx 'version:patch|semver:patch' <<< "$labels"; then requested+=(patch); fi
+              if [ "${#requested[@]}" -gt 1 ]; then
+                echo "Use apenas um label de versão: version:patch, version:minor ou version:major." >&2
+                exit 5
+              fi
+
+              if [ "${#requested[@]}" -eq 1 ]; then
+                bump="${requested[0]}"
+              elif grep -Eiq '(^|[^A-Za-z])BREAKING CHANGE[ :]+' <<< "$PR_BODY" || grep -Eq '^feat(\([^)]*\))?!:' <<< "$PR_TITLE"; then
+                bump="major"
+              elif grep -Eq '^feat(\([^)]*\))?:' <<< "$PR_TITLE"; then
+                bump="minor"
+              else
+                bump="patch"
+              fi
+
+              case "$bump" in
+                major) major=$((major + 1)); minor=0; patch=0 ;;
+                minor) minor=$((minor + 1)); patch=0 ;;
+                patch) patch=$((patch + 1)) ;;
+                *) echo "Bump inválido: $bump" >&2; exit 6 ;;
+              esac
+              tag="${major}.${minor}.${patch}"
+            fi
+
+            if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+              echo "Release ${tag} já existe; recusando sobrescrita." >&2
+              exit 7
+            fi
+
+            python scripts/release/sync-product-version.py "$tag" \
+              --source-merge-sha "$MERGE_SHA" \
+              --pr-number "$PR_NUMBER" \
+              --bump "$bump"
+
+            git config user.name 'github-actions[bot]'
+            git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+            git add \
+              VERSION RELEASE-MANIFEST.json package.json package-lock.json \
+              apps/web/package.json apps/admin/package.json \
+              apps/desktop/package.json apps/mobile/package.json \
+              apps/admin-desktop/package.json apps/admin-mobile/package.json \
+              apps/desktop/src-tauri/Cargo.toml apps/desktop/src-tauri/tauri.conf.json \
+              apps/mobile/src-tauri/Cargo.toml apps/mobile/src-tauri/tauri.conf.json \
+              apps/admin-desktop/src-tauri/Cargo.toml apps/admin-desktop/src-tauri/tauri.conf.json \
+              apps/admin-mobile/src-tauri/Cargo.toml apps/admin-mobile/src-tauri/tauri.conf.json \
+              packages/api-client/package.json packages/types/package.json \
+              infrastructure/docker/api/Dockerfile infrastructure/docker/worker/Dockerfile \
+              apps/api/app/api/v1/routes/health.py
+
+            git commit -m "chore(release): ${tag}" \
+              -m "Scheduler-Pro-Source-Merge: ${MERGE_SHA}" \
+              -m "Scheduler-Pro-PR: #${PR_NUMBER}" \
+              -m "Scheduler-Pro-Bump: ${bump}"
+            git push origin HEAD:main
+            release_sha="$(git rev-parse HEAD)"
           fi
 
           echo "tag=${tag}" >> "$GITHUB_OUTPUT"
           echo "bump=${bump}" >> "$GITHUB_OUTPUT"
-          echo "already_published=false" >> "$GITHUB_OUTPUT"
+          echo "release_sha=${release_sha}" >> "$GITHUB_OUTPUT"
 
-      - name: Dispatch canonical release, versioned GHCR images and distribution
-        if: steps.version.outputs.already_published != 'true'
+      - name: Build and publish canonical GHCR images first
+        id: images
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG: ${{ steps.version.outputs.tag }}
-          MERGE_SHA: ${{ github.event.pull_request.merge_commit_sha }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
+          RELEASE_SHA: ${{ steps.version.outputs.release_sha }}
         shell: bash
         run: |
           set -euo pipefail
-          correlation="canonical-pr-${PR_NUMBER}-${MERGE_SHA:0:12}"
+          short_sha="${RELEASE_SHA:0:12}"
+          gh workflow run images.yml \
+            --repo "$GITHUB_REPOSITORY" \
+            --ref main \
+            -f image_tag="$TAG" \
+            -f source_sha="$RELEASE_SHA"
 
-          echo "Disparando GitHub Release ${TAG} / ${MERGE_SHA}"
+          run_id=""
+          for _ in $(seq 1 60); do
+            run_id="$(
+              gh run list --repo "$GITHUB_REPOSITORY" --workflow images.yml --event workflow_dispatch \
+                --json databaseId,displayTitle,status,createdAt --limit 30 \
+                --jq ".[] | select(.displayTitle | contains(\"Images ${TAG} / ${short_sha}\")) | .databaseId" \
+                | head -n 1
+            )"
+            [ -n "$run_id" ] && break
+            sleep 5
+          done
+          if [ -z "$run_id" ]; then
+            echo "Não foi possível localizar o workflow de imagens ${TAG}." >&2
+            exit 10
+          fi
+
+          gh run watch "$run_id" --repo "$GITHUB_REPOSITORY" --exit-status
+          echo "run_id=${run_id}" >> "$GITHUB_OUTPUT"
+
+      - name: Create immutable canonical Git tag after image publication
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.version.outputs.tag }}
+          RELEASE_SHA: ${{ steps.version.outputs.release_sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ref_json="$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/${TAG}" 2>/dev/null)"; then
+            ref_sha="$(jq -r '.object.sha' <<< "$ref_json")"
+            if [ "$ref_sha" != "$RELEASE_SHA" ]; then
+              echo "Tag ${TAG} já existe em ${ref_sha}; esperado ${RELEASE_SHA}." >&2
+              exit 11
+            fi
+          else
+            gh api --method POST "repos/${GITHUB_REPOSITORY}/git/refs" \
+              -f ref="refs/tags/${TAG}" -f sha="$RELEASE_SHA" >/dev/null
+          fi
+
+      - name: Publish GitHub Release only after GHCR succeeds
+        id: release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.version.outputs.tag }}
+        shell: bash
+        run: |
+          set -euo pipefail
           gh workflow run release.yml \
             --repo "$GITHUB_REPOSITORY" \
             --ref "$TAG" \
             -f tag="$TAG"
 
-          echo "Disparando imagens GHCR ${TAG} + latest para ${MERGE_SHA}"
-          gh workflow run images.yml \
-            --repo "$GITHUB_REPOSITORY" \
-            --ref "$TAG" \
-            -f image_tag="$TAG"
+          run_id=""
+          for _ in $(seq 1 60); do
+            run_id="$(
+              gh run list --repo "$GITHUB_REPOSITORY" --workflow release.yml --branch "$TAG" --event workflow_dispatch \
+                --json databaseId,status,createdAt --limit 10 --jq '.[0].databaseId // empty'
+            )"
+            [ -n "$run_id" ] && break
+            sleep 5
+          done
+          if [ -z "$run_id" ]; then
+            echo "Não foi possível localizar o workflow Release ${TAG}." >&2
+            exit 12
+          fi
+          gh run watch "$run_id" --repo "$GITHUB_REPOSITORY" --exit-status
+          echo "run_id=${run_id}" >> "$GITHUB_OUTPUT"
 
-          echo "Disparando pacote de distribuição ${TAG}"
+      - name: Dispatch versioned distribution artifacts
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.version.outputs.tag }}
+          RELEASE_SHA: ${{ steps.version.outputs.release_sha }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          correlation="canonical-pr-${PR_NUMBER}-${RELEASE_SHA:0:12}"
           gh workflow run distribution-artifacts.yml \
             --repo "$GITHUB_REPOSITORY" \
             --ref "$TAG" \
@@ -151,10 +267,12 @@ jobs:
         env:
           TAG: ${{ steps.version.outputs.tag }}
           BUMP: ${{ steps.version.outputs.bump }}
-          MERGE_SHA: ${{ github.event.pull_request.merge_commit_sha }}
-          ALREADY_PUBLISHED: ${{ steps.version.outputs.already_published }}
+          RELEASE_SHA: ${{ steps.version.outputs.release_sha }}
+          IMAGES_RUN: ${{ steps.images.outputs.run_id }}
+          RELEASE_RUN: ${{ steps.release.outputs.run_id }}
         run: |
-          echo "Canonical merge: ${MERGE_SHA}"
-          echo "Canonical tag:   ${TAG}"
-          echo "SemVer bump:     ${BUMP:-existing}"
-          echo "Already exists:  ${ALREADY_PUBLISHED}"
+          echo "Canonical version: ${TAG}"
+          echo "SemVer bump:       ${BUMP}"
+          echo "Release commit:    ${RELEASE_SHA}"
+          echo "Images run:        ${IMAGES_RUN}"
+          echo "Release run:       ${RELEASE_RUN}"

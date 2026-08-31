@@ -1,0 +1,19 @@
+{
+  "schema": "scheduler-pro-release-manifest/v1",
+  "product": "Scheduler Pro",
+  "version": "1.0.0",
+  "source_merge_sha": "ffa5feacba5d5c8b90fdbc145a2e1c4c6044e58f",
+  "source_pr": 93,
+  "bump": "initial",
+  "visual_builder": {
+    "package": "@argws/visual-builder",
+    "version": "2.4.0"
+  },
+  "ghcr": {
+    "version": "1.0.0",
+    "minor": "1.0",
+    "major": "1",
+    "latest": "latest",
+    "sha_strategy": "release-metadata-commit-sha"
+  }
+}
