@@ -33,7 +33,7 @@ jobs:
           assert b'diff --git a/.github/workflows/' not in patch
           Path('/tmp/tenant-iam.patch').write_bytes(patch)
           subprocess.run(['git', 'apply', '--check', '--index', '/tmp/tenant-iam.patch'], check=True)
-          subprocess.run(['git', 'apply', '--index', '/tmp/tenant-iam.patch'], check=True)
+          subprocess.run(['git', 'apply', '--whitespace=fix', '--index', '/tmp/tenant-iam.patch'], check=True)
           PY
       - name: Validate backend and operation regressions
         run: |
