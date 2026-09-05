@@ -166,7 +166,9 @@ async def send_delivery(
 
 def retry_delay(attempt: int, server_delay: int | None = None) -> int:
     base = min(3600, 15 * (2 ** min(max(attempt - 1, 0), 8)))
-    return int(min(3600, max(server_delay or 0, base + random.SystemRandom().randint(0, base // 4))))
+    return int(
+        min(3600, max(server_delay or 0, base + random.SystemRandom().randint(0, base // 4)))
+    )
 
 
 async def claim_delivery(context: TenantContext | None) -> dict[str, Any] | None:
@@ -321,6 +323,12 @@ async def drain(context: TenantContext | None) -> dict[str, int]:
 
 async def cleanup(context: TenantContext | None) -> None:
     async with integration_session(context) as session:
+        # Erase incoming contents on retention, never their idempotency tombstones.
+        await session.execute(
+            text(
+                "update service_webhook_inbox set payload_sealed=null where payload_sealed is not null and payload_expires_at<=now()"
+            )
+        )
         await session.execute(
             text(
                 "update service_api_requests set response_sealed=null,state='response_expired' "

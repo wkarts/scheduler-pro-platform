@@ -154,7 +154,7 @@ async def authenticate_token(
                     text(
                         "select id::text, owner_id::text, token_hash, scopes, permissions, roles, tenant_ids, global_scope, rate_limit "
                         "from service_api_tokens where id=cast(:id as uuid) "
-                        "and revoked_at is null and expires_at>now()"
+                        "and revoked_at is null and (expires_at is null or expires_at>now())"
                     ),
                     {"id": match[2]},
                 )

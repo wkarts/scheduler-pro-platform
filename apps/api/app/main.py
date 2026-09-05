@@ -122,7 +122,7 @@ def _queue_http_log(
         lambda: persist_http_operation(
             method=request.method,
             path=request.url.path,
-            query=request.url.query or None,
+            query=None if request.url.path.startswith("/api/v1/hooks/") else request.url.query or None,
             status_code=status_code,
             duration_ms=duration_ms,
             request_id=request.state.request_id,
@@ -240,7 +240,7 @@ def create_app() -> FastAPI:
             correlation_id=request.state.correlation_id,
             method=request.method,
             path=request.url.path,
-            query=request.url.query or None,
+            query=None if request.url.path.startswith("/api/v1/hooks/") else request.url.query or None,
             status_code=status_code,
             duration_ms=duration_ms,
             client_ip=request.client.host if request.client else None,

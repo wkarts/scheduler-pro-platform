@@ -100,6 +100,7 @@ def scope_for(path: str, method: str, platform: bool) -> str | None:
     # Browser credentials, secret issuance and long-lived streams are not delegated.
     if (
         "/integrations/services/tokens" in path
+        or ("/integrations/services/receivers" in path and method.upper() not in SAFE_METHODS)
         or path.endswith("/realtime/stream")
         or path.endswith("/resolve-outcome")
     ):

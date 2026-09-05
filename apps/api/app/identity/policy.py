@@ -64,6 +64,12 @@ async def revoke_access(
         ),
         {"id": user_id},
     )
+    await session.execute(
+        text(
+            "update service_webhook_receivers set active=false,revoked_at=coalesce(revoked_at,now()) where created_by=cast(:id as uuid)"
+        ),
+        {"id": user_id},
+    )
     if email_tokens:
         await session.execute(
             text(
