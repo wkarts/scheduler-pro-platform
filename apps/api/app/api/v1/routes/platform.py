@@ -1,7 +1,7 @@
 import json
 from typing import Any
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -73,6 +73,7 @@ def _tenant_filter_clause(principal: AuthPrincipal, column: str) -> tuple[str, d
 
 @router.post("/tenants")
 async def create_tenant(
+    request: Request,
     payload: TenantCreateRequest,
     principal: AuthPrincipal = Depends(require_platform_permission("tenants.create")),
     session: AsyncSession = Depends(get_platform_session),
@@ -94,6 +95,16 @@ async def create_tenant(
             ),
             {"user_id": principal.user_id, "tenant_id": job["tenant_id"]},
         )
+        await session.commit()
+    integration = getattr(request.state, "integration_identity", None)
+    if integration is not None and integration.token_id:
+        # Do not inherit unrelated tenants granted to the owner after token issuance.
+        # A tenant explicitly created by this token is part of its own operation.
+        await session.execute(text(
+            "update service_api_tokens set tenant_ids=tenant_ids || jsonb_build_array(cast(:tenant as text)) "
+            "where id=cast(:token as uuid) and owner_id=cast(:owner as uuid) "
+            "and not (tenant_ids ? :tenant)"
+        ), {"token": integration.token_id, "owner": principal.user_id, "tenant": job["tenant_id"]})
         await session.commit()
     celery_app.send_task(
         "app.workers.tasks.run_provisioning",

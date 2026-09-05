@@ -52,9 +52,9 @@ def test_images_finish_before_tag_and_release_are_created() -> None:
     assert "--exit-status" in workflow
 
 
-def test_ghcr_has_full_minor_major_latest_sha_and_multiarch() -> None:
+def test_ghcr_has_full_minor_major_latest_sha_and_amd64() -> None:
     workflow = _read(".github/workflows/images.yml")
-    assert "linux/amd64,linux/arm64" in workflow
+    assert "platforms: linux/amd64" in workflow
     assert "minor_tag" in workflow
     assert "major_tag" in workflow
     assert 'for alias in "$MINOR_TAG" "$MAJOR_TAG"' in workflow
@@ -62,13 +62,14 @@ def test_ghcr_has_full_minor_major_latest_sha_and_multiarch() -> None:
     assert "SOURCE_SHA" in workflow
     assert "docker buildx imagetools inspect" in workflow
     assert "linux/amd64" in workflow
-    assert "linux/arm64" in workflow
+    assert "linux/arm64" not in workflow
+    assert "setup-qemu" not in workflow
 
 
 def test_develop_publishes_homolog_and_sha_without_release() -> None:
     workflow = _read(".github/workflows/homolog-images.yml")
     assert "branches: [develop]" in workflow
-    assert "linux/amd64,linux/arm64" in workflow
+    assert "platforms: linux/amd64" in workflow
     assert ":homolog" in workflow
     assert "${{ github.sha }}" in workflow
     assert "gh release" not in workflow

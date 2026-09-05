@@ -87,6 +87,12 @@ async def _shutdown_runtime() -> None:
 
 
 def _request_principal(request: Request) -> dict[str, Any]:
+    service = getattr(request.state, "integration_identity", None)
+    if service is not None and service.token_id:
+        principal = service.principal
+        return {"user_id": principal.user_id, "tenant_id": principal.tenant_id,
+                "user_type": principal.user_type, "session_id": principal.session_id,
+                "api_token_id": service.token_id}
     authorization = request.headers.get("authorization", "")
     if not authorization.lower().startswith("bearer "):
         return {}
@@ -148,11 +154,15 @@ def create_app() -> FastAPI:
         allow_origins=settings.effective_cors_allowed_origins,
         allow_credentials=True,
         allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+        expose_headers=["X-Request-ID", "X-Correlation-ID", "X-Idempotency-Request-ID",
+                        "Idempotency-Replayed", "Retry-After"],
         allow_headers=[
             "Authorization",
             "Content-Type",
             "X-Request-ID",
             "X-Correlation-ID",
+            "Idempotency-Key",
+            "Idempotency-Key",
         ],
     )
 
@@ -249,6 +259,8 @@ def create_app() -> FastAPI:
     # É resolvida pelo hostname do tenant e não exige autenticação.
     app.include_router(appointment_action_router)
     app.include_router(api_router, prefix="/api/v1")
+    from app.integration_services import register_integration_services
+    register_integration_services(app)
     return app
 
 

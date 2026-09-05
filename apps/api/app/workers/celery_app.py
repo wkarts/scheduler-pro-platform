@@ -27,7 +27,7 @@ celery_app = Celery(
     "scheduler_pro",
     broker=settings.celery_broker_url,
     backend=settings.celery_result_backend,
-    include=["app.workers.tasks", "app.workers.agenda_report_tasks"],
+    include=["app.workers.tasks", "app.workers.agenda_report_tasks", "app.workers.integration_tasks"],
 )
 celery_app.conf.update(
     broker_connection_retry_on_startup=True,
@@ -41,6 +41,8 @@ celery_app.conf.update(
         for queue_name in DURABLE_QUEUES
     ),
     task_routes={
+        "app.workers.integration_tasks.sweep": {"queue": "webhooks", "routing_key": "webhooks"},
+        "app.workers.integration_tasks.deliver": {"queue": "webhooks", "routing_key": "webhooks"},
         "app.workers.tasks.run_provisioning": {
             "queue": "provisioning",
             "routing_key": "provisioning",
@@ -79,6 +81,11 @@ celery_app.conf.update(
         },
     },
     beat_schedule={
+        "integration-services-sweep": {
+            "task": "app.workers.integration_tasks.sweep",
+            "schedule": crontab(minute="*"),
+            "options": {"queue": "webhooks", "routing_key": "webhooks", "expires": 55},
+        },
         "notification-sweep-every-minute": {
             "task": "app.workers.tasks.process_all_due_notifications",
             "schedule": crontab(minute="*"),

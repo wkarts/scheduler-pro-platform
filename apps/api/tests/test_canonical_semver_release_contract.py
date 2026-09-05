@@ -119,7 +119,9 @@ def test_ghcr_publishes_hierarchical_tags_latest_and_immutable_sha() -> None:
     assert 'latest_ref="${REGISTRY_PREFIX}/${image}:latest"' in images
     assert 'source_ref="${REGISTRY_PREFIX}/${image}:${SOURCE_SHA}"' in images
     assert "source_sha: ${{ steps.resolve.outputs.source_sha }}" in images
-    assert "linux/amd64,linux/arm64" in images
+    assert "platforms: linux/amd64" in images
+    assert "linux/arm64" not in images
+    assert "setup-qemu" not in images
 
     # A promoção da SemVer completa precede os aliases móveis.
     full_version = images.index('version_ref="${REGISTRY_PREFIX}/${image}:${RELEASE_VERSION}"')

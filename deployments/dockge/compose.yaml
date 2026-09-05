@@ -23,6 +23,20 @@ x-api-env: &api-env
   HTTP_LOG_CONCURRENCY: ${HTTP_LOG_CONCURRENCY:-2}
   HTTP_LOG_TIMEOUT_SECONDS: ${HTTP_LOG_TIMEOUT_SECONDS:-3}
   API_MAX_INFLIGHT_REQUESTS: ${API_MAX_INFLIGHT_REQUESTS:-64}
+  INTEGRATION_API_ENABLED: ${INTEGRATION_API_ENABLED:-true}
+  INTEGRATION_WEBHOOKS_ENABLED: ${INTEGRATION_WEBHOOKS_ENABLED:-true}
+  INTEGRATION_MAX_INFLIGHT_REQUESTS: ${INTEGRATION_MAX_INFLIGHT_REQUESTS:-32}
+  INTEGRATION_BODY_TIMEOUT_SECONDS: ${INTEGRATION_BODY_TIMEOUT_SECONDS:-15}
+  INTEGRATION_MAX_TOKENS: ${INTEGRATION_MAX_TOKENS:-50}
+  INTEGRATION_MAX_ENDPOINTS: ${INTEGRATION_MAX_ENDPOINTS:-20}
+  INTEGRATION_REPLAY_HOURS: ${INTEGRATION_REPLAY_HOURS:-24}
+  INTEGRATION_RETENTION_DAYS: ${INTEGRATION_RETENTION_DAYS:-30}
+  INTEGRATION_MAX_PENDING_REQUESTS: ${INTEGRATION_MAX_PENDING_REQUESTS:-100}
+  INTEGRATION_MAX_REQUEST_BYTES: ${INTEGRATION_MAX_REQUEST_BYTES:-16777216}
+  INTEGRATION_MAX_RESPONSE_BYTES: ${INTEGRATION_MAX_RESPONSE_BYTES:-2097152}
+  INTEGRATION_WEBHOOK_TIMEOUT_SECONDS: ${INTEGRATION_WEBHOOK_TIMEOUT_SECONDS:-10}
+  INTEGRATION_WEBHOOK_BATCH_SIZE: ${INTEGRATION_WEBHOOK_BATCH_SIZE:-5}
+  INTEGRATION_WEBHOOK_MAX_ATTEMPTS: ${INTEGRATION_WEBHOOK_MAX_ATTEMPTS:-8}
   APP_NAME: ${APP_NAME:-Scheduler Pro}
   APP_ENV: ${APP_ENV:-production}
   APP_DEBUG: ${APP_DEBUG:-false}
@@ -181,7 +195,26 @@ services:
       DB_TENANT_MAX_OVERFLOW: ${DB_WORKER_TENANT_MAX_OVERFLOW:-0}
       TENANT_ENGINE_CACHE_MAX: ${DB_WORKER_TENANT_ENGINE_CACHE_MAX:-4}
       DB_CONNECTION_BUDGET_PER_PROCESS: ${DB_WORKER_CONNECTION_BUDGET_PER_PROCESS:-8}
-    command: ["celery", "-A", "app.workers.celery_app.celery_app", "worker", "-Q", "whatsapp,notifications,webhooks", "--loglevel=INFO", "--concurrency=${CELERY_WHATSAPP_CONCURRENCY:-2}", "--max-tasks-per-child=${CELERY_MAX_TASKS_PER_CHILD:-500}", "--without-gossip", "--without-mingle", "--without-heartbeat"]
+    command: ["celery", "-A", "app.workers.celery_app.celery_app", "worker", "-Q", "whatsapp,notifications", "--loglevel=INFO", "--concurrency=${CELERY_WHATSAPP_CONCURRENCY:-2}", "--max-tasks-per-child=${CELERY_MAX_TASKS_PER_CHILD:-500}", "--without-gossip", "--without-mingle", "--without-heartbeat"]
+    logging: *logging
+    security_opt: ["no-new-privileges:true"]
+
+  scheduler-worker-webhooks:
+    image: ${IMAGE_REGISTRY:-ghcr.io}/${IMAGE_NAMESPACE:-wkarts/scheduler-pro-platform}/worker:${APP_IMAGE_TAG:-latest}
+    pull_policy: always
+    restart: unless-stopped
+    stop_grace_period: 120s
+    depends_on: {scheduler-api: {condition: service_healthy}}
+    environment:
+      <<: *api-env
+      DB_SERVICE_NAME: scheduler-worker-webhooks
+      DB_PLATFORM_POOL_SIZE: 1
+      DB_PLATFORM_MAX_OVERFLOW: 0
+      DB_TENANT_POOL_SIZE: 1
+      DB_TENANT_MAX_OVERFLOW: 0
+      TENANT_ENGINE_CACHE_MAX: 2
+      DB_CONNECTION_BUDGET_PER_PROCESS: 3
+    command: ["celery", "-A", "app.workers.celery_app.celery_app", "worker", "-Q", "webhooks", "--loglevel=INFO", "--concurrency=${CELERY_WEBHOOK_CONCURRENCY:-1}", "--max-tasks-per-child=${CELERY_MAX_TASKS_PER_CHILD:-500}", "--without-gossip", "--without-mingle", "--without-heartbeat"]
     logging: *logging
     security_opt: ["no-new-privileges:true"]
 
