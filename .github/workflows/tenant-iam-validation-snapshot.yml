@@ -1,0 +1,32 @@
+name: Tenant IAM validation snapshot
+on:
+  push:
+    branches: [feat/tenant-identity-access-profiles]
+    paths: [.github/workflows/tenant-iam-validation-snapshot.yml]
+permissions:
+  contents: read
+jobs:
+  snapshot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Source and validation dependencies
+        run: |
+          mkdir -p /tmp/tenant-iam-validation/wheels
+          git archive --format=tar.gz -o /tmp/tenant-iam-validation/source.tar.gz HEAD
+          python -m pip download --only-binary=:all: --no-deps Pillow==12.3.0 -d /tmp/tenant-iam-validation/wheels
+          npm install --ignore-scripts
+          tar -czf /tmp/tenant-iam-validation/node_modules.tar.gz node_modules
+          sha256sum /tmp/tenant-iam-validation/*.tar.gz > /tmp/tenant-iam-validation/SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tenant-iam-validation
+          path: /tmp/tenant-iam-validation
+          retention-days: 1
