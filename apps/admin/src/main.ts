@@ -1,3 +1,4 @@
+import IntegrationServicesLauncher from '../../../packages/integration-services/IntegrationServicesLauncher.vue'
 import { installAdminAuthFetch } from './admin-auth-fetch'
 import { createApp } from 'vue'
 import { createPinia } from 'pinia'
@@ -52,3 +53,9 @@ const secondFactorHost = document.createElement('div')
 secondFactorHost.id = 'scheduler-pro-admin-second-factor'
 document.body.appendChild(secondFactorHost)
 createApp(AdminSecondFactorGate).mount(secondFactorHost)
+
+// Additive service integration center; keeps the existing tenant/admin shell intact.
+const integrationServicesHost = document.createElement('div')
+integrationServicesHost.id = 'scheduler-pro-integration-services'
+document.body.appendChild(integrationServicesHost)
+createApp(IntegrationServicesLauncher, { platform: true }).mount(integrationServicesHost)

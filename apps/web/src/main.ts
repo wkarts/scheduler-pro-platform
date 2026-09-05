@@ -1,3 +1,4 @@
+import IntegrationServicesLauncher from '../../../packages/integration-services/IntegrationServicesLauncher.vue'
 import { createApp } from 'vue'
 import { createPinia } from 'pinia'
 import App from './App.vue'
@@ -22,3 +23,9 @@ installTenantAuthFetch()
 installTenantMobileEnhancements()
 installTenantFrontendTelemetry()
 createApp(App).use(createPinia()).mount('#app')
+
+// Additive service integration center; keeps the existing tenant/admin shell intact.
+const integrationServicesHost = document.createElement('div')
+integrationServicesHost.id = 'scheduler-pro-integration-services'
+document.body.appendChild(integrationServicesHost)
+createApp(IntegrationServicesLauncher, { platform: false }).mount(integrationServicesHost)

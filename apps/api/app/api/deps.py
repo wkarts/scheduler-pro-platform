@@ -126,10 +126,16 @@ async def get_tenant_login_stage_user(
 
 
 async def get_current_tenant_user(
+    request: Request,
     context: TenantContext = Depends(get_tenant_context),
     session: AsyncSession = Depends(get_tenant_session),
     credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
 ) -> AuthPrincipal:
+    service_principal = getattr(request.state, "integration_principal", None)
+    if isinstance(service_principal, AuthPrincipal):
+        if service_principal.user_type != "tenant" or service_principal.tenant_id != context.tenant_id:
+            raise APIError("API_SCOPE_DENIED", "Token não pertence à empresa.", 403)
+        return service_principal
     principal, row = await _tenant_stage(context, session, credentials)
     if bool(row["two_factor_enabled"]) and not bool(row["second_factor_verified"]):
         raise APIError(
@@ -271,9 +277,15 @@ async def get_platform_login_stage_user(
 
 
 async def get_current_platform_user(
+    request: Request,
     session: AsyncSession = Depends(get_platform_session),
     credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
 ) -> AuthPrincipal:
+    service_principal = getattr(request.state, "integration_principal", None)
+    if isinstance(service_principal, AuthPrincipal):
+        if service_principal.user_type != "platform":
+            raise APIError("API_SCOPE_DENIED", "Token não pertence ao Control Plane.", 403)
+        return service_principal
     principal, row = await _platform_stage(session, credentials)
     if not bool(row["two_factor_enabled"]) or not bool(row["second_factor_verified"]):
         setup_required = not bool(row["two_factor_enabled"]) or not bool(
