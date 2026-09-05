@@ -1,17 +1,17 @@
 {
   "schema": "scheduler-pro-release-manifest/v1",
   "product": "Scheduler Pro",
-  "version": "2.1.0",
-  "source_merge_sha": "e345ae65e23d104a472cda424a63111a455c4b46",
-  "source_pr": 92,
-  "bump": "minor",
+  "version": "2.0.1",
+  "source_merge_sha": "c840faeb5935b68f2d1b65db201d1b0115fbb3bb",
+  "source_pr": 96,
+  "bump": "patch",
   "visual_builder": {
     "package": "@argws/visual-builder",
     "version": "2.4.0"
   },
   "ghcr": {
-    "version": "2.1.0",
-    "minor": "2.1",
+    "version": "2.0.1",
+    "minor": "2.0",
     "major": "2",
     "latest": "latest",
     "sha_strategy": "release-metadata-commit-sha"
