@@ -1,0 +1,30 @@
+name: Tenant IAM validation dependencies
+on:
+  push:
+    branches: [feat/tenant-users-groups-profiles]
+    paths: [.github/workflows/tenant-iam-validation-deps.yml]
+permissions:
+  contents: read
+jobs:
+  dependencies:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Package isolated validation dependencies (no credentials)
+        run: |
+          mkdir -p /tmp/tenant-iam-validation/wheels
+          python -m pip wheel 'Pillow==12.3.0' --wheel-dir /tmp/tenant-iam-validation/wheels
+          npm install --ignore-scripts
+          tar -czf /tmp/tenant-iam-validation/node_modules.tar.gz node_modules
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tenant-iam-validation-dependencies
+          path: /tmp/tenant-iam-validation
+          retention-days: 1
