@@ -1,4 +1,5 @@
 from __future__ import annotations
+from contextlib import aclosing
 
 import io
 import json
@@ -295,26 +296,27 @@ class DiagnosticsExportService:
             section: dict[str, Any] = {"tenant_id": tenant_id, "slug": slug}
             try:
                 context = await resolver.resolve_by_id(tenant_id, require_active=False)
-                async for tenant_db in tenant_session(context):
-                    service = ObservabilityService(tenant_db)
-                    section["logs"] = await service.list_tenant_logs(limit=50000)
-                    audit_rows = (
-                        await tenant_db.execute(
-                            text(
-                                """
-                                select a.id::text, a.user_id::text, u.email, a.action,
-                                       a.result, a.ip_address, a.correlation_id,
-                                       a.metadata, a.created_at
-                                from audit_logs a
-                                left join users u on u.id=a.user_id
-                                order by a.created_at desc
-                                limit 50000
-                                """
+                async with aclosing(tenant_session(context)) as _session_scope_298:
+                    async for tenant_db in _session_scope_298:
+                        service = ObservabilityService(tenant_db)
+                        section["logs"] = await service.list_tenant_logs(limit=50000)
+                        audit_rows = (
+                            await tenant_db.execute(
+                                text(
+                                    """
+                                    select a.id::text, a.user_id::text, u.email, a.action,
+                                           a.result, a.ip_address, a.correlation_id,
+                                           a.metadata, a.created_at
+                                    from audit_logs a
+                                    left join users u on u.id=a.user_id
+                                    order by a.created_at desc
+                                    limit 50000
+                                    """
+                                )
                             )
-                        )
-                    ).mappings().all()
-                    section["audit"] = [dict(row) for row in audit_rows]
-                    break
+                        ).mappings().all()
+                        section["audit"] = [dict(row) for row in audit_rows]
+                        break
             except Exception as exc:  # noqa: BLE001 - failed tenants are expected
                 section["error"] = f"{type(exc).__name__}: {exc}"
             result[slug] = section

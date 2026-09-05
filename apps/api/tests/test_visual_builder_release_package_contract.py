@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 
 
@@ -23,7 +24,8 @@ def test_visual_builder_keeps_independent_version_line() -> None:
     scheduler_version = _read("VERSION").strip()
     assert '"name": "@argws/visual-builder"' in package
     assert '"version": "2.4.0"' in package
-    assert scheduler_version == "2.0.0"
+    assert scheduler_version == json.loads(_read("package.json"))["version"]
+    assert scheduler_version != json.loads(package)["version"]
     assert '"version": "2.0.0"' not in package
 
 

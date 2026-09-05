@@ -1,0 +1,305 @@
+{
+  "basis": "scheduler-pro-platform-main (9).zip",
+  "basis_sha256": "53dd4b9a3645e190996b16c55f14bd2a35bc30bb13a6a2e6338145e97a541e6d",
+  "delivery": "resilience-20260905",
+  "original_file_count": 773,
+  "original_files_preserved": true,
+  "unchanged_original_files": 741,
+  "modified_original_file_count": 32,
+  "new_file_count_excluding_manifest": 32,
+  "modified": [
+    {
+      "file": ".env.example",
+      "original_sha256": "ce076600b31673e8327181ae22187e63b4f4e202a34ac440492912d20553a2ad",
+      "sha256": "0269077c6fd45d6610ca2552a28320ab68fa4699f44fec4be9122cc33da4eff7"
+    },
+    {
+      "file": ".github/workflows/ci.yml",
+      "original_sha256": "8d227fa02fe347bdd443e89b82b9cfd1cc098b50c0b736cf66c2bad2d3624881",
+      "sha256": "0b04061b0004ee75c20afaa6d82621a6bbeac42d4282122e7f0fecda83757eb0"
+    },
+    {
+      "file": "apps/admin/public/sw.js",
+      "original_sha256": "13b0f598cad5d46a559c944b0d893383f4149291a22c38f7ac3d450dfeab7667",
+      "sha256": "63d3e8c8db8d3edb4b49c33335434ae12b209c8699cff216acb8f800581d423f"
+    },
+    {
+      "file": "apps/admin/src/AdminHub.vue",
+      "original_sha256": "2f8ac98ffaed0f914c4a1f65fa9e2dcb5d8c2b02631baf303e4290bdd8110456",
+      "sha256": "a2d5025baa2e521fa1faec269efb4e93d3156fd8b49d18454d3e2ca728a58261"
+    },
+    {
+      "file": "apps/admin/src/App.vue",
+      "original_sha256": "efcb04917890819f199c3b7412a3da578d2b3b46d6aa2c363c71abc81efbe648",
+      "sha256": "f7d1199910b52c10596a5a3a5c9cc3f14adc49535a86d472adaa49ea20f11a5c"
+    },
+    {
+      "file": "apps/admin/src/main.ts",
+      "original_sha256": "992fdd1c361f98b1c41369c0f7ac71d82b1bb8608b8f7a28c999ba343ae0ddb8",
+      "sha256": "322cf1522d373dbeb9423e0a50c7d80fd26a78a1be9681aff576a05d737eb23d"
+    },
+    {
+      "file": "apps/api/app/api/deps.py",
+      "original_sha256": "c562e8c8ab23f5ae496ea6fad8d871af3d6c0b24d07f5082d93133536dfaf1a8",
+      "sha256": "670def56ba2ad87348745fd99caf8178e4203457f5f678ee051985ab1a1b148a"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/health.py",
+      "original_sha256": "a9899c0d9404e1de5d8208c89f0953ad1c17ba36ff54136d01874d3b7495f3a7",
+      "sha256": "df4151c4fbf79973dfd751843629d7f3abb07267fc15c285a23bc89d28ae54a6"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/observability.py",
+      "original_sha256": "caea28ce0cee4e8f22130a70cec4e60bf6fc1908f8c610c2cde351ffececbc3f",
+      "sha256": "72a50837f61806e8ef922a62063ae8409744f41f376b79fdbd1a8ed62dd35d9c"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/realtime.py",
+      "original_sha256": "36c1a2e842ecd9f897b633c0d9b3415302b895829976a7f255b89236b2cf4174",
+      "sha256": "58805da4f87ef33c80ab26e338171399444fe88ba2d04d7b6ca5e0cf14b9d9d4"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/tenant_management.py",
+      "original_sha256": "6372dcf7858a91e17ac484009083a937c3ed5b3db31001ce7766c27f9b03dc35",
+      "sha256": "5711f5a205e526935bbccd27b341a07d1fd7cd74250a83e7663019a4c25558bd"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/tenant_support.py",
+      "original_sha256": "5ecc0a17330bd54fdb5d00ddb5ecf97ca6d4bc7bb62289d4e28713fd0fb37be9",
+      "sha256": "2f45b8910b936a6fb63998a871af40065c6c94461dba9bed79385e76d9546e57"
+    },
+    {
+      "file": "apps/api/app/core/config.py",
+      "original_sha256": "39482c2678dc60383a16ab321bd035c428fa6d2c1e7db7ef402b693768037f4f",
+      "sha256": "fb2bcb5311d6a9961db517af65b9577f80015d89fd5bdf80490f1e9f57ab4b02"
+    },
+    {
+      "file": "apps/api/app/core/errors.py",
+      "original_sha256": "1469f53fe19c0d7b3e5058cd381ef59563fa4f42495af80d4b76074940019517",
+      "sha256": "ed0a117eb8810c7ab64a48a0a3816a762a7f9c78a4a600a96cbb4246c566f58f"
+    },
+    {
+      "file": "apps/api/app/db/postgres_admin.py",
+      "original_sha256": "f7cb51ddb4f3c58dfaa9125403cfc2407a8ee475abdc29f2cb0cf165c48af7ae",
+      "sha256": "8259bfa930170511ea21ee428f10b7216e3981a868624fc3af7432559d577438"
+    },
+    {
+      "file": "apps/api/app/db/session.py",
+      "original_sha256": "515879c64352af8c3c6062ae91522b8cb8964aadbe2058ba8c57f3ef08573b9a",
+      "sha256": "0d5415842afee453c286cd344270fa781a6ae06a038c1b6db27396f386f5a069"
+    },
+    {
+      "file": "apps/api/app/main.py",
+      "original_sha256": "fe67f74da30e844c6cb03a3d8ebff488147b65696016a880a76d2a2c3cc557f6",
+      "sha256": "b84c8ac66ba796d45d4e9b5eaee020461b179341eaa315f590eff7e9f2213d8e"
+    },
+    {
+      "file": "apps/api/app/services/auth_service.py",
+      "original_sha256": "227ae6dd000e130f2d3aaf9c23fb1e58e3e56de9155c8b8da1216013fbcdf8cb",
+      "sha256": "9c849e34291812b91819da103a997e76c23191638851f36c688dcd18912572f6"
+    },
+    {
+      "file": "apps/api/app/services/diagnostics_export_service.py",
+      "original_sha256": "46719e1720107e1bd22db3a952f01aa883d4bbbd087ee1e4d3018f0904e51316",
+      "sha256": "c9dea1b9d2c2ef0030f247717b764747ca9440b42cb15cb1e16a639d502f7d00"
+    },
+    {
+      "file": "apps/api/app/services/http_log_persistence.py",
+      "original_sha256": "db562fe7dec9227df819314744a7e2e65a73870dc2dcf03b848f480cf45f4915",
+      "sha256": "7f90bfe6e0bc9c2e3acdc37310ad55d1a9bb3d92daede815f9e1f1f6e62604ff"
+    },
+    {
+      "file": "apps/api/app/workers/agenda_report_tasks.py",
+      "original_sha256": "7c49f9fba13ef77b96f59ca2f2344cfe9825cb391446c441e49680ae62f4dfa5",
+      "sha256": "a9e832a026fcd1536ec76ca1bed6ad24d48ff28403c6507a3b515ea2ddb19564"
+    },
+    {
+      "file": "apps/api/app/workers/tasks.py",
+      "original_sha256": "e166197a2616d6b79565bcc2490c8bdfe4f6c86eea2293ca058e9e8498c9cfbc",
+      "sha256": "9da3de96a97d487428e030e1c20fa6509bbcbcffbd2c5ae7056c916a206f6f63"
+    },
+    {
+      "file": "apps/api/tests/test_visual_builder_release_package_contract.py",
+      "original_sha256": "4fb964de892f9899fdd89152b7f1c0778aec21e784b3319a025795098f82f2a6",
+      "sha256": "87c94fd2d99b898e5f25178190bb37f19b7e9037069d1339764c7364f213080b"
+    },
+    {
+      "file": "apps/web/public/sw.js",
+      "original_sha256": "b27c2dff495139f2342c904deea5182e5905d2135de0469d3489a0e9c8a357fe",
+      "sha256": "397fc822e25d79771f81981ea6dee1e3d2e994fee1fbfcec69afd4cc0529b40d"
+    },
+    {
+      "file": "apps/web/src/tenant-auth-fetch.ts",
+      "original_sha256": "ef173f3a08082eabbf949e5bedf4c14e274b52c0666715533cf67c35414078df",
+      "sha256": "c2cc4fdc96230bf45c7ca0e357408473965ad6e6e1478a89663e88ef2b93c539"
+    },
+    {
+      "file": "apps/web/src/tenantRealtime.ts",
+      "original_sha256": "cd487414a5d5ca8d72fa9c1def6e51f3c4424b74f5c5e32e3fd170b4ea9c744b",
+      "sha256": "24b0246d5ff98745047aef6fcc942c063a54db3651ec00e27375c94371c29bff"
+    },
+    {
+      "file": "deployments/cloudpanel/.env.example",
+      "original_sha256": "56419524e64b4147fa1afd44154886b7655063d1dfdc153101ad0d6be4f083f4",
+      "sha256": "b6b142b19412082b59c59048cf13b7c00769e58fd8a0342f4862499254a4675a"
+    },
+    {
+      "file": "deployments/cloudpanel/compose.argws.yaml",
+      "original_sha256": "fd0dd1ff6c43a17dff62865cae933862c2dc9fe058319a06506ea0414d24babd",
+      "sha256": "f9926af099ddc85dc49d60b5a5750c3fc2fb8a32ab4c28bb8fb7e66e09aaf978"
+    },
+    {
+      "file": "deployments/cloudpanel/compose.yaml",
+      "original_sha256": "65b09c4b5c48a4c43dc6e764522a8a8dc84db41e3fc1467c609fd5c91b0f0dfc",
+      "sha256": "70dcc3cbc35076fddbc303199d9ae5fe039541c8de2f354e6adf452eefbd24e7"
+    },
+    {
+      "file": "deployments/development/docker-compose.yml",
+      "original_sha256": "6d9b072459a747d14f590f246c96893a16b2ba30e145a45f8c5f6d4089524d94",
+      "sha256": "c7e7775886471a01952534a45228403529e54eae8084a8a7a213090aa6e03ff1"
+    },
+    {
+      "file": "deployments/dockge/.env.example",
+      "original_sha256": "fd95dc77cfe6980fca3dfa14342a54256f11b9c546f2d5f3bc4b0d8c3fd6ea37",
+      "sha256": "98fb4d1a51354737f7e2084210e123ca4770170fdfc77660633e97c825155874"
+    },
+    {
+      "file": "deployments/dockge/compose.yaml",
+      "original_sha256": "b12631081373045a634e77ddc286a8c2d5a4d0a83ed83684951237055ec18efd",
+      "sha256": "92e1565ecd7801dc52cb43528ba7592e0a9510d998300008f456ec8b6f807d9d"
+    }
+  ],
+  "added": [
+    {
+      "file": "ENTREGA_RESILIENCIA_2026-09-05.md",
+      "sha256": "b0eec9584c605cb9d3f6fe06475f2af146b9ca7bc9b3607e6c4b703ed57eda30"
+    },
+    {
+      "file": "apps/admin/src/admin-auth-fetch.ts",
+      "sha256": "865166d0bd279fb2cd091d43cc5f1fef35d165acb3c691ddcd0952aeb491d729"
+    },
+    {
+      "file": "apps/api/app/core/background_tasks.py",
+      "sha256": "27e7d6fe888fb9e95fa144a7c3c1619b36b78bb50ee45e2e1f98d78d20f42c3c"
+    },
+    {
+      "file": "apps/api/app/core/transient_errors.py",
+      "sha256": "ed17ad0a18db99dfb9debcae32a061dd386b193609e057424e31fc86c12ea744"
+    },
+    {
+      "file": "apps/api/app/db/connection_budget.py",
+      "sha256": "ed1e36e218713cf3774024dba079eb415756c346d85887811b71b01bd139e2aa"
+    },
+    {
+      "file": "apps/api/app/db/engine_registry.py",
+      "sha256": "fe6d1bc64b4184690b436b4bdefde9252557c2e788400c577cdf08ef074b8bda"
+    },
+    {
+      "file": "apps/api/tests/test_resilience_core.py",
+      "sha256": "d34a9e9494eb2cd41a8dafaafdf2c4bafbc82a397a753e8673bbf1f09d1fed80"
+    },
+    {
+      "file": "apps/api/tests/test_resilience_http.py",
+      "sha256": "0a9ee6dda6cab948c819c2c0239d32eaafb8bcbf227143ef0dc710a5c661c1cc"
+    },
+    {
+      "file": "docs/audits/RESILIENCIA_2026-09-05.md",
+      "sha256": "318281b6c92107c916407522825566435dccebb22a65c96e025d84b7ffee6d45"
+    },
+    {
+      "file": "docs/operations/RESILIENCIA_DEPLOY_2026-09-05.md",
+      "sha256": "6f944772f46c23b1900c975138710cdceafb4cb229136c83d9e46fc8416594c1"
+    },
+    {
+      "file": "scripts/operations/backup-postgres.py",
+      "sha256": "d166c8ad6cb2543ce87a51c4a9a00c036a26e78f08fc8fac79588b24a8d143aa"
+    },
+    {
+      "file": "scripts/operations/check-connection-budget.py",
+      "sha256": "9089012d6b6002bb839fc9987a7b719cbcfbf307f9a9db04cf96dc9a9ce6185e"
+    },
+    {
+      "file": "scripts/operations/database-diagnostics.sql",
+      "sha256": "7d37306cb34c15a0b9cbea5b591c078c7e0ef7dff2385e40844c4b94a20c063d"
+    },
+    {
+      "file": "scripts/tests/auth-fetch.test.cjs",
+      "sha256": "acf6e96f9710e010ade18fcea64adaf8addd224a6af9eed03472fee8acd36a56"
+    },
+    {
+      "file": "scripts/tests/test_operations.py",
+      "sha256": "86abe3ad7bed8a6d47a050489fde06a82d3f07d6e4d1e8c261e86a2804338873"
+    },
+    {
+      "file": "validation/resilience-20260905/COMMANDS.md",
+      "sha256": "95e323da094cdccb955cf9b88f7c8368f767c9ae59b3c1f997bc578b707ea271"
+    },
+    {
+      "file": "validation/resilience-20260905/SUMMARY.json",
+      "sha256": "14910ea84cd6df368441b42fa83bbcffd332843b98259c8d629737ffa4ca732e"
+    },
+    {
+      "file": "validation/resilience-20260905/auth-fetch-runtime.txt",
+      "sha256": "41a62a2bc66c3289a25138717cc4fd000fd99412e362095e431c1bdc831c0f51"
+    },
+    {
+      "file": "validation/resilience-20260905/auth-typecheck.txt",
+      "sha256": "32fb3ec938335241e848232a9af91f7ac8fc49c5cd00efabb283bdc52456853f"
+    },
+    {
+      "file": "validation/resilience-20260905/compose-and-budget.txt",
+      "sha256": "781f8cb43849b341558b1dd50e48eebaf70d2ddff2004092b385e8a41bae9519"
+    },
+    {
+      "file": "validation/resilience-20260905/existing-contract-tests.txt",
+      "sha256": "897e3ed237b9d7a947abaf0195bb9f047d9d639a87d7e1c5b066adb85a31eafc"
+    },
+    {
+      "file": "validation/resilience-20260905/full-unit-suite-attempt.txt",
+      "sha256": "168f788267a8a73d0c71f9125d3848e47829c038cb5c786f1633cab78c73dab8"
+    },
+    {
+      "file": "validation/resilience-20260905/install-python.log",
+      "sha256": "04cc6d64566ddd3236a7283176667c8773148c867545e17ef3d25056b8213bba"
+    },
+    {
+      "file": "validation/resilience-20260905/npm-install.txt",
+      "sha256": "2b3fce6fd21acfc76179ea9407361b088168c07597b405c49e03a38ef88d2f75"
+    },
+    {
+      "file": "validation/resilience-20260905/operations-boundaries.txt",
+      "sha256": "7e353e88f38edf8957697d8cc5125b000a3eb333a348ba7609c504d3d3c68a3f"
+    },
+    {
+      "file": "validation/resilience-20260905/pwa-contract.txt",
+      "sha256": "014ebca0e730f7c3918782da22f67a9a15bb9239359f980c6321f050e9d92142"
+    },
+    {
+      "file": "validation/resilience-20260905/python-compilation.txt",
+      "sha256": "b6e63a4df755a766def3a6bd072f61899a97c42a2906e395de66b808a3d347f3"
+    },
+    {
+      "file": "validation/resilience-20260905/repository-inventory.json",
+      "sha256": "cc4a5d25c49f80d36077973c3d4f0091e512277867abd53219cdd8207bf7bc48"
+    },
+    {
+      "file": "validation/resilience-20260905/resilience-unit.txt",
+      "sha256": "f7b72e17937fc368ce6cba97988504dfe94423a352af141afc1f51783a742547"
+    },
+    {
+      "file": "validation/resilience-20260905/static-tests-selected.txt",
+      "sha256": "212d23a9b448a40979850f2e18b22ab0a9b65fde189e297c73953fca8e3dbffb"
+    },
+    {
+      "file": "validation/resilience-20260905/visual-builder-syntax.txt",
+      "sha256": "fde3b99e0aa70f0d08720cefb86d10ab5da1d2dc8969fbde60b8ac9a9e703ea2"
+    },
+    {
+      "file": "validation/resilience-20260905/visual-builder-tests.txt",
+      "sha256": "b75a734e57c7bb6d7bbce84536185ec55bf7b4b98804de78f78967ec13af1231"
+    }
+  ],
+  "removed": [],
+  "self_hash_excluded": true,
+  "note": "All original files retained; Git/cache/dependencies created locally are excluded."
+}

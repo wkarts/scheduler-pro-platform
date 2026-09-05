@@ -1,0 +1,54 @@
+{
+  "delivery": "resilience-20260905",
+  "canonical_version": "2.1.0",
+  "visual_builder_version": "2.4.0",
+  "basis": "scheduler-pro-platform-main (9).zip",
+  "production_changed": false,
+  "remote_ci_executed": false,
+  "passed_test_groups": {
+    "resilience_python": 32,
+    "auth_typescript_runtime": 30,
+    "existing_source_contracts": 84,
+    "visual_builder_node": 74,
+    "operations_mock_boundaries": 8
+  },
+  "total_passed": 228,
+  "new_http_boundary_tests_added_but_not_executed": 8,
+  "other_checks_passed": [
+    "Python compilation",
+    "Strict standalone TypeScript for two fetch wrappers",
+    "Visual Builder JS syntax",
+    "PWA install contract",
+    "four Compose YAML parses (not Docker semantic validation)",
+    "default-only production pool budget simulations",
+    "ACME/CloudPanel shell syntax"
+  ],
+  "not_executed": [
+    "full API unit suite (import structlog unavailable)",
+    "new HTTP boundary tests",
+    "full Ruff/Mypy",
+    "full Vue/PWA/native build",
+    "Docker builds and Compose semantic validation",
+    "real PostgreSQL/Redis/RabbitMQ/MinIO/Celery integration",
+    "production/load tests",
+    "real backup and restoration"
+  ],
+  "constraints": [
+    "Python dependency download failed: network/DNS",
+    "npm offline cache incomplete",
+    "Docker unavailable"
+  ],
+  "default_budget": {
+    "api_pooled": 22,
+    "two_default_worker_children": 10,
+    "two_whatsapp_worker_children": 10,
+    "subtotal_pooled": 42,
+    "global_database_cap": false,
+    "measured_in_production": false
+  },
+  "notes": [
+    "Some core tests inspect source contracts; fake engines/HTTP/Docker are not live integrations.",
+    "No source version bump or database migration required.",
+    "Full CI and staging required before rollout."
+  ]
+}

@@ -1,0 +1,190 @@
+TAP version 13
+# Subtest: tenant: refresh 500 preserves tokens and returns temporary 503
+ok 1 - tenant: refresh 500 preserves tokens and returns temporary 503
+  ---
+  duration_ms: 21.754224
+  type: 'test'
+  ...
+# Subtest: tenant: refresh 502 preserves tokens and returns temporary 503
+ok 2 - tenant: refresh 502 preserves tokens and returns temporary 503
+  ---
+  duration_ms: 1.658209
+  type: 'test'
+  ...
+# Subtest: tenant: refresh 503 preserves tokens and returns temporary 503
+ok 3 - tenant: refresh 503 preserves tokens and returns temporary 503
+  ---
+  duration_ms: 1.303001
+  type: 'test'
+  ...
+# Subtest: tenant: refresh 504 preserves tokens and returns temporary 503
+ok 4 - tenant: refresh 504 preserves tokens and returns temporary 503
+  ---
+  duration_ms: 1.147269
+  type: 'test'
+  ...
+# Subtest: tenant: refresh 429 preserves tokens and returns temporary 503
+ok 5 - tenant: refresh 429 preserves tokens and returns temporary 503
+  ---
+  duration_ms: 1.266846
+  type: 'test'
+  ...
+# Subtest: tenant: network error during refresh preserves the session
+ok 6 - tenant: network error during refresh preserves the session
+  ---
+  duration_ms: 0.791368
+  type: 'test'
+  ...
+# Subtest: tenant: malformed successful refresh does not log out
+ok 7 - tenant: malformed successful refresh does not log out
+  ---
+  duration_ms: 0.747403
+  type: 'test'
+  ...
+# Subtest: tenant: an authoritative refresh 401 invalidates the session
+ok 8 - tenant: an authoritative refresh 401 invalidates the session
+  ---
+  duration_ms: 0.853572
+  type: 'test'
+  ...
+# Subtest: tenant: twenty parallel 401s rotate the refresh token only once
+ok 9 - tenant: twenty parallel 401s rotate the refresh token only once
+  ---
+  duration_ms: 10.38186
+  type: 'test'
+  ...
+# Subtest: tenant: POST 503 is never automatically replayed
+ok 10 - tenant: POST 503 is never automatically replayed
+  ---
+  duration_ms: 0.767703
+  type: 'test'
+  ...
+# Subtest: tenant: POST Request body survives one authorized retry
+ok 11 - tenant: POST Request body survives one authorized retry
+  ---
+  duration_ms: 7.113302
+  type: 'test'
+  ...
+# Subtest: tenant: delayed 401 reuses the already rotated access token
+ok 12 - tenant: delayed 401 reuses the already rotated access token
+  ---
+  duration_ms: 15.930953
+  type: 'test'
+  ...
+# Subtest: tenant: permissions 403 is not a logout or refresh
+ok 13 - tenant: permissions 403 is not a logout or refresh
+  ---
+  duration_ms: 0.642306
+  type: 'test'
+  ...
+# Subtest: tenant: newer login is not removed by an older failed refresh
+ok 14 - tenant: newer login is not removed by an older failed refresh
+  ---
+  duration_ms: 0.713613
+  type: 'test'
+  ...
+# Subtest: tenant: authorization is never injected into another origin
+ok 15 - tenant: authorization is never injected into another origin
+  ---
+  duration_ms: 0.40978
+  type: 'test'
+  ...
+# Subtest: admin: refresh 500 preserves tokens and returns temporary 503
+ok 16 - admin: refresh 500 preserves tokens and returns temporary 503
+  ---
+  duration_ms: 1.603077
+  type: 'test'
+  ...
+# Subtest: admin: refresh 502 preserves tokens and returns temporary 503
+ok 17 - admin: refresh 502 preserves tokens and returns temporary 503
+  ---
+  duration_ms: 0.700703
+  type: 'test'
+  ...
+# Subtest: admin: refresh 503 preserves tokens and returns temporary 503
+ok 18 - admin: refresh 503 preserves tokens and returns temporary 503
+  ---
+  duration_ms: 0.667685
+  type: 'test'
+  ...
+# Subtest: admin: refresh 504 preserves tokens and returns temporary 503
+ok 19 - admin: refresh 504 preserves tokens and returns temporary 503
+  ---
+  duration_ms: 0.649136
+  type: 'test'
+  ...
+# Subtest: admin: refresh 429 preserves tokens and returns temporary 503
+ok 20 - admin: refresh 429 preserves tokens and returns temporary 503
+  ---
+  duration_ms: 0.71897
+  type: 'test'
+  ...
+# Subtest: admin: network error during refresh preserves the session
+ok 21 - admin: network error during refresh preserves the session
+  ---
+  duration_ms: 0.489008
+  type: 'test'
+  ...
+# Subtest: admin: malformed successful refresh does not log out
+ok 22 - admin: malformed successful refresh does not log out
+  ---
+  duration_ms: 0.461267
+  type: 'test'
+  ...
+# Subtest: admin: an authoritative refresh 401 invalidates the session
+ok 23 - admin: an authoritative refresh 401 invalidates the session
+  ---
+  duration_ms: 1.330061
+  type: 'test'
+  ...
+# Subtest: admin: twenty parallel 401s rotate the refresh token only once
+ok 24 - admin: twenty parallel 401s rotate the refresh token only once
+  ---
+  duration_ms: 8.057488
+  type: 'test'
+  ...
+# Subtest: admin: POST 503 is never automatically replayed
+ok 25 - admin: POST 503 is never automatically replayed
+  ---
+  duration_ms: 2.457249
+  type: 'test'
+  ...
+# Subtest: admin: POST Request body survives one authorized retry
+ok 26 - admin: POST Request body survives one authorized retry
+  ---
+  duration_ms: 3.10917
+  type: 'test'
+  ...
+# Subtest: admin: delayed 401 reuses the already rotated access token
+ok 27 - admin: delayed 401 reuses the already rotated access token
+  ---
+  duration_ms: 15.669533
+  type: 'test'
+  ...
+# Subtest: admin: permissions 403 is not a logout or refresh
+ok 28 - admin: permissions 403 is not a logout or refresh
+  ---
+  duration_ms: 0.61789
+  type: 'test'
+  ...
+# Subtest: admin: newer login is not removed by an older failed refresh
+ok 29 - admin: newer login is not removed by an older failed refresh
+  ---
+  duration_ms: 0.838258
+  type: 'test'
+  ...
+# Subtest: admin: authorization is never injected into another origin
+ok 30 - admin: authorization is never injected into another origin
+  ---
+  duration_ms: 0.745119
+  type: 'test'
+  ...
+1..30
+# tests 30
+# suites 0
+# pass 30
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 1062.525462

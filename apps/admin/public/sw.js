@@ -1,5 +1,6 @@
 const CACHE_PREFIX = 'scheduler-pro-admin-'
-const CACHE = `${CACHE_PREFIX}avb-2.4.0-pr63-final-runtime-v6`
+// Resilience delivery: 2026-09-05
+const CACHE = `${CACHE_PREFIX}avb-2.4.0-pr63-final-runtime-v6-resilience-20260905`
 const STATIC_ASSETS = [
   '/', '/index.html', '/offline.html', '/manifest.webmanifest',
   '/favicon-dark.svg', '/favicon.svg', '/icons/icon.svg', '/icons/maskable.svg',

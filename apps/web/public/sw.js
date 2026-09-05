@@ -1,5 +1,5 @@
 const CACHE_PREFIX = 'scheduler-pro-web-'
-const CACHE = `${CACHE_PREFIX}tenant-runtime-recovery-v7`
+const CACHE = `${CACHE_PREFIX}tenant-runtime-recovery-v7-resilience-20260905`
 const STATIC_ASSETS = [
   '/',
   '/index.html',

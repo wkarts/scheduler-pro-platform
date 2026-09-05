@@ -1,0 +1,3 @@
+The two production fetch wrappers were compiled with tsc --strict by scripts/tests/auth-fetch.test.cjs.
+Compilation and 30 runtime tests succeeded (see auth-fetch-runtime.txt).
+This is not a Vue/application-wide typecheck.

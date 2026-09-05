@@ -48,8 +48,31 @@ class Settings(BaseSettings):
     login_lock_minutes: int = 15
     password_reset_ttl_minutes: int = 30
     password_reset_min_length: int = 12
-    tenant_engine_cache_max: int = 64
-    tenant_engine_cache_ttl_seconds: int = 900
+    # Limits are PER PROCESS, including one pool per cached tenant database.
+    db_service_name: str = "scheduler-api"
+    db_platform_pool_size: int = Field(default=4, ge=1, le=100)
+    db_platform_max_overflow: int = Field(default=2, ge=0, le=100)
+    db_tenant_pool_size: int = Field(default=1, ge=1, le=20)
+    db_tenant_max_overflow: int = Field(default=1, ge=0, le=20)
+    db_pool_timeout_seconds: float = Field(default=3.0, gt=0, le=60)
+    db_connect_timeout_seconds: float = Field(default=3.0, gt=0, le=60)
+    db_pool_recycle_seconds: int = Field(default=600, ge=30)
+    db_connection_budget_per_process: int = Field(default=24, ge=1)
+    # Optional server-side timeouts. Zero preserves existing long-running jobs.
+    # Pool/connect deadlines remain enforced independently.
+    db_statement_timeout_ms: int = Field(default=0, ge=0)
+    db_lock_timeout_ms: int = Field(default=0, ge=0)
+    db_idle_transaction_timeout_ms: int = Field(default=0, ge=0)
+    tenant_engine_cache_max: int = Field(default=8, ge=1, le=1024)
+    tenant_engine_cache_ttl_seconds: int = Field(default=120, ge=1)
+    health_probe_timeout_seconds: float = Field(default=3.0, gt=0, le=30)
+    health_cache_seconds: float = Field(default=5.0, ge=0, le=30)
+    db_capacity_warning_percent: int = Field(default=75, ge=1, le=99)
+    db_capacity_critical_percent: int = Field(default=90, ge=2, le=100)
+    http_log_max_pending: int = Field(default=64, ge=1, le=4096)
+    http_log_concurrency: int = Field(default=2, ge=1, le=16)
+    http_log_timeout_seconds: float = Field(default=3.0, gt=0, le=30)
+    api_max_inflight_requests: int = Field(default=64, ge=1, le=4096)
     trusted_proxy_hosts: Annotated[list[str], NoDecode] = Field(default_factory=lambda: ["127.0.0.1", "::1"])
 
     redis_url: str = "redis://localhost:6379/0"
@@ -114,6 +137,25 @@ class Settings(BaseSettings):
         if mode not in {"local_acme", "cloudflare_saas"}:
             raise ValueError("TLS_PROVISIONING_MODE must be local_acme or cloudflare_saas")
         return mode
+
+    @model_validator(mode="after")
+    def validate_database_budget(self) -> "Settings":
+        maximum = (
+            self.db_platform_pool_size + self.db_platform_max_overflow
+            + self.tenant_engine_cache_max
+            * (self.db_tenant_pool_size + self.db_tenant_max_overflow)
+        )
+        if maximum > self.db_connection_budget_per_process:
+            raise ValueError(
+                f"Database pools allow {maximum} connections per process; "
+                "reduce pools/cache or explicitly revise DB_CONNECTION_BUDGET_PER_PROCESS "
+                "after calculating the total across API workers, Celery processes and replicas."
+            )
+        if self.db_capacity_warning_percent >= self.db_capacity_critical_percent:
+            raise ValueError("DB_CAPACITY_WARNING_PERCENT must be below the critical threshold")
+        if self.http_log_concurrency > self.http_log_max_pending:
+            raise ValueError("HTTP_LOG_CONCURRENCY must not exceed HTTP_LOG_MAX_PENDING")
+        return self
 
     @model_validator(mode="after")
     def validate_production_secrets(self) -> "Settings":

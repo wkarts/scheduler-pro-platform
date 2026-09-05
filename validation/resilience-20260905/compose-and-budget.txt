@@ -1,0 +1,104 @@
+YAML parsed: deployments/cloudpanel/compose.argws.yaml services: 18
+Default-only capacity simulation (100 hypothetical slots, not live measurement): 0
+{
+  "services": [
+    {
+      "service": "scheduler-api",
+      "processes": 1,
+      "replicas": 1,
+      "per_process": 22,
+      "maximum_pooled": 22
+    },
+    {
+      "service": "scheduler-worker-default",
+      "processes": 2,
+      "replicas": 1,
+      "per_process": 5,
+      "maximum_pooled": 10
+    },
+    {
+      "service": "scheduler-worker-whatsapp",
+      "processes": 2,
+      "replicas": 1,
+      "per_process": 5,
+      "maximum_pooled": 10
+    }
+  ],
+  "pooled_total": 42,
+  "operational_margin": 15,
+  "planned_total": 57,
+  "ordinary_capacity": 97,
+  "status": "OK",
+  "note": "Não inclui réplicas externas ao Compose nem processos de outras aplicações."
+}
+
+YAML parsed: deployments/cloudpanel/compose.yaml services: 15
+Default-only capacity simulation (100 hypothetical slots, not live measurement): 0
+{
+  "services": [
+    {
+      "service": "scheduler-api",
+      "processes": 1,
+      "replicas": 1,
+      "per_process": 22,
+      "maximum_pooled": 22
+    },
+    {
+      "service": "scheduler-worker-default",
+      "processes": 2,
+      "replicas": 1,
+      "per_process": 5,
+      "maximum_pooled": 10
+    },
+    {
+      "service": "scheduler-worker-whatsapp",
+      "processes": 2,
+      "replicas": 1,
+      "per_process": 5,
+      "maximum_pooled": 10
+    }
+  ],
+  "pooled_total": 42,
+  "operational_margin": 15,
+  "planned_total": 57,
+  "ordinary_capacity": 97,
+  "status": "OK",
+  "note": "Não inclui réplicas externas ao Compose nem processos de outras aplicações."
+}
+
+YAML parsed: deployments/dockge/compose.yaml services: 14
+Default-only capacity simulation (100 hypothetical slots, not live measurement): 0
+{
+  "services": [
+    {
+      "service": "scheduler-api",
+      "processes": 1,
+      "replicas": 1,
+      "per_process": 22,
+      "maximum_pooled": 22
+    },
+    {
+      "service": "scheduler-worker-default",
+      "processes": 2,
+      "replicas": 1,
+      "per_process": 5,
+      "maximum_pooled": 10
+    },
+    {
+      "service": "scheduler-worker-whatsapp",
+      "processes": 2,
+      "replicas": 1,
+      "per_process": 5,
+      "maximum_pooled": 10
+    }
+  ],
+  "pooled_total": 42,
+  "operational_margin": 15,
+  "planned_total": 57,
+  "ordinary_capacity": 97,
+  "status": "OK",
+  "note": "Não inclui réplicas externas ao Compose nem processos de outras aplicações."
+}
+
+YAML parsed: deployments/development/docker-compose.yml services: 6
+Not Docker Compose semantic validation. No Docker runtime present.

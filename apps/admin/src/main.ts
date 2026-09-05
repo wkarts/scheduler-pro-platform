@@ -1,3 +1,4 @@
+import { installAdminAuthFetch } from './admin-auth-fetch'
 import { createApp } from 'vue'
 import { createPinia } from 'pinia'
 import App from './AdminControlPlane.vue'
@@ -17,6 +18,7 @@ import './branding.css'
 import './scrollbars.css'
 import './pwa'
 
+installAdminAuthFetch()
 installFrontendTelemetry()
 
 createApp(App).use(createPinia()).mount('#app')

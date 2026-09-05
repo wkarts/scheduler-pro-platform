@@ -1,0 +1,454 @@
+TAP version 13
+# Subtest: 2.3.2 preserva exatamente a paleta oficial AVB
+ok 1 - 2.3.2 preserva exatamente a paleta oficial AVB
+  ---
+  duration_ms: 1.845708
+  type: 'test'
+  ...
+# Subtest: tipografia do produto usa Space Grotesk em headings e Inter no corpo
+ok 2 - tipografia do produto usa Space Grotesk em headings e Inter no corpo
+  ---
+  duration_ms: 0.234179
+  type: 'test'
+  ...
+# Subtest: tipografia AVB não é imposta ao documento renderizado
+ok 3 - tipografia AVB não é imposta ao documento renderizado
+  ---
+  duration_ms: 0.177905
+  type: 'test'
+  ...
+# Subtest: light e dark mantêm contraste AA nos textos essenciais
+ok 4 - light e dark mantêm contraste AA nos textos essenciais
+  ---
+  duration_ms: 0.475298
+  type: 'test'
+  ...
+# Subtest: ações primárias evitam texto branco diretamente sobre cyan
+ok 5 - ações primárias evitam texto branco diretamente sobre cyan
+  ---
+  duration_ms: 0.132687
+  type: 'test'
+  ...
+# Subtest: Project Workspace possui light/dark persistente e usa o mesmo tema do editor
+ok 6 - Project Workspace possui light/dark persistente e usa o mesmo tema do editor
+  ---
+  duration_ms: 1.011086
+  type: 'test'
+  ...
+# Subtest: UI AVB não usa pesos tipográficos acima de 700
+ok 7 - UI AVB não usa pesos tipográficos acima de 700
+  ---
+  duration_ms: 0.388809
+  type: 'test'
+  ...
+# Subtest: 2.3.2 distribui somente a logo dark oficial como novo asset dark
+ok 8 - 2.3.2 distribui somente a logo dark oficial como novo asset dark
+  ---
+  duration_ms: 10.373607
+  type: 'test'
+  ...
+# Subtest: seleção de wordmark é centralizada no módulo de branding
+ok 9 - seleção de wordmark é centralizada no módulo de branding
+  ---
+  duration_ms: 0.342029
+  type: 'test'
+  ...
+# Subtest: Editor seleciona wordmark light/dark pelo helper compartilhado sem alterar ícones
+ok 10 - Editor seleciona wordmark light/dark pelo helper compartilhado sem alterar ícones
+  ---
+  duration_ms: 0.61787
+  type: 'test'
+  ...
+# Subtest: Project Workspace usa a mesma regra compartilhada de wordmark por tema
+ok 11 - Project Workspace usa a mesma regra compartilhada de wordmark por tema
+  ---
+  duration_ms: 0.176303
+  type: 'test'
+  ...
+# Subtest: tokens oficiais declaram logos Light/Dark e símbolo inalterado
+ok 12 - tokens oficiais declaram logos Light/Dark e símbolo inalterado
+  ---
+  duration_ms: 0.092878
+  type: 'test'
+  ...
+# Subtest: migra conteúdo V2 do Scheduler Pro sem perder blocos
+ok 13 - migra conteúdo V2 do Scheduler Pro sem perder blocos
+  ---
+  duration_ms: 3.212243
+  type: 'test'
+  ...
+# Subtest: containers aninhados são preservados no builder e degradam com segurança no renderer legado
+ok 14 - containers aninhados são preservados no builder e degradam com segurança no renderer legado
+  ---
+  duration_ms: 3.999595
+  type: 'test'
+  ...
+# Subtest: renderer gera HTML seguro e exportável
+ok 15 - renderer gera HTML seguro e exportável
+  ---
+  duration_ms: 6.001417
+  type: 'test'
+  ...
+# Subtest: histórico suporta undo e redo
+ok 16 - histórico suporta undo e redo
+  ---
+  duration_ms: 0.340697
+  type: 'test'
+  ...
+# Subtest: módulo raiz pode ser importado em ambiente Node/SSR
+ok 17 - módulo raiz pode ser importado em ambiente Node/SSR
+  ---
+  duration_ms: 30.227516
+  type: 'test'
+  ...
+# Subtest: widget HTML remove tags e atributos executáveis
+ok 18 - widget HTML remove tags e atributos executáveis
+  ---
+  duration_ms: 0.598731
+  type: 'test'
+  ...
+# Subtest: Experience Contract v2 cria Landing e Booking sem Login template
+ok 19 - Experience Contract v2 cria Landing e Booking sem Login template
+  ---
+  duration_ms: 1.656366
+  type: 'test'
+  ...
+# Subtest: Bindings v1 preservam HTML e alteram somente campos declarados
+ok 20 - Bindings v1 preservam HTML e alteram somente campos declarados
+  ---
+  duration_ms: 2.17606
+  type: 'test'
+  ...
+# Subtest: Theme Tokens geram CSS e tokens de host sem injetar CSS arbitrário
+ok 21 - Theme Tokens geram CSS e tokens de host sem injetar CSS arbitrário
+  ---
+  duration_ms: 0.716227
+  type: 'test'
+  ...
+# Subtest: Theme Tokens aceitam Proxy reativo sem structuredClone/DataCloneError
+ok 22 - Theme Tokens aceitam Proxy reativo sem structuredClone/DataCloneError
+  ---
+  duration_ms: 0.521257
+  type: 'test'
+  ...
+# Subtest: Template Runtime SDK delega motor de booking ao host
+ok 23 - Template Runtime SDK delega motor de booking ao host
+  ---
+  duration_ms: 0.710899
+  type: 'test'
+  ...
+# Subtest: Permissões permitem editor básico sem código
+ok 24 - Permissões permitem editor básico sem código
+  ---
+  duration_ms: 0.302631
+  type: 'test'
+  ...
+# Subtest: brand.logo legado classificado como text é normalizado para image
+ok 25 - brand.logo legado classificado como text é normalizado para image
+  ---
+  duration_ms: 1.2023
+  type: 'test'
+  ...
+# Subtest: binding visual não imprime URL como texto em span legado
+ok 26 - binding visual não imprime URL como texto em span legado
+  ---
+  duration_ms: 0.896555
+  type: 'test'
+  ...
+# Subtest: bindings v2 aplicam defaults de texto e imagem mesmo sem src original
+ok 27 - bindings v2 aplicam defaults de texto e imagem mesmo sem src original
+  ---
+  duration_ms: 0.9404
+  type: 'test'
+  ...
+# Subtest: migra schemas legados para v3 preservando árvore
+ok 28 - migra schemas legados para v3 preservando árvore
+  ---
+  duration_ms: 1.520734
+  type: 'test'
+  ...
+# Subtest: breakpoints customizados determinam viewport
+ok 29 - breakpoints customizados determinam viewport
+  ---
+  duration_ms: 0.321749
+  type: 'test'
+  ...
+# Subtest: bindings e interpolação resolvem conteúdo dinâmico
+ok 30 - bindings e interpolação resolvem conteúdo dinâmico
+  ---
+  duration_ms: 0.490841
+  type: 'test'
+  ...
+# Subtest: condições de exibição suportam comparação e existência
+ok 31 - condições de exibição suportam comparação e existência
+  ---
+  duration_ms: 0.328009
+  type: 'test'
+  ...
+# Subtest: renderer aplica estados e responsive CSS com prioridade
+ok 32 - renderer aplica estados e responsive CSS com prioridade
+  ---
+  duration_ms: 4.334614
+  type: 'test'
+  ...
+# Subtest: loop repete filhos usando contexto dinâmico
+ok 33 - loop repete filhos usando contexto dinâmico
+  ---
+  duration_ms: 1.297512
+  type: 'test'
+  ...
+# Subtest: form builder renderiza campos e evento runtime
+ok 34 - form builder renderiza campos e evento runtime
+  ---
+  duration_ms: 0.907441
+  type: 'test'
+  ...
+# Subtest: popup e offcanvas são renderizados como overlays
+ok 35 - popup e offcanvas são renderizados como overlays
+  ---
+  duration_ms: 0.643038
+  type: 'test'
+  ...
+# Subtest: standalone inclui runtime para interações
+ok 36 - standalone inclui runtime para interações
+  ---
+  duration_ms: 0.837377
+  type: 'test'
+  ...
+# Subtest: biblioteca local salva e reinsere subárvore com ids novos
+ok 37 - biblioteca local salva e reinsere subárvore com ids novos
+  ---
+  duration_ms: 1.292975
+  type: 'test'
+  ...
+# Subtest: site kit resolve partes globais por condição
+ok 38 - site kit resolve partes globais por condição
+  ---
+  duration_ms: 0.606363
+  type: 'test'
+  ...
+# Subtest: auditoria detecta problemas básicos de SEO e acessibilidade
+ok 39 - auditoria detecta problemas básicos de SEO e acessibilidade
+  ---
+  duration_ms: 0.502248
+  type: 'test'
+  ...
+# Subtest: compiler do Scheduler mantém contrato V2 e não converte formulário genérico em agenda
+ok 40 - compiler do Scheduler mantém contrato V2 e não converte formulário genérico em agenda
+  ---
+  duration_ms: 0.677099
+  type: 'test'
+  ...
+# Subtest: API pública expõe aliases de integração para pacote distribuído
+ok 41 - API pública expõe aliases de integração para pacote distribuído
+  ---
+  duration_ms: 0.559543
+  type: 'test'
+  ...
+# Subtest: documento HTML é página de primeira classe, não widget html_surface
+ok 42 - documento HTML é página de primeira classe, não widget html_surface
+  ---
+  duration_ms: 2.254907
+  type: 'test'
+  ...
+# Subtest: documento legado com único html_surface migra automaticamente para página HTML
+ok 43 - documento legado com único html_surface migra automaticamente para página HTML
+  ---
+  duration_ms: 0.479605
+  type: 'test'
+  ...
+# Subtest: projeto universal mantém páginas independentes
+ok 44 - projeto universal mantém páginas independentes
+  ---
+  duration_ms: 2.786179
+  type: 'test'
+  ...
+# Subtest: pacote Scheduler Pro vira família com LANDING e BOOKING como duas páginas
+ok 45 - pacote Scheduler Pro vira família com LANDING e BOOKING como duas páginas
+  ---
+  duration_ms: 6.369464
+  type: 'test'
+  ...
+# Subtest: workspace universal e adapter Scheduler Pro são exportados pelo pacote
+ok 46 - workspace universal e adapter Scheduler Pro são exportados pelo pacote
+  ---
+  duration_ms: 3.944143
+  type: 'test'
+  ...
+# Subtest: schema universal v3 migra documento v2 e adiciona projeto
+ok 47 - schema universal v3 migra documento v2 e adiciona projeto
+  ---
+  duration_ms: 2.34349
+  type: 'test'
+  ...
+# Subtest: Dynamic Tags e filtros são extensíveis
+ok 48 - Dynamic Tags e filtros são extensíveis
+  ---
+  duration_ms: 0.440626
+  type: 'test'
+  ...
+# Subtest: Data Source assíncrono alimenta Query Loop com cache
+ok 49 - Data Source assíncrono alimenta Query Loop com cache
+  ---
+  duration_ms: 6.389334
+  type: 'test'
+  ...
+# Subtest: permissões distinguem conteúdo, design e publicação
+ok 50 - permissões distinguem conteúdo, design e publicação
+  ---
+  duration_ms: 0.205216
+  type: 'test'
+  ...
+# Subtest: i18n traduz propriedades por locale sem alterar origem
+ok 51 - i18n traduz propriedades por locale sem alterar origem
+  ---
+  duration_ms: 0.612182
+  type: 'test'
+  ...
+# Subtest: Project Package exporta e importa site completo
+ok 52 - Project Package exporta e importa site completo
+  ---
+  duration_ms: 1.900029
+  type: 'test'
+  ...
+# Subtest: operações incrementais aplicam patch e revisão
+ok 53 - operações incrementais aplicam patch e revisão
+  ---
+  duration_ms: 0.485352
+  type: 'test'
+  ...
+# Subtest: Asset Library e fontes customizadas geram CSS seguro
+ok 54 - Asset Library e fontes customizadas geram CSS seguro
+  ---
+  duration_ms: 0.398103
+  type: 'test'
+  ...
+# Subtest: Custom Code só permite JavaScript trusted com opt-in explícito
+ok 55 - Custom Code só permite JavaScript trusted com opt-in explícito
+  ---
+  duration_ms: 0.413395
+  type: 'test'
+  ...
+# Subtest: embeds são gerados para stacks universais
+ok 56 - embeds são gerados para stacks universais
+  ---
+  duration_ms: 0.532423
+  type: 'test'
+  ...
+# Subtest: Form Builder suporta tipos avançados e múltiplas etapas
+ok 57 - Form Builder suporta tipos avançados e múltiplas etapas
+  ---
+  duration_ms: 1.344752
+  type: 'test'
+  ...
+# Subtest: catálogo universal inclui widgets estruturais modernos
+ok 58 - catálogo universal inclui widgets estruturais modernos
+  ---
+  duration_ms: 0.184685
+  type: 'test'
+  ...
+# Subtest: Scheduler Pro continua recebendo contrato V2 com metadata universal v3
+ok 59 - Scheduler Pro continua recebendo contrato V2 com metadata universal v3
+  ---
+  duration_ms: 0.622076
+  type: 'test'
+  ...
+# Subtest: Host Services desacoplam integrações de infraestrutura e negócio
+ok 60 - Host Services desacoplam integrações de infraestrutura e negócio
+  ---
+  duration_ms: 0.505913
+  type: 'test'
+  ...
+# Subtest: plugin universal registra e remove widget, action, data source e serviço
+ok 61 - plugin universal registra e remove widget, action, data source e serviço
+  ---
+  duration_ms: 0.601255
+  type: 'test'
+  ...
+# Subtest: widgets Commerce são provider-driven e não dependem de WooCommerce
+ok 62 - widgets Commerce são provider-driven e não dependem de WooCommerce
+  ---
+  duration_ms: 0.371603
+  type: 'test'
+  ...
+# Subtest: standalone assíncrono resolve Data Sources antes de exportar
+ok 63 - standalone assíncrono resolve Data Sources antes de exportar
+  ---
+  duration_ms: 1.873069
+  type: 'test'
+  ...
+# Subtest: Submission Store coleta, lista e exporta formulários sem depender de WordPress
+ok 64 - Submission Store coleta, lista e exporta formulários sem depender de WordPress
+  ---
+  duration_ms: 0.524671
+  type: 'test'
+  ...
+# Subtest: Interactions e custom attributes são preservados com whitelist segura
+ok 65 - Interactions e custom attributes são preservados com whitelist segura
+  ---
+  duration_ms: 0.497251
+  type: 'test'
+  ...
+# Subtest: wrapper HTML Scheduler Pro vira superfície editável e republica sem alterar o HTML
+ok 66 - wrapper HTML Scheduler Pro vira superfície editável e republica sem alterar o HTML
+  ---
+  duration_ms: 1.127589
+  type: 'test'
+  ...
+# Subtest: SchedulerProAdapter expõe recuperação de emergência sem acoplar adapters genéricos
+ok 67 - SchedulerProAdapter expõe recuperação de emergência sem acoplar adapters genéricos
+  ---
+  duration_ms: 0.272175
+  type: 'test'
+  ...
+# Subtest: tema do editor possui modo claro e scrollbars discretas
+ok 68 - tema do editor possui modo claro e scrollbars discretas
+  ---
+  duration_ms: 0.26195
+  type: 'test'
+  ...
+# Subtest: 2.2 mantém guias laterais persistentes e painéis com scroll independente
+ok 69 - 2.2 mantém guias laterais persistentes e painéis com scroll independente
+  ---
+  duration_ms: 0.267809
+  type: 'test'
+  ...
+# Subtest: toolbar 2.2 usa controles compactos por ícone e mantém ações essenciais
+ok 70 - toolbar 2.2 usa controles compactos por ícone e mantém ações essenciais
+  ---
+  duration_ms: 11.160669
+  type: 'test'
+  ...
+# Subtest: HTML Surface importado pode medir altura no editor sem habilitar scripts
+ok 71 - HTML Surface importado pode medir altura no editor sem habilitar scripts
+  ---
+  duration_ms: 0.98029
+  type: 'test'
+  ...
+# Subtest: HTML Surface mostra conteúdo com reveal no editor sem alterar o HTML publicado
+ok 72 - HTML Surface mostra conteúdo com reveal no editor sem alterar o HTML publicado
+  ---
+  duration_ms: 0.358695
+  type: 'test'
+  ...
+# Subtest: identidade visual AVB é distribuída junto do pacote
+ok 73 - identidade visual AVB é distribuída junto do pacote
+  ---
+  duration_ms: 3.21737
+  type: 'test'
+  ...
+# Subtest: instalador Scheduler Pro 2.3.2 copia assets de branding e Project Workspace
+ok 74 - instalador Scheduler Pro 2.3.2 copia assets de branding e Project Workspace
+  ---
+  duration_ms: 1.011576
+  type: 'test'
+  ...
+1..74
+# tests 74
+# suites 0
+# pass 74
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 248.045732
