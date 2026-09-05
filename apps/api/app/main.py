@@ -176,6 +176,7 @@ def create_app() -> FastAPI:
         principal = _request_principal(request)
         started = perf_counter()
         status_code = 500
+        response: Response
         try:
             exempt = request.url.path in {
                 "/api/v1/health", "/api/v1/health/live", "/api/v1/health/ready", "/api/v1/version",

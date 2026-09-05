@@ -1,6 +1,6 @@
 import asyncio
 import os
-from collections.abc import AsyncIterator
+from collections.abc import AsyncGenerator, AsyncIterator
 from contextlib import asynccontextmanager
 from typing import Any
 
@@ -61,7 +61,7 @@ def _new_registry() -> BoundedEngineRegistry[AsyncEngine]:
 _tenant_registry = _new_registry()
 
 
-async def platform_session() -> AsyncIterator[AsyncSession]:
+async def platform_session() -> AsyncGenerator[AsyncSession, None]:
     async with PlatformSession() as session:
         yield session
 
@@ -144,7 +144,7 @@ def database_pool_metrics() -> dict[str, Any]:
     }
 
 
-async def tenant_session(context: TenantContext) -> AsyncIterator[AsyncSession]:
+async def tenant_session(context: TenantContext) -> AsyncGenerator[AsyncSession, None]:
     async with tenant_engine_lease(context) as engine:
         factory = async_sessionmaker(engine, expire_on_commit=False, class_=AsyncSession)
         async with factory() as session:
