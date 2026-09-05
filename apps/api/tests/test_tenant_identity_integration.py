@@ -7,10 +7,13 @@ from uuid import uuid4
 
 import httpx
 from PIL import Image
+from sqlalchemy import text
 import pytest
 
 from app.core.security import hash_password
 from app.identity.service import TenantIdentityService
+from app.integration_services.auth import integration_session
+from app.services.tenant_resolver import TenantResolver
 from test_foundation_integration import tenant_login, _prepare_second_tenant
 from test_integration_services_integration import db, headers, issue
 
@@ -206,7 +209,8 @@ async def test_group_delegation_mass_assignment_last_admin_and_self_protection(c
 async def test_live_group_permissions_disable_reactivation_and_api_token_ceiling(client, mail):
     admin = await tenant_login(client)
     access = admin["access_token"]
-    role = await group(client, access, ["customers.read"])
+    # Issuance is an administrative operation, distinct from consuming customers.read.
+    role = await group(client, access, ["customers.read", "tenant.manage"])
     user = await person(client, access, mail, [role["id"]])
     login = await login_person(client, user)
     bearer = login["access_token"]
@@ -289,12 +293,44 @@ async def test_optional_professional_link_and_cross_tenant_isolation(client, mai
             json=update_payload(another, professional_id=str(uuid4())),
         )
     ).status_code == 422
-    host, _, _, _ = await _prepare_second_tenant()
-    other = await tenant_login(client, host)
-    cross = await client.get(
-        BASE + "/users/" + user["id"], headers={**headers(other["access_token"]), "host": host}
-    )
-    assert cross.status_code == 404, cross.text
+    host, email_b, password_b, _ = await _prepare_second_tenant()
+    other = await login_person(client, {"email": email_b}, password=password_b, host=host)
+    # Tenant B's shared fixture deliberately grants only customer permissions.
+    # Add users.read for this check, otherwise a 403 would never exercise the foreign-ID lookup.
+    async with integration_session(None) as session:
+        context_b = await TenantResolver(session).resolve(host)
+    async with integration_session(context_b) as session:
+        granted = (
+            await session.execute(
+                text(
+                    "insert into role_permissions(role_id,permission_id) "
+                    "select ur.role_id,p.id from user_roles ur join users u on u.id=ur.user_id "
+                    "cross join permissions p where u.email=:email and p.key='users.read' "
+                    "on conflict do nothing returning role_id,permission_id"
+                ),
+                {"email": email_b},
+            )
+        ).all()
+        await session.commit()
+    try:
+        own = await client.get(
+            BASE + "/profile", headers={**headers(other["access_token"]), "host": host}
+        )
+        assert own.status_code == 200 and own.json()["data"]["email"] == email_b
+        cross = await client.get(
+            BASE + "/users/" + user["id"], headers={**headers(other["access_token"]), "host": host}
+        )
+        assert cross.status_code == 404, cross.text
+    finally:
+        async with integration_session(context_b) as session:
+            for role_id, permission_id in granted:
+                await session.execute(
+                    text(
+                        "delete from role_permissions where role_id=:role and permission_id=:permission"
+                    ),
+                    {"role": role_id, "permission": permission_id},
+                )
+            await session.commit()
     assert (
         await client.get(BASE + "/profile", headers={**headers(auth["access_token"]), "host": host})
     ).status_code == 403
@@ -317,7 +353,8 @@ async def test_optional_professional_link_and_cross_tenant_isolation(client, mai
 async def test_profile_password_and_email_rotation_revoke_credentials(client, mail):
     admin = await tenant_login(client)
     access = admin["access_token"]
-    role = await group(client, access, ["customers.read"])
+    # Issuance is an administrative operation, distinct from consuming customers.read.
+    role = await group(client, access, ["customers.read", "tenant.manage"])
     user = await person(client, access, mail, [role["id"]])
     login = await login_person(client, user)
     auth = login["access_token"]

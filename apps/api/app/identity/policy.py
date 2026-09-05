@@ -1,5 +1,5 @@
 from sqlalchemy import text
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncConnection, AsyncSession
 
 from app.core.errors import APIError
 
@@ -18,7 +18,7 @@ def assert_delegable(grants: set[str], authority: set[str]) -> None:
         )
 
 
-async def lock_identity(session: AsyncSession) -> None:
+async def lock_identity(session: AsyncSession | AsyncConnection) -> None:
     # Transaction-scoped and database-specific: serializes IAM writes, not requests/other tenants.
     await session.execute(
         text(
@@ -42,7 +42,9 @@ async def permission_keys(
     return set(values.scalars())
 
 
-async def revoke_access(session: AsyncSession, user_id: str, *, email_tokens: bool = True) -> None:
+async def revoke_access(
+    session: AsyncSession | AsyncConnection, user_id: str, *, email_tokens: bool = True
+) -> None:
     for table in ("user_sessions", "refresh_tokens"):
         await session.execute(
             text(

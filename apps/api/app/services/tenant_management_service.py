@@ -9,6 +9,7 @@ from app.core.secrets import seal_secret
 from app.core.tenant_context import DEFAULT_TENANT_STORAGE_QUOTA_BYTES
 from app.db.models_platform import Tenant
 from app.db.session import get_tenant_engine
+from app.identity.policy import lock_identity, revoke_access
 from app.services.observability_service import ObservabilityService
 from app.services.tenant_resolver import TenantResolver
 
@@ -66,39 +67,49 @@ class TenantManagementService:
 
         async with engine.connect() as connection:
             row = (
-                await connection.execute(
-                    text(
-                        """
+                (
+                    await connection.execute(
+                        text(
+                            """
                         select u.id::text, u.email, u.display_name, u.is_active, u.created_at
                         from users u
                         where exists(
                           select 1
                           from user_roles ur
-                          join roles r on r.id=ur.role_id
-                          where ur.user_id=u.id and r.name='tenant-admin'
+                          join roles r on r.id=ur.role_id and r.is_active
+                          join role_permissions rp on rp.role_id=r.id
+                          join permissions p on p.id=rp.permission_id
+                          where ur.user_id=u.id and p.key='tenant.manage'
                         )
                         order by case when lower(u.email)=:preferred_email then 0 else 1 end,
                                  u.created_at asc
                         limit 1
                         """
-                    ),
-                    {"preferred_email": preferred_email},
+                        ),
+                        {"preferred_email": preferred_email},
+                    )
                 )
-            ).mappings().first()
+                .mappings()
+                .first()
+            )
             if row is None and preferred_email:
                 row = (
-                    await connection.execute(
-                        text(
-                            """
+                    (
+                        await connection.execute(
+                            text(
+                                """
                             select id::text, email, display_name, is_active, created_at
                             from users
                             where lower(email)=:preferred_email
                             limit 1
                             """
-                        ),
-                        {"preferred_email": preferred_email},
+                            ),
+                            {"preferred_email": preferred_email},
+                        )
                     )
-                ).mappings().first()
+                    .mappings()
+                    .first()
+                )
         return dict(row) if row is not None else None
 
     async def snapshot(self, tenant_id: str) -> dict[str, Any]:
@@ -215,6 +226,16 @@ class TenantManagementService:
         engine = await get_tenant_engine(context)
 
         async with engine.begin() as connection:
+            # Share the tenant IAM transaction lock; no parallel e-mail claim can slip through.
+            await lock_identity(connection)
+            current_email = (
+                await connection.execute(
+                    text("select email from users where id=cast(:id as uuid) for update"),
+                    {"id": str(current["id"])},
+                )
+            ).scalar_one()
+            target_email = (email or str(current_email)).strip().lower()
+            email_changed = target_email != str(current_email).strip().lower()
             conflict = (
                 await connection.execute(
                     text(
@@ -298,6 +319,15 @@ class TenantManagementService:
                     },
                 )
 
+            if password or email_changed:
+                # Control Plane recovery must invalidate machine tokens and pending links as well.
+                await revoke_access(connection, str(current["id"]))
+            if email_changed:
+                await connection.execute(
+                    text("update users set email_verified_at=null where id=cast(:id as uuid)"),
+                    {"id": str(current["id"])},
+                )
+
         settings_value = dict(tenant.settings or {})
         settings_value["admin_email"] = target_email
         if password:
@@ -312,9 +342,9 @@ class TenantManagementService:
             actor=actor,
             details={
                 "user_id": str(current["id"]),
-                "email_changed": target_email != str(current["email"]).lower(),
+                "email_changed": email_changed,
                 "password_rotated": bool(password),
-                "sessions_revoked": bool(password),
+                "sessions_revoked": bool(password) or email_changed,
             },
         )
         await self.session.commit()

@@ -8,7 +8,7 @@ from pydantic import ValidationError
 from app.core.errors import APIError
 from app.identity.images import MAX_AVATAR_BYTES, normalize_avatar
 from app.identity.policy import assert_delegable
-from app.identity.schemas import PasswordInput, ProfileInput, UserCreate
+from app.identity.schemas import GroupInput, PasswordInput, ProfileInput, UserCreate, UserUpdate
 from app.api.v1.routes.files import _ordinary_key
 
 
@@ -102,3 +102,55 @@ def test_ui_has_single_integration_view_and_inline_entity_search():
     assert "AbortController" in combo and ".slice(0, 6)" in combo and 'role="combobox"' in combo
     assert "IntegrationServicesLauncher" not in (root / "apps/web/src/main.ts").read_text()
     assert "IntegrationServicesLauncher" not in (root / "apps/admin/src/main.ts").read_text()
+
+
+@pytest.mark.parametrize(
+    "schema,payload",
+    [
+        (UserCreate, {"display_name": "Teste", "email": "one@example.com", "is_super_admin": True}),
+        (GroupInput, {"name": "Teste", "permissions": ["users.read"], "is_super_admin": True}),
+        (UserUpdate, {"display_name": "Teste", "is_active": True, "email": "other@example.com"}),
+    ],
+)
+def test_administration_rejects_undeclared_security_fields(schema, payload):
+    with pytest.raises(ValidationError):
+        schema.model_validate(payload)
+
+
+def test_animated_avatar_is_rejected():
+    stream = BytesIO()
+    Image.new("RGB", (10, 10), "red").save(
+        stream,
+        "PNG",
+        save_all=True,
+        append_images=[Image.new("RGB", (10, 10), "blue")],
+        duration=50,
+    )
+    with pytest.raises(APIError):
+        normalize_avatar(stream.getvalue())
+
+
+def test_avatar_pixel_limit_is_independent_of_dimension_limit():
+    stream = BytesIO()
+    Image.new("RGB", (4000, 4000)).save(stream, "PNG")
+    with pytest.raises(APIError):
+        normalize_avatar(stream.getvalue())
+
+
+def test_identity_routes_cannot_be_delegated_to_machine_tokens():
+    from app.integration_services.catalog import scope_for
+
+    for path, method in (
+        ("/api/v1/access/profile/password", "POST"),
+        ("/api/v1/access/users", "POST"),
+    ):
+        assert scope_for(path, method, False) is None
+
+
+def test_new_tenant_bootstrap_and_provisioning_grant_identity_permissions():
+    from app.cli import PERMISSIONS
+    from app.services.provisioning_runtime import TENANT_ADMIN_PERMISSIONS as provision_permissions
+
+    expected = {"users.read", "users.manage", "groups.manage", "audit.read"}
+    assert expected <= set(PERMISSIONS)
+    assert expected <= set(provision_permissions)
