@@ -90,7 +90,7 @@ def test_public_pages_workspace_never_uses_polling_remount_or_route_bounce() -> 
     assert "publicPagesWatchdog" not in app
     assert "setInterval(publicPages" not in app
     assert '<TenantVisualPageBuilder :key=' not in app
-    assert '<TenantVisualPageBuilder/>' in app
+    assert '<TenantVisualPageBuilder v-if="canAccess(\'tenant.manage\')"/>' in app
     assert "document.addEventListener('click',onPublicPagesNavCapture,true)" in app
     assert "document.querySelector('.experience-center')" in app
     assert "window.location.hash='dashboard'" not in app

@@ -1,4 +1,9 @@
 <script setup lang="ts">
+import IntegrationServicesView from '../../../packages/integration-services/IntegrationServicesView.vue'
+import EntityCombobox from '../../../packages/ui/EntityCombobox.vue'
+import TenantIdentityCenter from './TenantIdentityCenter.vue'
+import { tenantAccess, canAccess, setTenantAccess } from './tenantAccess'
+
 import { confirmDialog } from './appDialog'
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import {
@@ -57,6 +62,9 @@ type ViewKey =
   | 'personalizacao'
   | 'smtp'
   | 'configuracoes'
+  | 'integracoes'
+  | 'usuarios'
+  | 'perfil'
 
 type InstallPromptEvent = Event & {
   prompt: () => Promise<void>
@@ -99,22 +107,25 @@ type DistributionState = { tenant_id?: string; hostname?: string; profiles?: Arr
 type LoginResponse = { access_token: string; refresh_token: string; user?: { email?: string; display_name?: string; permissions?: string[] } }
 type ConfirmationLinkResponse = { enabled: boolean; request?: { url?: string; confirmation_deadline?: string } | null }
 
-type NavItem = { key: ViewKey; label: string; icon: unknown; capability?: string }
+type NavItem = { key: ViewKey; label: string; icon: unknown; capability?: string; permissions?: string[] }
 
 const navItems: NavItem[] = [
   { key: 'dashboard', label: 'Visão geral', icon: LayoutDashboard },
-  { key: 'agenda', label: 'Agenda', icon: CalendarDays, capability: 'appointments' },
-  { key: 'clientes', label: 'Clientes', icon: Users, capability: 'customers' },
-  { key: 'servicos', label: 'Serviços', icon: Wrench, capability: 'services' },
-  { key: 'profissionais', label: 'Profissionais', icon: UserRoundCheck, capability: 'professionals' },
-  { key: 'dominios', label: 'Domínio e distribuição', icon: Link2, capability: 'custom_domains' },
-  { key: 'builds', label: 'Aplicativos', icon: PackageCheck, capability: 'builds' },
-  { key: 'visual-builder', label: 'Páginas públicas', icon: Globe2, capability: 'landing_pages' },
-  { key: 'agenda-publica', label: 'Agenda pública', icon: CalendarClock, capability: 'appointments' },
-  { key: 'mensagens', label: 'Mensagens', icon: Bell, capability: 'notifications' },
-  { key: 'personalizacao', label: 'Personalização', icon: Palette, capability: 'branding' },
-  { key: 'smtp', label: 'E-mail SMTP', icon: MessageCircle, capability: 'notifications' },
-  { key: 'configuracoes', label: 'Configurações', icon: Settings },
+  { key: 'agenda', label: 'Agenda', icon: CalendarDays, capability: 'appointments', permissions: ['appointments.create'] },
+  { key: 'clientes', label: 'Clientes', icon: Users, capability: 'customers', permissions: ['customers.read', 'customers.create'] },
+  { key: 'servicos', label: 'Serviços', icon: Wrench, capability: 'services', permissions: ['services.manage'] },
+  { key: 'profissionais', label: 'Profissionais', icon: UserRoundCheck, capability: 'professionals', permissions: ['professionals.manage'] },
+  { key: 'dominios', label: 'Domínio e distribuição', icon: Link2, capability: 'custom_domains', permissions: ['tenant.manage'] },
+  { key: 'builds', label: 'Aplicativos', icon: PackageCheck, capability: 'builds', permissions: ['tenant.manage'] },
+  { key: 'visual-builder', label: 'Páginas públicas', icon: Globe2, capability: 'landing_pages', permissions: ['tenant.manage'] },
+  { key: 'agenda-publica', label: 'Agenda pública', icon: CalendarClock, capability: 'appointments', permissions: ['tenant.manage'] },
+  { key: 'mensagens', label: 'Mensagens', icon: Bell, capability: 'notifications', permissions: ['tenant.manage'] },
+  { key: 'personalizacao', label: 'Personalização', icon: Palette, capability: 'branding', permissions: ['tenant.manage'] },
+  { key: 'smtp', label: 'E-mail SMTP', icon: MessageCircle, capability: 'notifications', permissions: ['tenant.manage'] },
+  { key: 'integracoes', label: 'Integrações', icon: Link2 },
+  { key: 'usuarios', label: 'Usuários e grupos', icon: Users, permissions: ['users.read', 'groups.manage', 'audit.read'] },
+  { key: 'perfil', label: 'Meu perfil', icon: UserRoundCheck },
+  { key: 'configuracoes', label: 'Configurações', icon: Settings, permissions: ['tenant.manage'] },
 ]
 
 const statusLabels: Record<string, string> = {
@@ -211,7 +222,8 @@ const confirmationPrefs = ref({
 
 const logged = computed(() => Boolean(token.value))
 const enabledCapabilities = computed(() => new Set(capabilities.value?.enabled || []))
-const visibleNavItems = computed(() => navItems.filter((item) => !item.capability || enabledCapabilities.value.has(item.capability)))
+function navAllowed(item: NavItem): boolean { return (!item.capability || enabledCapabilities.value.has(item.capability)) && (!item.permissions || item.permissions.some(canAccess)) }
+const visibleNavItems = computed(() => navItems.filter(navAllowed))
 const activeTitle = computed(() => navItems.find((item) => item.key === view.value)?.label || 'Visão geral')
 const appName = computed(() => manifest.value?.app?.public_name || manifest.value?.app?.name || 'Scheduler Pro')
 const slogan = computed(() => manifest.value?.app?.slogan || 'Plataforma inteligente de agendamentos')
@@ -240,7 +252,7 @@ const pendingNotifications = computed(() => notifications.value.filter((item) =>
 const latestArtifacts = computed(() => distribution.value.artifacts || [])
 const latestJobs = computed(() => distribution.value.jobs || [])
 const realtimeLabel = computed(() => realtimeState.value === 'connected' ? 'Tempo real conectado' : realtimeState.value === 'connecting' ? 'Conectando tempo real' : 'Tempo real reconectando')
-const externalViews = new Set<ViewKey>(['dashboard','agenda','builds','visual-builder','agenda-publica','mensagens','personalizacao','smtp','configuracoes'])
+const externalViews = new Set<ViewKey>(['dashboard','agenda','builds','visual-builder','agenda-publica','mensagens','personalizacao','smtp','configuracoes','integracoes','usuarios','perfil'])
 const externalView = computed(() => externalViews.has(view.value))
 
 function hasCapability(key: string): boolean { return enabledCapabilities.value.has(key) }
@@ -269,7 +281,7 @@ function onViewportChange(): void { if (!isMobileViewport()) closeMobileNav() }
 
 function go(key: ViewKey): void {
   const item = navItems.find((candidate) => candidate.key === key)
-  if (item?.capability && !hasCapability(item.capability)) {
+  if (item && !navAllowed(item)) {
     showToast('Este recurso ainda não foi liberado pelo administrador da plataforma.')
     return
   }
@@ -284,7 +296,7 @@ function go(key: ViewKey): void {
 function onHashChange(): void {
   const candidate = hashToView()
   const item = navItems.find((entry) => entry.key === candidate)
-  view.value = item?.capability && !hasCapability(item.capability) ? 'dashboard' : candidate
+  view.value = tenantAccess.loaded && item && !navAllowed(item) ? 'perfil' : candidate
 }
 function onBeforeInstallPrompt(event: Event): void { event.preventDefault(); installPrompt.value = event as InstallPromptEvent }
 
@@ -365,11 +377,11 @@ function logout(reload = true): void {
 }
 
 async function handleRealtimeEvent(event: TenantRealtimeEvent): Promise<void> {
-  if (event.event_type.startsWith('appointment.') && hasCapability('appointments')) {
+  if (event.event_type.startsWith('appointment.') && hasCapability('appointments') && canAccess('appointments.create')) {
     appointments.value = await api<Appointment[]>('/appointments').catch(() => appointments.value)
     window.dispatchEvent(new CustomEvent('scheduler-pro-appointments-changed',{detail:event}))
   }
-  if (hasCapability('notifications')) {
+  if (hasCapability('notifications') && canAccess('appointments.read')) {
     notifications.value = await api<NotificationJob[]>('/notifications?limit=100').catch(() => notifications.value)
   }
   showToast(event.message || 'Agenda atualizada em tempo real.')
@@ -377,7 +389,7 @@ async function handleRealtimeEvent(event: TenantRealtimeEvent): Promise<void> {
 
 function startTenantRealtime(): void {
   stopRealtimeConnection()
-  if (!token.value || !hasCapability('appointments')) return
+  if (!token.value || !hasCapability('appointments') || !canAccess('appointments.read')) return
   stopRealtime = startRealtimeStream({
     apiBase: apiBase(),
     token: token.value,
@@ -392,7 +404,7 @@ function startTenantRealtime(): void {
 }
 
 async function refreshPushState(): Promise<void> {
-  pushEnabled.value = hasCapability('notifications') ? await pushSubscriptionEnabled().catch(() => false) : false
+  pushEnabled.value = hasCapability('notifications') && canAccess('appointments.read') ? await pushSubscriptionEnabled().catch(() => false) : false
 }
 
 async function enablePushNotifications(): Promise<void> {
@@ -418,6 +430,15 @@ async function disablePushNotifications(): Promise<void> {
   } finally { pushBusy.value = false }
 }
 
+async function refreshIdentity(): Promise<void> {
+  const data = await api<{actor_permissions: string[]; capabilities: string[]; tenant_id: string}>('/access/catalog')
+  setTenantAccess(data.actor_permissions, data.capabilities)
+  capabilities.value = { tenant_id: data.tenant_id, enabled: data.capabilities, capabilities: [] }
+  const user = await api<{display_name: string; email: string}>('/access/profile')
+  displayName.value = user.display_name; email.value = user.email
+}
+function onProfileChanged(): void { void refreshIdentity().then(onHashChange).catch(() => undefined) }
+
 async function syncAll(): Promise<void> {
   if (!token.value) return
   loading.value = true
@@ -427,29 +448,29 @@ async function syncAll(): Promise<void> {
     try { await task() } catch (error) { warnings.push(`${label}: ${error instanceof Error ? error.message : 'indisponível'}`) }
   }
 
-  await load('Configurações', async () => {
+  await load('Permissões e perfil', refreshIdentity)
+  if (canAccess('tenant.manage')) await load('Configurações', async () => {
     tenantSettings.value = await api<TenantSettings>('/settings/tenant/compact')
     hydratePreferences()
   })
-  await load('Recursos liberados', async () => { capabilities.value = await api<TenantCapabilities>('/settings/capabilities') })
 
   const tasks: Promise<void>[] = []
-  if (hasCapability('appointments')) {
+  if (hasCapability('appointments') && canAccess('appointments.create')) {
     tasks.push(load('Agenda', async () => { appointments.value = await api<Appointment[]>('/appointments') }))
-    tasks.push(load('Expediente', async () => { businessHours.value = await api<BusinessHour[]>('/schedule/business-hours') }))
-    tasks.push(load('Bloqueios', async () => { blockedPeriods.value = await api<BlockedPeriod[]>('/schedule/blocked-periods') }))
+    if (canAccess('professionals.manage')) tasks.push(load('Expediente', async () => { businessHours.value = await api<BusinessHour[]>('/schedule/business-hours') }))
+    if (canAccess('professionals.manage')) tasks.push(load('Bloqueios', async () => { blockedPeriods.value = await api<BlockedPeriod[]>('/schedule/blocked-periods') }))
   }
-  if (hasCapability('customers')) tasks.push(load('Clientes', async () => { customers.value = await api<Customer[]>('/customers') }))
-  if (hasCapability('services')) tasks.push(load('Serviços', async () => { services.value = await api<Service[]>('/services') }))
-  if (hasCapability('professionals')) tasks.push(load('Profissionais', async () => { professionals.value = await api<Professional[]>('/professionals') }))
-  if (hasCapability('notifications')) tasks.push(load('Notificações', async () => { notifications.value = await api<NotificationJob[]>('/notifications?limit=100') }))
-  if (hasCapability('whatsapp')) tasks.push(load('WhatsApp', loadWhatsAppStatus))
-  if (hasCapability('landing_pages')) tasks.push(load('Landing', loadLanding))
-  if (hasCapability('builds')) tasks.push(load('Distribuições', loadDistribution))
+  if (hasCapability('customers') && canAccess('customers.read')) tasks.push(load('Clientes', async () => { customers.value = await api<Customer[]>('/customers') }))
+  if (hasCapability('services') && canAccess('services.manage')) tasks.push(load('Serviços', async () => { services.value = await api<Service[]>('/services') }))
+  if (hasCapability('professionals') && canAccess('professionals.manage')) tasks.push(load('Profissionais', async () => { professionals.value = await api<Professional[]>('/professionals') }))
+  if (hasCapability('notifications') && canAccess('appointments.read')) tasks.push(load('Notificações', async () => { notifications.value = await api<NotificationJob[]>('/notifications?limit=100') }))
+  if (hasCapability('whatsapp') && canAccess('tenant.manage')) tasks.push(load('WhatsApp', loadWhatsAppStatus))
+  if (hasCapability('landing_pages') && canAccess('tenant.manage')) tasks.push(load('Landing', loadLanding))
+  if (hasCapability('builds') && canAccess('tenant.manage')) tasks.push(load('Distribuições', loadDistribution))
   await Promise.all(tasks)
 
   const current = navItems.find((item) => item.key === view.value)
-  if (current?.capability && !hasCapability(current.capability)) go('dashboard')
+  if (current && !navAllowed(current)) go('perfil')
   syncWarnings.value = warnings
   apiStatus.value = warnings.length === 0 ? 'connected' : warnings.length < 3 ? 'degraded' : 'fallback'
   if (warnings.length) actionError.value = `Algumas funções não responderam. ${warnings[0]}`
@@ -655,6 +676,7 @@ let whatsappPoll: number | undefined
 onMounted(async () => {
   await loadBranding()
   window.addEventListener('hashchange', onHashChange)
+  window.addEventListener('scheduler-pro-profile-changed', onProfileChanged)
   window.addEventListener('beforeinstallprompt', onBeforeInstallPrompt)
   window.addEventListener('resize', onViewportChange)
   window.addEventListener('scheduler-pro-revalidate-current-view', onAppRevalidate)
@@ -666,7 +688,7 @@ onMounted(async () => {
   }, 10000)
   if (token.value) await syncAll()
 })
-onUnmounted(() => { stopRealtimeConnection(); window.removeEventListener('hashchange', onHashChange); window.removeEventListener('beforeinstallprompt', onBeforeInstallPrompt); window.removeEventListener('resize', onViewportChange); window.removeEventListener('scheduler-pro-revalidate-current-view', onAppRevalidate); closeMobileNav(); if (whatsappPoll !== undefined) window.clearInterval(whatsappPoll) })
+onUnmounted(() => { stopRealtimeConnection(); window.removeEventListener('hashchange', onHashChange); window.removeEventListener('scheduler-pro-profile-changed', onProfileChanged); window.removeEventListener('beforeinstallprompt', onBeforeInstallPrompt); window.removeEventListener('resize', onViewportChange); window.removeEventListener('scheduler-pro-revalidate-current-view', onAppRevalidate); closeMobileNav(); if (whatsappPoll !== undefined) window.clearInterval(whatsappPoll) })
 </script>
 
 <template>
@@ -690,10 +712,13 @@ onUnmounted(() => { stopRealtimeConnection(); window.removeEventListener('hashch
         <div class="topbar-search"><Search :size="17" /><input v-model="searchTerm" placeholder="Buscar na operação" /></div><div class="topbar-spacer"></div>
         <button v-if="installPrompt && !isStandalone" class="btn install-top" @click="installWebApp"><Smartphone :size="16" /> {{ installing ? 'Instalando...' : 'Instalar' }}</button>
         <button v-if="hasCapability('notifications')" class="icon-button notification" :title="pushEnabled ? 'Push ativo neste dispositivo' : 'Ativar notificações push'" @click="pushEnabled ? go('configuracoes') : enablePushNotifications()"><Bell :size="20" /><i v-if="pendingNotifications || !pushEnabled"></i></button>
-        <div class="profile"><div class="avatar">{{ (displayName || email).slice(0, 1).toUpperCase() }}</div><div><strong>{{ displayName || email }}</strong><small>Gestor</small></div></div>
+        <button type="button" class="profile" style="border:0;background:transparent;cursor:pointer;text-align:left" @click="go('perfil')" aria-label="Abrir Meu perfil"><div class="avatar">{{ (displayName || email).slice(0, 1).toUpperCase() }}</div><div><strong>{{ displayName || email }}</strong><small>{{ canAccess('users.manage') ? 'Administrador' : 'Minha conta' }}</small></div></button>
       </header>
 
       <main class="main-content">
+        <IntegrationServicesView v-if="view === 'integracoes'" />
+        <TenantIdentityCenter v-if="view === 'usuarios'" key="users" />
+        <TenantIdentityCenter v-if="view === 'perfil'" key="profile" :profile-only="true" />
         <section v-if="!externalView" class="page-header"><div><p class="eyebrow">Scheduler Pro</p><h1>{{ activeTitle }}</h1><p>Recursos exibidos conforme a liberação do administrador da plataforma.</p></div><div class="page-actions"><button class="btn" :disabled="loading" @click="syncAll"><RefreshCw :size="15" /> Atualizar</button><button v-if="['agenda', 'clientes', 'servicos', 'profissionais'].includes(view)" class="btn primary" @click="openNew"><Plus :size="16" /> Novo</button></div></section>
         <p v-if="toast && !externalView" class="success-banner"><CheckCircle2 :size="17" /> {{ toast }}</p><p v-if="actionError && !externalView" class="error-banner"><CircleAlert :size="17" /> {{ actionError }}</p>
 
@@ -705,7 +730,7 @@ onUnmounted(() => { stopRealtimeConnection(); window.removeEventListener('hashch
 
         <section v-else-if="view === 'servicos'" class="view-stack"><article v-if="showEditor && editorKind === 'service'" class="panel operational-form editor-panel"><div class="editor-title"><div><h3>{{ editingId ? 'Editar serviço' : 'Novo serviço' }}</h3><p>Módulo opcional para catálogo estruturado.</p></div><button class="icon-button" @click="closeEditor"><X :size="17" /></button></div><div class="form-grid"><label>Nome<input v-model="serviceForm.name" required /></label><label>Duração (min)<input v-model.number="serviceForm.duration_minutes" type="number" min="0" /><small>Use 0 para duração variável; o agendamento usa a duração padrão configurada.</small></label><label>Preço<input v-model.number="serviceForm.price" type="number" min="0" step="0.01" /></label></div><label class="checkbox-line"><input v-model="serviceForm.active" type="checkbox" /> Ativo</label><div class="actions"><button class="btn" @click="closeEditor">Cancelar</button><button class="btn primary" @click="saveService">Salvar</button></div></article><section class="entity-grid"><article v-for="item in filteredServices" :key="item.id" class="entity-card"><Wrench /><div class="entity-main"><strong>{{ item.name }}</strong><small>{{ item.duration_minutes > 0 ? item.duration_minutes + ' min' : 'Duração variável' }} • {{ formatMoney(item.price) }}</small><div class="entity-actions"><button class="btn small" @click="editService(item)">Editar</button><button class="btn small" @click="toggleService(item)">{{ item.active ? 'Desativar' : 'Ativar' }}</button><button class="btn small danger" @click="deleteService(item)"><Trash2 :size="13" /></button></div></div></article></section></section>
 
-        <section v-else-if="view === 'profissionais'" class="view-stack"><article v-if="showEditor && editorKind === 'professional'" class="panel operational-form editor-panel"><div class="editor-title"><div><h3>{{ editingId ? 'Editar profissional' : 'Novo profissional' }}</h3></div><button class="icon-button" @click="closeEditor"><X :size="17" /></button></div><div class="form-grid"><label>Nome<input v-model="professionalForm.name" /></label><label>E-mail<input v-model="professionalForm.email" type="email" /></label><label>Telefone<input v-model="professionalForm.phone" /></label></div><div class="actions"><button class="btn primary" @click="saveProfessional">Salvar</button></div></article><article v-if="showEditor && editorKind === 'business-hour'" class="panel operational-form editor-panel"><div class="editor-title"><div><h3>Expediente</h3></div><button class="icon-button" @click="closeEditor"><X :size="17" /></button></div><div class="form-grid four"><label>Profissional<select v-model="businessHourForm.professional_id"><option value="">Geral</option><option v-for="item in professionals" :key="item.id" :value="item.id">{{ item.name }}</option></select></label><label>Dia<select v-model.number="businessHourForm.day_of_week"><option v-for="(label,index) in dayLabels" :key="index" :value="index">{{ label }}</option></select></label><label>Abre<input v-model="businessHourForm.opens_at" type="time" /></label><label>Fecha<input v-model="businessHourForm.closes_at" type="time" /></label></div><button class="btn primary" @click="saveBusinessHour">Salvar</button></article><article v-if="showEditor && editorKind === 'blocked-period'" class="panel operational-form editor-panel"><div class="editor-title"><div><h3>{{ editingId ? 'Editar bloqueio' : 'Bloquear período' }}</h3></div><button class="icon-button" @click="closeEditor"><X :size="17" /></button></div><div class="form-grid"><label>Profissional<select v-model="blockedPeriodForm.professional_id"><option value="">Geral</option><option v-for="item in professionals" :key="item.id" :value="item.id">{{ item.name }}</option></select></label><label>Início<input v-model="blockedPeriodForm.starts_at" type="datetime-local" /></label><label>Fim<input v-model="blockedPeriodForm.ends_at" type="datetime-local" /></label><label>Motivo<input v-model="blockedPeriodForm.reason" /></label></div><button class="btn primary" @click="saveBlockedPeriod">{{ editingId ? 'Salvar bloqueio' : 'Criar bloqueio' }}</button></article><section class="entity-grid"><article v-for="item in filteredProfessionals" :key="item.id" class="entity-card"><div class="entity-avatar">{{ item.name.slice(0,2).toUpperCase() }}</div><div class="entity-main"><strong>{{ item.name }}</strong><small>{{ item.email || item.phone || 'Sem contato' }}</small><div class="entity-actions"><button class="btn small" @click="editProfessional(item)">Editar</button><button class="btn small danger" @click="deleteProfessional(item)">Excluir</button></div></div></article></section><article class="panel table-panel"><div class="panel-title"><div><h3>Expediente</h3></div><div class="table-actions"><button class="btn small" @click="openBusinessHour()"><Plus :size="13" /> Faixa</button><button class="btn small" @click="openBlockedPeriod()"><Plus :size="13" /> Bloqueio</button></div></div><div class="responsive-table"><table><thead><tr><th>Dia</th><th>Profissional</th><th>Horário</th><th>Ações</th></tr></thead><tbody><tr v-for="item in businessHours" :key="item.id"><td>{{ dayLabels[item.day_of_week] }}</td><td>{{ item.professional_name || 'Geral' }}</td><td>{{ String(item.opens_at).slice(0,5) }} – {{ String(item.closes_at).slice(0,5) }}</td><td><button class="btn small" @click="openBusinessHour(item)">Editar</button><button class="btn small danger" @click="deleteBusinessHour(item)">Excluir</button></td></tr></tbody></table></div></article><article v-if="blockedPeriods.length" class="panel table-panel"><div class="responsive-table"><table><thead><tr><th>Bloqueio</th><th>Início</th><th>Fim</th><th>Ação</th></tr></thead><tbody><tr v-for="item in blockedPeriods" :key="item.id"><td>{{ item.reason || item.professional_name || 'Geral' }}</td><td>{{ formatDateTime(item.starts_at) }}</td><td>{{ formatDateTime(item.ends_at) }}</td><td><div class="table-actions"><button class="btn small" @click="openBlockedPeriod(item)">Editar</button><button class="btn small danger" @click="deleteBlockedPeriod(item)">Remover</button></div></td></tr></tbody></table></div></article></section>
+        <section v-else-if="view === 'profissionais'" class="view-stack"><article v-if="showEditor && editorKind === 'professional'" class="panel operational-form editor-panel"><div class="editor-title"><div><h3>{{ editingId ? 'Editar profissional' : 'Novo profissional' }}</h3></div><button class="icon-button" @click="closeEditor"><X :size="17" /></button></div><div class="form-grid"><label>Nome<input v-model="professionalForm.name" /></label><label>E-mail<input v-model="professionalForm.email" type="email" /></label><label>Telefone<input v-model="professionalForm.phone" /></label></div><div class="actions"><button class="btn primary" @click="saveProfessional">Salvar</button></div></article><article v-if="showEditor && editorKind === 'business-hour'" class="panel operational-form editor-panel"><div class="editor-title"><div><h3>Expediente</h3></div><button class="icon-button" @click="closeEditor"><X :size="17" /></button></div><div class="form-grid four"><label>Profissional<EntityCombobox v-model="businessHourForm.professional_id" :options="professionals.map(item => ({id:item.id,label:item.name}))" label="Profissional" placeholder="Geral / digite para buscar" /></label><label>Dia<select v-model.number="businessHourForm.day_of_week"><option v-for="(label,index) in dayLabels" :key="index" :value="index">{{ label }}</option></select></label><label>Abre<input v-model="businessHourForm.opens_at" type="time" /></label><label>Fecha<input v-model="businessHourForm.closes_at" type="time" /></label></div><button class="btn primary" @click="saveBusinessHour">Salvar</button></article><article v-if="showEditor && editorKind === 'blocked-period'" class="panel operational-form editor-panel"><div class="editor-title"><div><h3>{{ editingId ? 'Editar bloqueio' : 'Bloquear período' }}</h3></div><button class="icon-button" @click="closeEditor"><X :size="17" /></button></div><div class="form-grid"><label>Profissional<EntityCombobox v-model="blockedPeriodForm.professional_id" :options="professionals.map(item => ({id:item.id,label:item.name}))" label="Profissional" placeholder="Geral / digite para buscar" /></label><label>Início<input v-model="blockedPeriodForm.starts_at" type="datetime-local" /></label><label>Fim<input v-model="blockedPeriodForm.ends_at" type="datetime-local" /></label><label>Motivo<input v-model="blockedPeriodForm.reason" /></label></div><button class="btn primary" @click="saveBlockedPeriod">{{ editingId ? 'Salvar bloqueio' : 'Criar bloqueio' }}</button></article><section class="entity-grid"><article v-for="item in filteredProfessionals" :key="item.id" class="entity-card"><div class="entity-avatar">{{ item.name.slice(0,2).toUpperCase() }}</div><div class="entity-main"><strong>{{ item.name }}</strong><small>{{ item.email || item.phone || 'Sem contato' }}</small><div class="entity-actions"><button class="btn small" @click="editProfessional(item)">Editar</button><button class="btn small danger" @click="deleteProfessional(item)">Excluir</button></div></div></article></section><article class="panel table-panel"><div class="panel-title"><div><h3>Expediente</h3></div><div class="table-actions"><button class="btn small" @click="openBusinessHour()"><Plus :size="13" /> Faixa</button><button class="btn small" @click="openBlockedPeriod()"><Plus :size="13" /> Bloqueio</button></div></div><div class="responsive-table"><table><thead><tr><th>Dia</th><th>Profissional</th><th>Horário</th><th>Ações</th></tr></thead><tbody><tr v-for="item in businessHours" :key="item.id"><td>{{ dayLabels[item.day_of_week] }}</td><td>{{ item.professional_name || 'Geral' }}</td><td>{{ String(item.opens_at).slice(0,5) }} – {{ String(item.closes_at).slice(0,5) }}</td><td><button class="btn small" @click="openBusinessHour(item)">Editar</button><button class="btn small danger" @click="deleteBusinessHour(item)">Excluir</button></td></tr></tbody></table></div></article><article v-if="blockedPeriods.length" class="panel table-panel"><div class="responsive-table"><table><thead><tr><th>Bloqueio</th><th>Início</th><th>Fim</th><th>Ação</th></tr></thead><tbody><tr v-for="item in blockedPeriods" :key="item.id"><td>{{ item.reason || item.professional_name || 'Geral' }}</td><td>{{ formatDateTime(item.starts_at) }}</td><td>{{ formatDateTime(item.ends_at) }}</td><td><div class="table-actions"><button class="btn small" @click="openBlockedPeriod(item)">Editar</button><button class="btn small danger" @click="deleteBlockedPeriod(item)">Remover</button></div></td></tr></tbody></table></div></article></section>
 
         
 

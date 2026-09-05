@@ -177,8 +177,10 @@ async def claim_delivery(context: TenantContext | None) -> dict[str, Any] | None
             if context is None
             else "select 1 from users u join user_roles ur on ur.user_id=u.id "
             "join role_permissions rp on rp.role_id=ur.role_id "
+            "join roles active_role on active_role.id=ur.role_id and active_role.is_active "
             "join permissions p on p.id=rp.permission_id "
-            "where u.id=e.created_by and u.is_active and p.key='tenant.manage'"
+            "where u.id=e.created_by and u.is_active and p.key='tenant.manage' "
+            "and (not u.verification_required or u.email_verified_at is not null)"
         )
         await session.execute(
             text(

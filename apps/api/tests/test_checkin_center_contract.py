@@ -27,7 +27,7 @@ def test_checkin_center_is_global_and_aligned_with_agenda_operator() -> None:
     global_css = _source("apps/web/src/tenant-global-operators.css")
 
     assert "TenantCheckInCenter" in app
-    assert "<TenantCheckInCenter/>" in app
+    assert '<TenantCheckInCenter v-if="canAccess(\'appointments.create\')"/>' in app
     assert 'TenantCheckInCenter v-if="activeView' not in app
     assert "tenant-global-operators.css" in app
     assert "sp-checkin-launcher" in center

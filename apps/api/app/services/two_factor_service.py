@@ -262,6 +262,11 @@ class TwoFactorService:
         )
         if not verified_session_id:
             raise APIError("AUTH_SESSION_INVALID", "Sessão inválida ou expirada.", 401)
+        if self.user_table == "users":
+            await self.session.execute(text(
+                "update users set last_login_at=now() where id=("
+                "select user_id from user_sessions where id=cast(:id as uuid))"
+            ), {"id": session_id})
 
     @staticmethod
     def generate_secret() -> str:

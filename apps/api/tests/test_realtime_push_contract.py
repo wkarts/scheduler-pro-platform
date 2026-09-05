@@ -108,7 +108,7 @@ def test_tenant_frontend_respects_capabilities_and_uses_quick_agenda() -> None:
 
     assert "visibleNavItems" in component
     assert "enabledCapabilities" in component
-    assert "'/settings/capabilities'" in component
+    assert "'/access/catalog'" in component
     assert "'/appointments/quick'" in component
     assert "copyConfirmationLink" in component
     assert "startTenantRealtime" in component

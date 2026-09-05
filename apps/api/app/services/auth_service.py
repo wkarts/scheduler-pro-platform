@@ -75,6 +75,7 @@ class _BaseAuthService:
                 select distinct p.key
                 from permissions p
                 join role_permissions rp on rp.permission_id = p.id
+                join roles active_role on active_role.id=rp.role_id and active_role.is_active
                 join user_roles ur on ur.role_id = rp.role_id
                 where ur.user_id = :user_id
                 order by p.key
@@ -88,7 +89,7 @@ class _BaseAuthService:
                 select distinct r.name
                 from roles r
                 join user_roles ur on ur.role_id = r.id
-                where ur.user_id = :user_id
+                where ur.user_id = :user_id and r.is_active
                 order by r.name
                 """
             ),
@@ -97,7 +98,8 @@ class _BaseAuthService:
         return list(permission_rows.scalars()), list(role_rows.scalars())
 
     async def _lookup_user(self, email: str) -> RowMapping | None:
-        extra = ", is_super_admin" if self.user_type == "platform" else ""
+        extra = ", is_super_admin" if self.user_type == "platform" else ", verification_required, email_verified_at"
+        lock = "for update" if self.user_type == "tenant" else ""
         result = await self.session.execute(
             text(
                 f"""
@@ -105,7 +107,7 @@ class _BaseAuthService:
                        failed_login_attempts, locked_until {extra}
                 from {self.user_table}
                 where lower(email) = :email
-                limit 1
+                limit 1 {lock}
                 """
             ),
             {"email": email.lower()},
@@ -162,6 +164,11 @@ class _BaseAuthService:
             await self._audit(user_id, "auth.login", "DENIED", ip_address, correlation_id)
             await self.session.commit()
             raise APIError("AUTH_INVALID_CREDENTIALS", "E-mail ou senha inválidos.", 401)
+
+        if self.user_type == "tenant" and user["verification_required"] and not user["email_verified_at"]:
+            raise APIError("AUTH_EMAIL_VERIFICATION_REQUIRED", "Confirme seu e-mail pelo convite recebido antes de entrar.", 403)
+        if self.user_type == "tenant":
+            await self.session.execute(text("update users set last_login_at=now() where id=:id and not two_factor_enabled"), {"id": user_id})
 
         await self.session.execute(
             text(
@@ -239,7 +246,7 @@ class _BaseAuthService:
 
     async def refresh(self, raw_refresh_token: str) -> dict[str, Any]:
         token_hash = hash_opaque_token(raw_refresh_token)
-        extra = ", u.is_super_admin" if self.user_type == "platform" else ""
+        extra = ", u.is_super_admin" if self.user_type == "platform" else ", u.verification_required, u.email_verified_at"
         result = await self.session.execute(
             text(
                 f"""
@@ -294,6 +301,7 @@ class _BaseAuthService:
             or row["session_expires_at"] <= now
             or row["session_revoked_at"] is not None
             or not row["is_active"]
+            or (self.user_type == "tenant" and row["verification_required"] and not row["email_verified_at"])
         ):
             raise APIError("AUTH_REFRESH_INVALID", "Refresh token inválido ou expirado.", 401)
 

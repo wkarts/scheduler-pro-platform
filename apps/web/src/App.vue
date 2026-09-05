@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { canAccess } from './tenantAccess'
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import PublicSitePage from './PublicSitePage.vue'
 import TenantAgendaCenter from './TenantAgendaCenter.vue'
@@ -52,19 +53,19 @@ onUnmounted(()=>{stopStaticVersionGuard?.();window.removeEventListener('storage'
     <template v-else>
       <TenantConsole/>
       <TenantRuntimeVersion/>
-      <TenantDashboardInsights v-if="activeView==='dashboard'"/>
-      <TenantAgendaCenter v-if="activeView==='agenda'"/>
-      <TenantExtensions v-if="activeView==='personalizacao'||activeView==='smtp'"/>
-      <TenantConfigurationCenter v-if="activeView==='configuracoes'"/>
-      <TenantVisualPageBuilder/>
-      <TenantBookingAndMessages v-if="activeView==='agenda-publica'||activeView==='mensagens'"/>
-      <TenantMailModeSelector v-if="activeView==='smtp'"/>
-      <TenantBrandAssetUploader v-if="activeView==='personalizacao'"/>
-      <TenantUniversalDownloads v-if="activeView==='builds'"/>
+      <TenantDashboardInsights v-if="canAccess('appointments.create') && (activeView==='dashboard')"/>
+      <TenantAgendaCenter v-if="canAccess('appointments.create') && (activeView==='agenda')"/>
+      <TenantExtensions v-if="canAccess('tenant.manage') && (activeView==='personalizacao'||activeView==='smtp')"/>
+      <TenantConfigurationCenter v-if="canAccess('tenant.manage') && (activeView==='configuracoes')"/>
+      <TenantVisualPageBuilder v-if="canAccess('tenant.manage')"/>
+      <TenantBookingAndMessages v-if="canAccess('tenant.manage') && (activeView==='agenda-publica'||activeView==='mensagens')"/>
+      <TenantMailModeSelector v-if="canAccess('tenant.manage') && (activeView==='smtp')"/>
+      <TenantBrandAssetUploader v-if="canAccess('tenant.manage') && (activeView==='personalizacao')"/>
+      <TenantUniversalDownloads v-if="canAccess('tenant.manage') && (activeView==='builds')"/>
       <!-- Operadores globais permanecem disponíveis em qualquer view autenticada. -->
-      <TenantCheckInCenter/>
-      <TenantConfirmationAssistant/>
-      <TenantAgendaOperator/>
+      <TenantCheckInCenter v-if="canAccess('appointments.create')"/>
+      <TenantConfirmationAssistant v-if="canAccess('appointments.create')"/>
+      <TenantAgendaOperator v-if="canAccess('appointments.create')"/>
       <TenantSecondFactorGate/>
     </template>
     <TenantPwaInstallSurface/>

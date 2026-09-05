@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, onUnmounted, ref, shallowRef } from 'vue'
+import { computed, onMounted, onUnmounted, ref, shallowRef } from 'vue'
 
 type Scope = { key: string; label: string }
 type Operation = { method: string; path: string; scope: string; idempotency_required: boolean }
@@ -12,8 +12,6 @@ type Attempt = { attempt: number; http_status: number | null; error: string | nu
 type Tab = 'tokens' | 'webhooks' | 'deliveries' | 'requests' | 'catalog'
 const props = defineProps<{ platform?: boolean }>()
 const base = computed(() => props.platform ? '/api/v1/platform/integrations/services' : '/api/v1/integrations/services')
-const target = shallowRef<HTMLElement | null>(null)
-const dialog = ref<HTMLDialogElement | null>(null)
 const opened = ref(false)
 const tab = ref<Tab>('tokens')
 const loading = ref(false)
@@ -37,10 +35,6 @@ const editing = ref<string | null>(null)
 const reviewing = ref<ApiRequest | null>(null)
 const reviewNote = ref('')
 let panelEpoch = 0
-let panelIdentity = ""
-let refreshObserver: ReturnType<typeof setInterval> | undefined
-let observer: MutationObserver | undefined
-let previousFocus: HTMLElement | null = null
 
 function bearer(): string {
   try {
@@ -57,31 +51,15 @@ function sessionIdentity(): string {
     return `${payload.user_type}:${payload.tenant_id || ''}:${payload.sub}:${payload.sid}`
   } catch { return token }
 }
-function syncHost(): void {
-  target.value = bearer() ? document.querySelector<HTMLElement>('.sidebar .nav-list') : null
-  if (opened.value && (!target.value || panelIdentity !== sessionIdentity())) close()
-}
 function close(): void {
   panelEpoch += 1
-  reviewing.value = null
-  reviewNote.value = ''
-  dialog.value?.close()
   opened.value = false
   secret.value = ''
   webhookForm.value.authorization_token = ''
   confirmation.value = null
-  previousFocus?.focus()
 }
-async function open(next: Tab): Promise<void> {
-  panelIdentity = sessionIdentity()
-  tab.value = next
-  offset.value = 0
-  previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null
-  tokens.value = []; endpoints.value = []; deliveries.value = []; requests.value = []
-  secret.value = ''; error.value = ''; notice.value = ''
+async function open(): Promise<void> {
   opened.value = true
-  await nextTick()
-  if (!dialog.value?.open) dialog.value?.showModal()
   await reload()
 }
 
@@ -226,18 +204,14 @@ function date(value: string | null): string { return value ? new Date(value).toL
 const operations = computed(() => (catalog.value?.operations || []).filter(item => `${item.method} ${item.path} ${item.scope}`.toLowerCase().includes(filter.value.toLowerCase())))
 const curlExample = computed(() => `curl '${window.location.origin}/api/v1/${props.platform ? 'platform/tenants' : 'customers'}' \\\n  -H 'Authorization: Bearer SEU_TOKEN'`)
 const tabs: Array<{ key: Tab; title: string }> = [{ key: 'tokens', title: 'API Services' }, { key: 'webhooks', title: 'Webhook Services' }, { key: 'deliveries', title: 'Entregas' }, { key: 'requests', title: 'Operações' }, { key: 'catalog', title: 'Documentação' }]
-onMounted(() => { syncHost(); refreshObserver = setInterval(syncHost, 1000); observer = new MutationObserver(syncHost); observer.observe(document.body, { childList: true, subtree: true }); window.addEventListener('storage', syncHost) })
-onUnmounted(() => { if (refreshObserver) clearInterval(refreshObserver); observer?.disconnect(); window.removeEventListener('storage', syncHost); close() })
+onMounted(() => { void open() })
+onUnmounted(close)
 </script>
 
 <template>
-  <Teleport v-if="target" :to="target">
-    <button class="nav-item integration-nav" type="button" title="API Services" @click="open('tokens')"><span aria-hidden="true">⌘</span><span class="integration-nav-label">API Services</span></button>
-    <button class="nav-item integration-nav" type="button" title="Webhook Services" @click="open('webhooks')"><span aria-hidden="true">⇄</span><span class="integration-nav-label">Webhook Services</span></button>
-  </Teleport>
-  <dialog ref="dialog" class="integration-dialog" aria-labelledby="integration-title" @cancel.prevent="close" @close="opened = false">
+  <section class="integration-view" aria-labelledby="integration-title">
     <div v-if="opened" class="integration-center">
-      <header class="integration-header"><div><small>{{ platform ? 'CONTROL PLANE' : 'EMPRESA' }} · INTEGRAÇÕES</small><h2 id="integration-title">API Services &amp; Webhook Services</h2><p>Credenciais individuais, operações rastreáveis e eventos assinados.</p></div><button type="button" class="integration-button" aria-label="Fechar integrações" @click="close">Fechar ×</button></header>
+      <header class="integration-header"><div><small>{{ platform ? 'CONTROL PLANE' : 'EMPRESA' }} · INTEGRAÇÕES</small><h2 id="integration-title">Integrações</h2><p>Credenciais individuais, operações rastreáveis e eventos assinados.</p></div></header>
       <nav class="integration-tabs" aria-label="Áreas de integração"><button v-for="item in tabs" :key="item.key" type="button" :class="{ selected: tab === item.key }" :disabled="loading || saving" @click="switchTab(item.key)">{{ item.title }}</button></nav>
       <div class="integration-body">
         <div v-if="error" role="alert" class="integration-alert error">{{ error }}</div><div v-if="notice" role="status" class="integration-alert">{{ notice }}</div>
@@ -261,10 +235,9 @@ onUnmounted(() => { if (refreshObserver) clearInterval(refreshObserver); observe
         <template v-if="tab === 'catalog'"><section class="integration-card"><h3>Contrato para integração</h3><p>Autenticação: <code>Authorization: Bearer SEU_TOKEN</code>. Em POST, PUT, PATCH e DELETE, envie <code>Idempotency-Key</code> exclusivo por operação e reutilize a mesma chave em reenvios.</p><p>Replay por {{ catalog?.replay_hours }} horas. As chaves permanecem bloqueadas contra nova execução, mesmo depois de expirar o replay. O histórico de entregas tem retenção de {{ catalog?.retention_days }} dias; resultados incertos exigem conferência.</p><pre>{{ curlExample }}</pre><button class="integration-button primary" @click="downloadOpenAPI">Exportar OpenAPI</button><p>Exceções interativas: {{ catalog?.excluded.join('; ') }}.</p><p>Webhooks usam <code>X-Scheduler-Signature</code> (HMAC-SHA256), timestamp e identificador de entrega. Consulte o guia do repositório para validação e inbox idempotente.</p></section><label>Filtrar operações<input v-model="filter" type="search" placeholder="agendamento, customers, GET…"></label><div class="integration-table"><table><thead><tr><th>Método / caminho</th><th>Escopo</th><th>Idempotência</th></tr></thead><tbody><tr v-for="operation in operations" :key="operation.method + operation.path"><td><code>{{ operation.method }} {{ operation.path }}</code></td><td>{{ operation.scope }}</td><td>{{ operation.idempotency_required ? 'Obrigatória' : 'Consulta' }}</td></tr></tbody></table></div></template>
       </div>
     </div>
-  </dialog>
+  </section>
 </template>
 
 <style scoped>
-.integration-nav>span:first-child{width:19px;text-align:center;flex:0 0 19px;font-size:20px}:global(.collapsed:not(.mobileOpen)) .integration-nav-label{display:none}
-.integration-dialog{width:min(1200px,96vw);max-height:94dvh;padding:0;border:1px solid #dfe7f1;border-radius:16px;color:#172b48;background:#f4f7fb;box-shadow:0 24px 80px #10254840;overflow:auto}.integration-dialog::backdrop{background:#10254888}.integration-header{padding:24px;display:flex;gap:20px;justify-content:space-between;align-items:flex-start;background:#fff;border-bottom:1px solid #dfe7f1}.integration-header small{color:var(--blue,#2563eb);font-size:11px;letter-spacing:.1em;font-weight:800}.integration-header h2{font-size:24px;margin:7px 0}.integration-header p,.integration-card p{color:#65758d;font-size:13px;line-height:1.6}.integration-tabs{display:flex;gap:5px;padding:12px 24px;overflow:auto;background:#fff;position:sticky;top:0;z-index:1;border-bottom:1px solid #dfe7f1}.integration-tabs button{white-space:nowrap;border:0;background:transparent;color:#52657e;padding:10px 14px;border-radius:8px;font-weight:700}.integration-tabs .selected{background:#eaf1ff;color:var(--blue,#2563eb)}.integration-body{padding:24px;display:grid;gap:18px}.integration-toolbar,.integration-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap}.integration-toolbar{justify-content:space-between;color:#65758d;font-size:12px}.integration-button{border:1px solid #cfdbea;background:#fff;color:#233b5c;padding:9px 13px;border-radius:9px;font-size:12px;font-weight:700;min-height:38px;cursor:pointer}.integration-button.primary{background:var(--blue,#2563eb);color:#fff;border-color:var(--blue,#2563eb)}.integration-button:disabled{opacity:.45;cursor:not-allowed}.integration-card,.integration-secret,.integration-confirm{padding:22px;border:1px solid #dfe7f1;border-radius:12px;background:#fff;display:grid;gap:14px}.integration-card h3{margin:0;font-size:17px}.integration-card h3 small{font-size:12px;color:#65758d}.integration-card p{margin:0}.integration-center label{display:grid;gap:7px;font-size:12px;font-weight:700;color:#415773}.integration-center input:not([type=checkbox]),.integration-center textarea{width:100%;border:1px solid #cfdbea;border-radius:8px;padding:11px;background:#fff;color:#172b48;font:inherit}.integration-center input:focus,.integration-center textarea:focus{outline:2px solid #93b9ff;outline-offset:1px}.integration-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:15px}.integration-grid .wide{grid-column:span 2}.integration-choices{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px;max-height:260px;overflow:auto;margin:12px 0}.integration-choices label,.integration-inline{display:flex!important;align-items:center;gap:7px!important;font-weight:400!important}.integration-center input[type=checkbox]{width:16px;height:16px;flex-shrink:0}.integration-center summary{font-weight:700;cursor:pointer;font-size:13px}.integration-alert{padding:13px 16px;border:1px solid #bfdbfe;border-radius:9px;background:#eff6ff;color:#1e40af;overflow-wrap:anywhere}.integration-alert.error{border-color:#fecaca;background:#fff1f2;color:#991b1b}.integration-secret{border-color:#f2ce77;background:#fffbeb}.integration-secret textarea{font-family:monospace}.integration-confirm{border-color:#f2ce77}.integration-table{overflow:auto;border:1px solid #dfe7f1;border-radius:12px;background:#fff}.integration-table table{margin:0;min-width:600px;width:100%;border-collapse:collapse}.integration-table td,.integration-table th{padding:13px;text-align:left;border-bottom:1px solid #edf2f7;font-size:12px;vertical-align:top}.integration-table th{background:#f8fafc;color:#65758d}.integration-table small,.integration-table code{display:block;max-width:410px;overflow-wrap:anywhere;white-space:normal;margin:4px 0}.integration-center code{font-family:ui-monospace,monospace;font-size:12px;overflow-wrap:anywhere}.integration-center pre{background:#eef3fa;border-radius:8px;padding:14px;overflow:auto;white-space:pre-wrap;font-size:12px}@media(max-width:700px){.integration-dialog{width:100%;max-width:100%;max-height:100dvh;height:100dvh;margin:0;border-radius:0}.integration-header,.integration-body{padding:16px}.integration-header h2{font-size:19px}.integration-tabs{padding:9px 12px}.integration-grid{grid-template-columns:1fr}.integration-grid .wide{grid-column:auto}.integration-choices{grid-template-columns:1fr}.integration-card{padding:16px}.integration-actions .integration-button{flex:1}.integration-toolbar .integration-button{flex:0}}
+.integration-view{width:100%;min-width:0;color:#172b48;background:transparent}.integration-center{min-width:0}.integration-header{padding:24px;display:flex;gap:20px;justify-content:space-between;align-items:flex-start;background:#fff;border-bottom:1px solid #dfe7f1}.integration-header small{color:var(--blue,#2563eb);font-size:11px;letter-spacing:.1em;font-weight:800}.integration-header h2{font-size:32px;margin:7px 0}.integration-header p,.integration-card p{color:#65758d;font-size:13px;line-height:1.6}.integration-tabs{display:flex;gap:5px;padding:12px 24px;flex-wrap:wrap;background:#fff;border-bottom:1px solid #dfe7f1}.integration-tabs button{white-space:nowrap;border:0;background:transparent;color:#52657e;padding:10px 14px;border-radius:8px;font-weight:700}.integration-tabs .selected{background:#eaf1ff;color:var(--blue,#2563eb)}.integration-body{padding:24px;display:grid;gap:18px}.integration-toolbar,.integration-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap}.integration-toolbar{justify-content:space-between;color:#65758d;font-size:12px}.integration-button{border:1px solid #cfdbea;background:#fff;color:#233b5c;padding:9px 13px;border-radius:9px;font-size:12px;font-weight:700;min-height:38px;cursor:pointer}.integration-button.primary{background:var(--blue,#2563eb);color:#fff;border-color:var(--blue,#2563eb)}.integration-button:disabled{opacity:.45;cursor:not-allowed}.integration-card,.integration-secret,.integration-confirm{padding:22px;border:1px solid #dfe7f1;border-radius:12px;background:#fff;display:grid;gap:14px}.integration-card h3{margin:0;font-size:17px}.integration-card h3 small{font-size:12px;color:#65758d}.integration-card p{margin:0}.integration-center label{display:grid;gap:7px;font-size:12px;font-weight:700;color:#415773}.integration-center input:not([type=checkbox]),.integration-center textarea{width:100%;border:1px solid #cfdbea;border-radius:8px;padding:11px;background:#fff;color:#172b48;font:inherit}.integration-center input:focus,.integration-center textarea:focus{outline:2px solid #93b9ff;outline-offset:1px}.integration-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:15px}.integration-grid .wide{grid-column:span 2}.integration-choices{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px;max-height:260px;overflow:auto;margin:12px 0}.integration-choices label,.integration-inline{display:flex!important;align-items:center;gap:7px!important;font-weight:400!important}.integration-center input[type=checkbox]{width:16px;height:16px;flex-shrink:0}.integration-center summary{font-weight:700;cursor:pointer;font-size:13px}.integration-alert{padding:13px 16px;border:1px solid #bfdbfe;border-radius:9px;background:#eff6ff;color:#1e40af;overflow-wrap:anywhere}.integration-alert.error{border-color:#fecaca;background:#fff1f2;color:#991b1b}.integration-secret{border-color:#f2ce77;background:#fffbeb}.integration-secret textarea{font-family:monospace}.integration-confirm{border-color:#f2ce77}.integration-table{overflow:auto;border:1px solid #dfe7f1;border-radius:12px;background:#fff}.integration-table table{margin:0;min-width:600px;width:100%;border-collapse:collapse}.integration-table td,.integration-table th{padding:13px;text-align:left;border-bottom:1px solid #edf2f7;font-size:12px;vertical-align:top}.integration-table th{background:#f8fafc;color:#65758d}.integration-table small,.integration-table code{display:block;max-width:410px;overflow-wrap:anywhere;white-space:normal;margin:4px 0}.integration-center code{font-family:ui-monospace,monospace;font-size:12px;overflow-wrap:anywhere}.integration-center pre{background:#eef3fa;border-radius:8px;padding:14px;overflow:auto;white-space:pre-wrap;font-size:12px}@media(max-width:700px){.integration-view{width:100%;min-height:0}.integration-header,.integration-body{padding:16px}.integration-header h2{font-size:19px}.integration-tabs{padding:9px 12px}.integration-grid{grid-template-columns:1fr}.integration-grid .wide{grid-column:auto}.integration-choices{grid-template-columns:1fr}.integration-card{padding:16px}.integration-actions .integration-button{flex:1}.integration-toolbar .integration-button{flex:0}}
 </style>
