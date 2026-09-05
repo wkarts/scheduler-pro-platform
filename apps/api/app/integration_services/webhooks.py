@@ -269,9 +269,9 @@ async def finish_delivery(
     async with integration_session(context) as session:
         await session.execute(
             text(
-                "update service_webhook_deliveries set state=:state,http_status=:status,last_error=:error,"
+                "update service_webhook_deliveries set state=cast(:state as varchar(16)),http_status=:status,last_error=:error,"
                 "available_at=now()+make_interval(secs=>:delay),lease_id=null,lease_until=null,"
-                "delivered_at=case when :state='delivered' then now() else delivered_at end "
+                "delivered_at=case when cast(:state as varchar(16))='delivered' then now() else delivered_at end "
                 "where id=cast(:id as uuid) and lease_id=cast(:lease as uuid) and state='sending'"
             ),
             {
