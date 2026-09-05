@@ -1,0 +1,63 @@
+name: Apply reviewed integration source
+on:
+  push:
+    branches: [feat/api-webhook-services-amd64]
+    paths: [.github/workflows/apply-reviewed-integration-source.yml]
+permissions:
+  contents: write
+concurrency:
+  group: apply-reviewed-integration-source
+  cancel-in-progress: false
+jobs:
+  apply:
+    if: github.repository == 'wkarts/scheduler-pro-platform' && github.ref == 'refs/heads/feat/api-webhook-services-amd64'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 1
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Verify exact reviewed patch and apply source
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import hashlib, lzma, subprocess
+          parts = sorted(Path('.github/integration-transfer').glob('*.xzpart'))
+          assert len(parts) == 6, 'Missing transfer part'
+          patch = lzma.decompress(b''.join(p.read_bytes() for p in parts))
+          assert hashlib.sha256(patch).hexdigest() == '22a3f73500f90c290dc9c2a17afee1d70c37a8c2681c1ca3057c721e8aeb5b82'
+          assert b'diff --git a/.github/workflows/' not in patch
+          Path('/tmp/reviewed-integration.patch').write_bytes(patch)
+          subprocess.run(['git','apply','--check','--index','/tmp/reviewed-integration.patch'], check=True)
+          subprocess.run(['git','apply','--index','/tmp/reviewed-integration.patch'], check=True)
+          PY
+      - name: Validate backend and regression suites
+        run: |
+          python -m pip install -r apps/api/requirements.txt
+          cd apps/api
+          python -m compileall -q app tests
+          ruff check app tests
+          mypy app --show-error-codes --no-color-output
+          pytest -q -m 'not integration'
+          cd ../..
+          python -m unittest discover -s scripts/tests -p test_operations.py -v
+      - name: Commit only validated source to feature branch
+        run: |
+          git rm -r .github/integration-transfer
+          git diff --cached --check
+          git diff --exit-code
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'feat: implementa API Services e Webhook Services isolados com idempotência'
+          git push origin HEAD:refs/heads/feat/api-webhook-services-amd64
+          echo "Validated source commit: $(git rev-parse HEAD)" >> "$GITHUB_STEP_SUMMARY"
+          git archive --format=tar.gz HEAD -o /tmp/scheduler-integration-source.tar.gz
+      - uses: actions/upload-artifact@v4
+        with:
+          name: scheduler-integration-reviewed-source
+          path: /tmp/scheduler-integration-source.tar.gz
+          retention-days: 1

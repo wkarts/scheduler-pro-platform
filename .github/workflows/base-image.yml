@@ -28,6 +28,7 @@ jobs:
         with:
           context: .
           file: infrastructure/docker/base/python/Dockerfile
+          platforms: linux/amd64
           push: true
           tags: |
             ghcr.io/${{ github.repository }}/python-base:3.13
