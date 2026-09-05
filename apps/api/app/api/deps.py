@@ -95,6 +95,7 @@ async def _tenant_stage(
                 join user_sessions s on s.user_id=u.id
                 where u.id=:user_id and s.id=:session_id
                   and u.is_active=true and s.revoked_at is null and s.expires_at>now()
+                  and (not u.verification_required or u.email_verified_at is not null)
                 limit 1
                 """
             ),
@@ -151,6 +152,7 @@ async def get_current_tenant_user(
                     """
                     select distinct p.key from permissions p
                     join role_permissions rp on rp.permission_id=p.id
+                    join roles active_role on active_role.id=rp.role_id and active_role.is_active
                     join user_roles ur on ur.role_id=rp.role_id
                     where ur.user_id=:user_id
                     """
@@ -166,7 +168,7 @@ async def get_current_tenant_user(
                     """
                     select distinct r.name from roles r
                     join user_roles ur on ur.role_id=r.id
-                    where ur.user_id=:user_id
+                    where ur.user_id=:user_id and r.is_active
                     """
                 ),
                 {"user_id": principal.user_id},

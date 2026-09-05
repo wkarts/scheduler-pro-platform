@@ -8,6 +8,7 @@ from starlette.responses import StreamingResponse
 
 from app.api.deps import get_tenant_context
 from app.core.responses import success
+from app.core.errors import APIError
 from app.core.tenant_context import TenantContext
 from app.services.file_service import TenantFileService
 
@@ -17,6 +18,13 @@ router = APIRouter()
 class FileAccessRequest(BaseModel):
     key: str = Field(min_length=1, max_length=500)
     operation: Literal["download", "upload"] = "download"
+
+
+def _ordinary_key(key: str) -> str:
+    normalized = TenantFileService.normalize_key(key)
+    if normalized == "profiles-private" or normalized.startswith("profiles-private/"):
+        raise APIError("FILE_PRIVATE_PROFILE", "Fotos de perfil são acessadas somente pelo perfil do titular.", 403)
+    return normalized
 
 
 def _stream(body: Any) -> Iterator[bytes]:
@@ -46,7 +54,7 @@ async def signed_url(
     context: TenantContext = Depends(get_tenant_context),
 ) -> dict[str, Any]:
     service = TenantFileService(context)
-    key = service.normalize_key(payload.key)
+    key = _ordinary_key(payload.key)
     if payload.operation == "upload":
         return success(
             {
@@ -76,7 +84,7 @@ async def upload_file(
     context: TenantContext = Depends(get_tenant_context),
 ) -> dict[str, Any]:
     try:
-        result = await TenantFileService(context).upload(key, file.file, file.content_type)
+        result = await TenantFileService(context).upload(_ordinary_key(key), file.file, file.content_type)
         result["public_url"] = _public_url(result["key"])
         return success(result)
     finally:
@@ -91,7 +99,10 @@ async def list_files(
 ) -> dict[str, Any]:
     # Compatibilidade: mantém `data` como lista, exatamente como antes desta PR.
     # A cota fica no endpoint separado `/files/quota`.
-    return success(await TenantFileService(context).list(prefix=prefix, limit=limit))
+    if prefix.strip():
+        _ordinary_key(prefix)
+    rows = await TenantFileService(context).list(prefix=prefix, limit=limit)
+    return success([row for row in rows if not str(row["key"]).startswith("profiles-private/")])
 
 
 @router.get("/content/{key:path}")
@@ -99,7 +110,7 @@ async def download_file(
     key: str,
     context: TenantContext = Depends(get_tenant_context),
 ) -> StreamingResponse:
-    result = await TenantFileService(context).get_object(key)
+    result = await TenantFileService(context).get_object(_ordinary_key(key))
     headers = {
         "Content-Disposition": f'inline; filename="{TenantFileService.normalize_key(key).split("/")[-1]}"',
         "ETag": str(result.get("ETag", "")),
@@ -117,6 +128,6 @@ async def delete_file(
     context: TenantContext = Depends(get_tenant_context),
 ) -> dict[str, Any]:
     service = TenantFileService(context)
-    result = await service.delete(key)
+    result = await service.delete(_ordinary_key(key))
     result["storage"] = await service.quota_status()
     return success(result)

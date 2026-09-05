@@ -33,8 +33,13 @@ class TokenInput(BaseModel):
     model_config = ConfigDict(str_strip_whitespace=True, extra="forbid")
     name: str = Field(min_length=2, max_length=100)
     scopes: list[str] = Field(min_length=1, max_length=100)
-    expires_in_days: int = Field(default=90, ge=1, le=365)
+    expires_in_days: int | None = Field(default=None, ge=1, le=365, strict=True)
     rate_limit: int = Field(default=120, ge=1, le=1000)
+
+
+class TokenValidityInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    expires_in_days: int | None = Field(ge=1, le=365, strict=True)
 
 
 class WebhookInput(BaseModel):
@@ -118,6 +123,8 @@ def build_router(platform: bool) -> APIRouter:
                 "scope": "platform" if current.platform else "tenant",
                 "api_enabled": config.api_enabled,
                 "webhooks_enabled": config.webhooks_enabled,
+                "incoming_webhooks_enabled": config.incoming_webhooks_enabled,
+                "inbox_max_bytes": config.inbox_max_bytes,
                 "scopes": scopes_catalog(platform),
                 "events": event_catalog(platform),
                 "operations": operation_catalog(request.app, platform),
@@ -210,7 +217,7 @@ def build_router(platform: bool) -> APIRouter:
             count = (
                 await session.execute(
                     text(
-                        "select count(*) from service_api_tokens where revoked_at is null and expires_at>now()"
+                        "select count(*) from service_api_tokens where revoked_at is null and (expires_at is null or expires_at>now())"
                     )
                 )
             ).scalar_one()
@@ -236,7 +243,9 @@ def build_router(platform: bool) -> APIRouter:
                             "roles": json.dumps(sorted(current.principal.roles)),
                             "tenants": json.dumps(sorted(current.principal.tenant_ids)),
                             "global_scope": current.control_plane_global,
-                            "expires": datetime.now(UTC) + timedelta(days=body.expires_in_days),
+                            "expires": (datetime.now(UTC) + timedelta(days=body.expires_in_days))
+                            if body.expires_in_days is not None
+                            else None,
                             "rate": body.rate_limit,
                         },
                     )
@@ -259,7 +268,7 @@ def build_router(platform: bool) -> APIRouter:
                         text(
                             "update service_api_tokens set token_hash=:hash,prefix=:prefix "
                             "where id=cast(:id as uuid) and owner_id=cast(:owner as uuid) "
-                            "and revoked_at is null and expires_at>now() "
+                            "and revoked_at is null and (expires_at is null or expires_at>now()) "
                             f"returning {TOKEN_FIELDS}"
                         ),
                         {
@@ -278,6 +287,44 @@ def build_router(platform: bool) -> APIRouter:
             await audit(session, current.principal.user_id, "api_token.rotated", str(token_id))
             await session.commit()
             return data({**public_row(row), "token": raw})
+
+    @router.patch("/tokens/{token_id}/validity")
+    async def token_validity(
+        request: Request, token_id: UUID, body: TokenValidityInput
+    ) -> dict[str, Any]:
+        current = identity(request, interactive=True)
+        expires = (
+            (datetime.now(UTC) + timedelta(days=body.expires_in_days))
+            if body.expires_in_days is not None
+            else None
+        )
+        async with integration_session(current.context) as session:
+            row = (
+                (
+                    await session.execute(
+                        text(
+                            "update service_api_tokens set expires_at=:expires "
+                            "where id=cast(:id as uuid) and owner_id=cast(:owner as uuid) "
+                            "and revoked_at is null and (expires_at is null or expires_at>now()) "
+                            f"returning {TOKEN_FIELDS}"
+                        ),
+                        {
+                            "expires": expires,
+                            "id": str(token_id),
+                            "owner": current.principal.user_id,
+                        },
+                    )
+                )
+                .mappings()
+                .first()
+            )
+            if row is None:
+                raise APIError("API_TOKEN_NOT_FOUND", "Token ativo do titular não encontrado.", 404)
+            await audit(
+                session, current.principal.user_id, "api_token.validity_changed", str(token_id)
+            )
+            await session.commit()
+            return data(public_row(row))
 
     @router.delete("/tokens/{token_id}")
     async def revoke_token(request: Request, token_id: UUID) -> dict[str, Any]:
@@ -678,4 +725,7 @@ def build_router(platform: bool) -> APIRouter:
             )
             return data([dict(row) for row in rows])
 
+    from app.integration_services.incoming import add_management_routes
+
+    add_management_routes(router)
     return router

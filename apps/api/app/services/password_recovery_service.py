@@ -59,6 +59,9 @@ class _PasswordRecoveryService:
         ip_address: str | None,
         correlation_id: str | None,
     ) -> tuple[str, str] | None:
+        if self.user_table == "users":
+            from app.identity.policy import lock_identity
+            await lock_identity(self.session)
         normalized = email.strip().lower()
         row = (
             await self.session.execute(
@@ -133,7 +136,10 @@ class _PasswordRecoveryService:
         ip_address: str | None,
         correlation_id: str | None,
     ) -> None:
-        if len(new_password) < settings.password_reset_min_length:
+        if self.user_table == "users":
+            from app.identity.policy import lock_identity
+            await lock_identity(self.session)
+        if not settings.password_reset_min_length <= len(new_password) <= 512:
             raise APIError(
                 "PASSWORD_TOO_SHORT",
                 f"A nova senha deve possuir pelo menos {settings.password_reset_min_length} caracteres.",
@@ -219,6 +225,10 @@ class _PasswordRecoveryService:
             ),
             {"user_id": row["user_id"]},
         )
+        if self.user_table == "users":
+            from app.identity.policy import revoke_access
+            await revoke_access(self.session, row["user_id"])
+            await self.session.execute(text("update users set email_verified_at=coalesce(email_verified_at,now()),verification_required=false where id=cast(:id as uuid)"), {"id": row["user_id"]})
         await self._audit(
             row["user_id"],
             "auth.password_reset.complete",

@@ -39,7 +39,10 @@ from app.api.v1.routes import (
     whatsapp,
 )
 
+from app.identity.routes import router as identity_router
+
 api_router = APIRouter()
+api_router.include_router(identity_router, prefix="/access", tags=["Tenant Identity"])
 api_router.include_router(health.router, tags=["Health"])
 api_router.include_router(public.router, prefix="/public", tags=["Public"])
 api_router.include_router(pwa_identity.router, prefix="/pwa", tags=["PWA Identity"])

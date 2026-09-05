@@ -66,7 +66,7 @@ def test_tenant_frontend_is_capability_aware_and_agenda_first() -> None:
         encoding="utf-8"
     )
 
-    assert "/settings/capabilities" in source
+    assert "/access/catalog" in source
     assert "visibleNavItems" in source
     assert "/appointments/quick" in source
     assert "/appointment-confirmations/" in source

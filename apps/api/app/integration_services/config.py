@@ -9,6 +9,10 @@ class IntegrationSettings(BaseSettings):
 
     api_enabled: bool = True
     webhooks_enabled: bool = True
+    incoming_webhooks_enabled: bool = True
+    inbox_max_bytes: int = Field(default=256 * 1024, ge=1024, le=1024 * 1024)
+    inbox_max_payloads: int = Field(default=1000, ge=1, le=10000)
+    inbox_max_inflight: int = Field(default=16, ge=1, le=128)
     max_inflight_requests: int = Field(default=32, ge=1, le=256)
     body_timeout_seconds: float = Field(default=15, ge=1, le=60)
     max_tokens: int = Field(default=50, ge=1, le=500)
