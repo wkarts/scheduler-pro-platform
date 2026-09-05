@@ -66,7 +66,7 @@ async def current_owner(
 ) -> AuthPrincipal:
     platform = context is None
     table = "platform_users" if platform else "users"
-    extra = ", is_super_admin" if platform else ""
+    extra = ", is_super_admin" if platform else ", verification_required, email_verified_at"
     row = (
         (
             await session.execute(
@@ -80,7 +80,7 @@ async def current_owner(
         .mappings()
         .first()
     )
-    if row is None:
+    if row is None or (not platform and row["verification_required"] and not row["email_verified_at"]):
         raise APIError("API_TOKEN_INVALID", "Token inválido, revogado ou expirado.", 401)
     super_admin = platform and bool(row["is_super_admin"])
     if platform:
@@ -104,6 +104,7 @@ async def current_owner(
         permission_sql = (
             "select distinct p.key from permissions p "
             "join role_permissions rp on rp.permission_id=p.id "
+            "join roles active_role on active_role.id=rp.role_id and active_role.is_active "
             "join user_roles ur on ur.role_id=rp.role_id where ur.user_id=cast(:id as uuid)"
         )
         tenant_ids = frozenset({context.tenant_id}) if context else frozenset()
@@ -113,7 +114,7 @@ async def current_owner(
                 await session.execute(
                     text(
                         "select r.name from roles r join user_roles ur on ur.role_id=r.id "
-                        "where ur.user_id=cast(:id as uuid)"
+                        "where ur.user_id=cast(:id as uuid) and r.is_active"
                     ),
                     {"id": owner_id},
                 )

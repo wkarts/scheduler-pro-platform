@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import EntityCombobox from "../../../packages/ui/EntityCombobox.vue"
 import { computed, onMounted, ref, watch, type CSSProperties } from 'vue'
 import { CalendarDays, CheckCircle2, Clock3, LoaderCircle, UserRound, Wrench } from 'lucide-vue-next'
 
@@ -58,7 +59,7 @@ async function loadSlots():Promise<void>{selectedSlot.value=null;slots.value=[];
 async function book():Promise<void>{if(!selectedSlot.value){error.value='Escolha um horário disponível.';return}if(!customer.value.name.trim()){error.value='Informe seu nome.';return}if(phoneRequired.value&&!customer.value.phone.trim()){error.value='Informe seu telefone/WhatsApp.';return}if(serviceRequired.value&&!serviceId.value){error.value='Escolha um serviço.';return}if(professionalRequired.value&&!selectedSlot.value.professional_id){error.value='Escolha um profissional.';return}if(emailRequired.value&&!customer.value.email.trim()){error.value='Informe seu e-mail.';return}submitting.value=true;error.value='';try{success.value=await request<BookingSuccess>('/booking',{method:'POST',body:JSON.stringify({service_id:serviceEnabled.value&&serviceId.value?serviceId.value:null,professional_id:professionalEnabled.value?selectedSlot.value.professional_id:null,starts_at:selectedSlot.value.starts_at,customer_name:customer.value.name.trim(),customer_phone:phoneEnabled.value&&customer.value.phone.trim()?customer.value.phone.trim():null,customer_email:emailEnabled.value&&customer.value.email.trim()?customer.value.email.trim():null})});slots.value=[];emit('booked')}catch(exc){error.value=exc instanceof Error?exc.message:'Não foi possível concluir o agendamento.';await loadSlots()}finally{submitting.value=false}}
 function reset():void{success.value=null;selectedSlot.value=null;void loadSlots()}
 watch([serviceId,professionalId,day],()=>void loadSlots())
-onMounted(()=>{if(props.catalog.config.service_mode==='REQUIRED'&&props.catalog.services.length)serviceId.value=props.catalog.services[0].id;if(props.catalog.config.professional_mode==='REQUIRED'&&props.catalog.professionals.length&&!props.catalog.config.allow_any_professional)professionalId.value=props.catalog.professionals[0].id;void loadSlots()})
+onMounted(()=>{if(props.catalog.config.professional_mode==='REQUIRED'&&props.catalog.professionals.length&&!props.catalog.config.allow_any_professional)professionalId.value=props.catalog.professionals[0].id;void loadSlots()})
 </script>
 
 <template>
@@ -73,13 +74,13 @@ onMounted(()=>{if(props.catalog.config.service_mode==='REQUIRED'&&props.catalog.
     <section v-else class="public-booking-workspace" :class="{'without-service':!serviceEnabled}">
       <article v-if="serviceEnabled" class="public-booking-card public-booking-options">
         <div class="section-title"><Wrench :size="20"/><div><span>1. Atendimento</span><strong>{{ serviceRequired?'Escolha o serviço':'Serviço opcional' }}</strong></div></div>
-        <label>Serviço<select v-model="serviceId"><option v-if="!serviceRequired" value="">Sem serviço específico</option><option v-for="item in catalog.services" :key="item.id" :value="item.id">{{ item.name }}<template v-if="durationEnabled"> · {{ item.duration_minutes }} min</template>{{ item.price!=null?` · ${formatMoney(item.price)}`:'' }}</option></select></label>
+        <label>Serviço<EntityCombobox v-model="serviceId" :options="catalog.services.map(p=>({id:p.id,label:p.name}))" label="Serviço" :required="serviceRequired" placeholder="Buscar serviço"/></label>
         <div v-if="selectedService" class="service-summary"><strong>{{ selectedService.name }}</strong><span v-if="durationEnabled">{{ selectedService.duration_minutes }} minutos</span><span v-else-if="selectedService.price!=null">{{ formatMoney(selectedService.price) }}</span></div>
       </article>
 
       <article class="public-booking-card public-booking-slots">
         <div class="section-title"><CalendarDays :size="20"/><div><span>{{ stepSchedule }}. Data e horário</span><strong>{{ formatDay(day) }}</strong></div></div>
-        <div class="schedule-fields" :class="{'date-only':!professionalEnabled}"><label v-if="professionalEnabled">Profissional / responsável<select v-model="professionalId"><option v-if="catalog.config.allow_any_professional&&!professionalRequired" value="">Qualquer responsável disponível</option><option v-else-if="catalog.config.allow_any_professional" value="">Qualquer profissional disponível</option><option v-for="item in catalog.professionals" :key="item.id" :value="item.id">{{ item.name }}</option></select></label><label>Data<input v-model="day" type="date" :min="todayPlus(0)"/></label></div>
+        <div class="schedule-fields" :class="{'date-only':!professionalEnabled}"><label v-if="professionalEnabled">Profissional / responsável<EntityCombobox v-model="professionalId" :options="catalog.professionals.map(p=>({id:p.id,label:p.name}))" label="Profissional" placeholder="Buscar responsável disponível"/></label><label>Data<input v-model="day" type="date" :min="todayPlus(0)"/></label></div>
         <div v-if="slotsLoading" class="slot-loading"><LoaderCircle :size="22" class="spin"/> Atualizando disponibilidade...</div>
         <div v-else-if="slots.length" class="slot-grid"><button v-for="slot in slots" :key="`${slot.professional_id}-${slot.starts_at}`" type="button" :class="{selected:selectedSlot?.professional_id===slot.professional_id&&selectedSlot?.starts_at===slot.starts_at}" @click="selectedSlot=slot"><Clock3 :size="17"/><strong>{{ formatTime(slot.starts_at) }}</strong><small v-if="professionalEnabled">{{ slot.professional_name }}</small><em v-if="!slot.unlimited_capacity&&(slot.remaining_capacity||0)>1">{{ slot.remaining_capacity }} vagas</em><em v-else-if="slot.unlimited_capacity">Agenda livre</em></button></div>
         <div v-else class="slot-empty">Nenhum horário disponível. Escolha outra data<template v-if="professionalEnabled"> ou profissional</template>.</div>

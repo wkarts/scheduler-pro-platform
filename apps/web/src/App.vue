@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import TenantEmailVerification from "./TenantEmailVerification.vue"
+import { isIdentityEmailLink } from "./identity-email-link"
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import PublicSitePage from './PublicSitePage.vue'
 import TenantAgendaCenter from './TenantAgendaCenter.vue'
@@ -45,7 +47,8 @@ onUnmounted(()=>{stopStaticVersionGuard?.();window.removeEventListener('storage'
 </script>
 
 <template>
-  <TenantBrandedLogin v-if="publicLogin||forcePwaLogin" @authenticated="refreshAuthState"/>
+  <TenantEmailVerification v-if="isIdentityEmailLink"/>
+  <TenantBrandedLogin v-else-if="publicLogin||forcePwaLogin" @authenticated="refreshAuthState"/>
   <PublicSitePage v-else-if="publicSurface"/>
   <template v-else>
     <TenantBrandedLogin v-if="!authenticated" @authenticated="refreshAuthState"/>

@@ -176,6 +176,7 @@ async def claim_delivery(context: TenantContext | None) -> dict[str, Any] | None
             "select 1 from platform_users u where u.id=e.created_by and u.is_active and u.is_super_admin"
             if context is None
             else "select 1 from users u join user_roles ur on ur.user_id=u.id "
+            "join roles r on r.id=ur.role_id and r.is_active "
             "join role_permissions rp on rp.role_id=ur.role_id "
             "join permissions p on p.id=rp.permission_id "
             "where u.id=e.created_by and u.is_active and p.key='tenant.manage'"

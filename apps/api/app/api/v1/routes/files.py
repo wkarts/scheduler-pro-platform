@@ -8,6 +8,7 @@ from starlette.responses import StreamingResponse
 
 from app.api.deps import get_tenant_context
 from app.core.responses import success
+from app.core.errors import APIError
 from app.core.tenant_context import TenantContext
 from app.services.file_service import TenantFileService
 
@@ -24,6 +25,13 @@ def _stream(body: Any) -> Iterator[bytes]:
         yield from body.iter_chunks(chunk_size=64 * 1024)
     finally:
         body.close()
+
+
+def _allow_generic_key(key: str) -> str:
+    normalized = TenantFileService.normalize_key(key)
+    if normalized == "_identity" or normalized.startswith("_identity/"):
+        raise APIError("FILE_SCOPE_INVALID", "Use a área de perfil para acessar fotos.", 403)
+    return normalized
 
 
 def _public_url(key: str) -> str | None:
@@ -46,7 +54,7 @@ async def signed_url(
     context: TenantContext = Depends(get_tenant_context),
 ) -> dict[str, Any]:
     service = TenantFileService(context)
-    key = service.normalize_key(payload.key)
+    key = _allow_generic_key(payload.key)
     if payload.operation == "upload":
         return success(
             {
@@ -76,7 +84,7 @@ async def upload_file(
     context: TenantContext = Depends(get_tenant_context),
 ) -> dict[str, Any]:
     try:
-        result = await TenantFileService(context).upload(key, file.file, file.content_type)
+        result = await TenantFileService(context).upload(_allow_generic_key(key), file.file, file.content_type)
         result["public_url"] = _public_url(result["key"])
         return success(result)
     finally:
@@ -91,7 +99,10 @@ async def list_files(
 ) -> dict[str, Any]:
     # Compatibilidade: mantém `data` como lista, exatamente como antes desta PR.
     # A cota fica no endpoint separado `/files/quota`.
-    return success(await TenantFileService(context).list(prefix=prefix, limit=limit))
+    if prefix:
+        _allow_generic_key(prefix)
+    rows = await TenantFileService(context).list(prefix=prefix, limit=limit)
+    return success([r for r in rows if not str(r["key"]).startswith("_identity/")])
 
 
 @router.get("/content/{key:path}")
@@ -99,7 +110,7 @@ async def download_file(
     key: str,
     context: TenantContext = Depends(get_tenant_context),
 ) -> StreamingResponse:
-    result = await TenantFileService(context).get_object(key)
+    result = await TenantFileService(context).get_object(_allow_generic_key(key))
     headers = {
         "Content-Disposition": f'inline; filename="{TenantFileService.normalize_key(key).split("/")[-1]}"',
         "ETag": str(result.get("ETag", "")),
@@ -117,6 +128,6 @@ async def delete_file(
     context: TenantContext = Depends(get_tenant_context),
 ) -> dict[str, Any]:
     service = TenantFileService(context)
-    result = await service.delete(key)
+    result = await service.delete(_allow_generic_key(key))
     result["storage"] = await service.quota_status()
     return success(result)

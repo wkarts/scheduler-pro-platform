@@ -139,6 +139,9 @@ class _PasswordRecoveryService:
                 f"A nova senha deve possuir pelo menos {settings.password_reset_min_length} caracteres.",
                 422,
             )
+        if self.user_table == "users":
+            from app.tenant_identity.service import LOCK_SQL
+            await self.session.execute(LOCK_SQL)
         token_hash = hash_opaque_token(raw_token)
         now = datetime.now(UTC)
         row = (
@@ -219,6 +222,9 @@ class _PasswordRecoveryService:
             ),
             {"user_id": row["user_id"]},
         )
+        if self.user_table == "users":
+            from app.tenant_identity.service import revoke_access
+            await revoke_access(self.session, str(row["user_id"]))
         await self._audit(
             row["user_id"],
             "auth.password_reset.complete",

@@ -39,6 +39,8 @@ from app.api.v1.routes import (
     whatsapp,
 )
 
+from app.tenant_identity.routes import router as identity_router
+
 api_router = APIRouter()
 api_router.include_router(health.router, tags=["Health"])
 api_router.include_router(public.router, prefix="/public", tags=["Public"])
@@ -257,3 +259,5 @@ api_router.include_router(
     prefix="/platform/builds",
     tags=["Build Manager"],
 )
+
+api_router.include_router(identity_router, prefix="/access", tags=["Tenant Identity"])

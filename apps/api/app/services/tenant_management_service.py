@@ -74,8 +74,10 @@ class TenantManagementService:
                         where exists(
                           select 1
                           from user_roles ur
-                          join roles r on r.id=ur.role_id
-                          where ur.user_id=u.id and r.name='tenant-admin'
+                          join roles r on r.id=ur.role_id and r.is_active
+                          join role_permissions rp on rp.role_id=r.id
+                          join permissions p on p.id=rp.permission_id
+                          where ur.user_id=u.id and p.key='tenant.manage'
                         )
                         order by case when lower(u.email)=:preferred_email then 0 else 1 end,
                                  u.created_at asc
@@ -215,6 +217,8 @@ class TenantManagementService:
         engine = await get_tenant_engine(context)
 
         async with engine.begin() as connection:
+            # Serialize with tenant IAM e-mail claims and invitations.
+            await connection.execute(text("select pg_advisory_xact_lock(739148201)"))
             conflict = (
                 await connection.execute(
                     text(
@@ -297,6 +301,27 @@ class TenantManagementService:
                         "user_id": str(current["id"]),
                     },
                 )
+
+
+            if password or target_email != str(current["email"]).strip().lower():
+                # Control Plane recovery must revoke API access and outstanding confirmation links too.
+                for table, owner_column, timestamp_column in (
+                    ("user_sessions", "user_id", "revoked_at"),
+                    ("refresh_tokens", "user_id", "revoked_at"),
+                    ("service_api_tokens", "owner_id", "revoked_at"),
+                    ("password_reset_tokens", "user_id", "used_at"),
+                    ("identity_email_tokens", "user_id", "used_at"),
+                ):
+                    await connection.execute(
+                        text(f"update {table} set {timestamp_column}=coalesce({timestamp_column},now()) "
+                             f"where {owner_column}=cast(:id as uuid)"),
+                        {"id": str(current["id"])},
+                    )
+                if target_email != str(current["email"]).strip().lower():
+                    await connection.execute(
+                        text("update users set email_verified_at=null where id=cast(:id as uuid)"),
+                        {"id": str(current["id"])},
+                    )
 
         settings_value = dict(tenant.settings or {})
         settings_value["admin_email"] = target_email

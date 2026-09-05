@@ -45,6 +45,10 @@ TENANT_ADMIN_PERMISSIONS = [
     "branding.manage",
     "reports.read",
     "tenant.manage",
+    "users.read",
+    "users.manage",
+    "groups.manage",
+    "users.audit",
 ]
 
 
