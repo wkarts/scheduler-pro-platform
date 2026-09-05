@@ -1,0 +1,29 @@
+name: Cancel superseded 2.0.1 ARM64 build
+on:
+  push:
+    branches: [feat/api-webhook-services-amd64]
+    paths: [.github/workflows/release-201-recovery.yml]
+permissions:
+  contents: read
+  actions: write
+jobs:
+  cancel-superseded-build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/github-script@v7
+        with:
+          script: |
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const run_id = 33954777168;
+            const {data: run} = await github.rest.actions.getWorkflowRun({owner, repo, run_id});
+            if (run.path !== '.github/workflows/images.yml' || run.head_sha !== 'c04421149af38d791c66d206124b92416b5c394a') {
+              throw new Error('A execução não corresponde ao build autorizado para cancelamento.');
+            }
+            if (run.status !== 'completed') {
+              await github.rest.actions.cancelWorkflowRun({owner, repo, run_id});
+              core.notice('Cancelamento solicitado para o build ARM64 supersedido da versão 2.0.1.');
+            } else {
+              core.notice('A execução já está concluída: ' + run.conclusion);
+            }
