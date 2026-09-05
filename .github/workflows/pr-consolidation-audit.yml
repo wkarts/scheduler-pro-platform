@@ -1,0 +1,30 @@
+name: PR consolidation source audit
+on:
+  push:
+    branches: [feat/tenant-iam-integracoes-busca]
+    paths: [.github/workflows/pr-consolidation-audit.yml]
+permissions:
+  contents: read
+jobs:
+  snapshot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Export exact reviewed trees without credentials
+        run: |
+          mkdir -p /tmp/pr-consolidation
+          git archive 15eb4e1df760e89ae7fef84c2b01f19e320ac256 --format=tar.gz -o /tmp/pr-consolidation/pr99.tar.gz
+          git archive 98804763dcd73a2b93b9ca77c8014b40a1dbc6ff --format=tar.gz -o /tmp/pr-consolidation/pr98.tar.gz
+          git archive dc3c0cb6ba41af71246927a771fccb556c5d3a86 --format=tar.gz -o /tmp/pr-consolidation/main.tar.gz
+          git diff 98804763dcd73a2b93b9ca77c8014b40a1dbc6ff 15eb4e1df760e89ae7fef84c2b01f19e320ac256 > /tmp/pr-consolidation/pr98-to-pr99.diff
+          cd /tmp/pr-consolidation
+          sha256sum *.tar.gz *.diff > SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pr-consolidation-sources
+          path: /tmp/pr-consolidation
+          retention-days: 1
