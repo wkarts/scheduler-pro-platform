@@ -25,7 +25,7 @@ from app.services.tenant_resolver import TenantResolver
 router = APIRouter()
 PLATFORM_MIGRATION_HEAD = "platform_0014_webhook_inbox"
 TENANT_MIGRATION_HEAD = "tenant_0015_webhook_inbox"
-APP_VERSION = os.getenv("APP_VERSION", "2.1.0")
+APP_VERSION = os.getenv("APP_VERSION", "2.2.0")
 APP_RELEASE_TAG = os.getenv("APP_RELEASE_TAG", "").strip()
 APP_BUILD_SHA = os.getenv("APP_BUILD_SHA", "").strip()
 
