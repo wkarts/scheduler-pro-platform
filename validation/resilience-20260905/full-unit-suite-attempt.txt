@@ -1,0 +1,6 @@
+ImportError while loading conftest '/mnt/data/work/scheduler-pro-platform-main/apps/api/tests/conftest.py'.
+tests/conftest.py:4: in <module>
+    from app.main import create_app
+app/main.py:8: in <module>
+    import structlog
+E   ModuleNotFoundError: No module named 'structlog'

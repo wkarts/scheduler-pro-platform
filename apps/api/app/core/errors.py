@@ -3,6 +3,8 @@ from typing import Any
 from fastapi import Request, status
 from fastapi.responses import ORJSONResponse
 
+from app.core.transient_errors import is_transient_database_error
+
 
 class APIError(Exception):
     def __init__(
@@ -43,6 +45,16 @@ async def unhandled_error_handler(
     details: dict[str, Any] = {
         "request_id": getattr(request.state, "request_id", None)
     }
+    if is_transient_database_error(exc):
+        return ORJSONResponse(
+            status_code=503,
+            headers={"Retry-After": "5", "Cache-Control": "no-store"},
+            content=error_payload(
+                "DATABASE_TEMPORARILY_UNAVAILABLE",
+                "Serviço temporariamente ocupado. Aguarde alguns segundos e tente novamente.",
+                {**details, "retryable": True},
+            ),
+        )
     if getattr(request.app, "debug", False):
         details["exception"] = exc.__class__.__name__
     return ORJSONResponse(

@@ -1,0 +1,37 @@
+test_concurrency_is_bounded (test_resilience_core.BackgroundTaskTests.test_concurrency_is_bounded) ... ok
+test_exception_is_observed_without_crashing_request (test_resilience_core.BackgroundTaskTests.test_exception_is_observed_without_crashing_request) ... ok
+test_forced_shutdown_cleans_tasks (test_resilience_core.BackgroundTaskTests.test_forced_shutdown_cleans_tasks) ... ok
+test_queue_has_hard_limit (test_resilience_core.BackgroundTaskTests.test_queue_has_hard_limit) ... ok
+test_shutdown_rejects_new_work (test_resilience_core.BackgroundTaskTests.test_shutdown_rejects_new_work) ... ok
+test_task_timeout_and_cancellation (test_resilience_core.BackgroundTaskTests.test_task_timeout_and_cancellation) ... ok
+test_async_session_iterators_are_explicitly_closed (test_resilience_core.BudgetAndErrorTests.test_async_session_iterators_are_explicitly_closed) ... ok
+test_capacity_counts_real_reservations (test_resilience_core.BudgetAndErrorTests.test_capacity_counts_real_reservations) ... ok
+test_db_cache_identity_excludes_hostname (test_resilience_core.BudgetAndErrorTests.test_db_cache_identity_excludes_hostname) ... ok
+test_default_api_budget (test_resilience_core.BudgetAndErrorTests.test_default_api_budget) ... ok
+test_exception_cause_cycle_does_not_hang (test_resilience_core.BudgetAndErrorTests.test_exception_cause_cycle_does_not_hang) ... ok
+test_idle_is_not_confused_with_idle_transaction (test_resilience_core.BudgetAndErrorTests.test_idle_is_not_confused_with_idle_transaction) ... ok
+test_invalid_sql_and_invalid_password_are_not_transient (test_resilience_core.BudgetAndErrorTests.test_invalid_sql_and_invalid_password_are_not_transient) ... ok
+test_invalid_thresholds_are_rejected (test_resilience_core.BudgetAndErrorTests.test_invalid_thresholds_are_rejected) ... ok
+test_report_tasks_use_shared_worker_runtime (test_resilience_core.BudgetAndErrorTests.test_report_tasks_use_shared_worker_runtime) ... ok
+test_transient_errors_recognize_wrapped_sqlstate (test_resilience_core.BudgetAndErrorTests.test_transient_errors_recognize_wrapped_sqlstate) ... ok
+test_unbounded_pool_values_are_rejected (test_resilience_core.BudgetAndErrorTests.test_unbounded_pool_values_are_rejected) ... ok
+test_worker_budget (test_resilience_core.BudgetAndErrorTests.test_worker_budget) ... ok
+test_active_ttl_entry_survives_prune (test_resilience_core.EngineRegistryTests.test_active_ttl_entry_survives_prune) ... ok
+test_busy_entry_is_not_evicted_at_capacity (test_resilience_core.EngineRegistryTests.test_busy_entry_is_not_evicted_at_capacity) ... ok
+test_cancelled_lease_is_released (test_resilience_core.EngineRegistryTests.test_cancelled_lease_is_released) ... ok
+test_cancelled_waiter_does_not_leak_capacity (test_resilience_core.EngineRegistryTests.test_cancelled_waiter_does_not_leak_capacity) ... ok
+test_close_defers_busy_entry (test_resilience_core.EngineRegistryTests.test_close_defers_busy_entry) ... ok
+test_compatibility_lookup_honors_checked_out_pool (test_resilience_core.EngineRegistryTests.test_compatibility_lookup_honors_checked_out_pool) ... ok
+test_concurrent_same_tenant_builds_only_one_engine (test_resilience_core.EngineRegistryTests.test_concurrent_same_tenant_builds_only_one_engine) ... ok
+test_exception_inside_session_releases_lease (test_resilience_core.EngineRegistryTests.test_exception_inside_session_releases_lease) ... ok
+test_factory_error_does_not_consume_entry (test_resilience_core.EngineRegistryTests.test_factory_error_does_not_consume_entry) ... ok
+test_idle_lru_entry_is_evicted (test_resilience_core.EngineRegistryTests.test_idle_lru_entry_is_evicted) ... ok
+test_invalidation_defers_disposal_until_release (test_resilience_core.EngineRegistryTests.test_invalidation_defers_disposal_until_release) ... ok
+test_many_tenants_never_exceed_pool_limit (test_resilience_core.EngineRegistryTests.test_many_tenants_never_exceed_pool_limit) ... ok
+test_reuses_same_key (test_resilience_core.EngineRegistryTests.test_reuses_same_key) ... ok
+test_waiter_resumes_after_release (test_resilience_core.EngineRegistryTests.test_waiter_resumes_after_release) ... ok
+
+----------------------------------------------------------------------
+Ran 32 tests in 0.402s
+
+OK

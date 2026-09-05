@@ -1,0 +1,2 @@
+Command: python -m compileall -q apps/api/app apps/api/tests scripts/operations scripts/tests
+Exit status: 0

@@ -89,6 +89,8 @@ async def connect_postgres_admin(
                 user=candidate.user,
                 password=candidate.password,
                 database=database or settings.postgres_db,
+                timeout=settings.db_connect_timeout_seconds,
+                server_settings={"application_name": "scheduler-provisioning-admin"},
             )
             if await _has_tenant_admin_capabilities(conn):
                 return conn

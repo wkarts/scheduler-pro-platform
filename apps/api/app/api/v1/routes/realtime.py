@@ -1,3 +1,4 @@
+from contextlib import aclosing
 import asyncio
 import json
 from collections.abc import AsyncIterator
@@ -54,32 +55,28 @@ async def event_stream(
 ) -> StreamingResponse:
     async def generate() -> AsyncIterator[str]:
         cursor = after
-        # A sessão é criada dentro do gerador, e não como dependency da rota.
-        # Assim ela vive exatamente pelo tempo do StreamingResponse e funciona
-        # corretamente também nas versões FastAPI em que dependencies `yield`
-        # são finalizadas antes de o corpo do stream terminar.
-        async for live_session in tenant_session(context):
-            service = RealtimeEventService(live_session)
-            while True:
-                if await request.is_disconnected():
-                    return
-                rows = await service.list_after(cursor, limit=100)
-                # SELECT abre transação; rollback libera a conexão do pool entre
-                # polls sem alterar nenhum dado.
-                await live_session.rollback()
-                if rows:
-                    for row in rows:
-                        cursor = int(row["sequence"])
-                        payload = json.dumps(row, ensure_ascii=False, default=str)
-                        yield (
-                            f"id: {cursor}\n"
-                            f"event: {row['event_type']}\n"
-                            f"data: {payload}\n\n"
-                        )
-                else:
-                    yield ": keepalive\n\n"
-                await asyncio.sleep(1)
-            return
+        while True:
+            if await request.is_disconnected():
+                return
+            rows: list[dict[str, Any]] = []
+            # Each poll has a short session. Sleeping clients pin neither a
+            # PostgreSQL connection nor a tenant-engine cache lease.
+            async with aclosing(tenant_session(context)) as _session_scope_63:
+                async for live_session in _session_scope_63:
+                    rows = await RealtimeEventService(live_session).list_after(cursor, limit=100)
+                    await live_session.rollback()
+            if rows:
+                for row in rows:
+                    cursor = int(row["sequence"])
+                    payload = json.dumps(row, ensure_ascii=False, default=str)
+                    yield (
+                        f"id: {cursor}\n"
+                        f"event: {row['event_type']}\n"
+                        f"data: {payload}\n\n"
+                    )
+            else:
+                yield ": keepalive\n\n"
+            await asyncio.sleep(1)
 
     return StreamingResponse(
         generate(),

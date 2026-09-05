@@ -1,0 +1,66 @@
+Using Python 3.13.5 environment at: /mnt/data/scheduler-venv
+WARN Retry attempt #0. Sleeping 451.738246ms before the next attempt
+WARN Retry attempt #0. Sleeping 757.107931ms before the next attempt
+WARN Retry attempt #0. Sleeping 775.428889ms before the next attempt
+WARN Retry attempt #0. Sleeping 399.588229ms before the next attempt
+WARN Retry attempt #0. Sleeping 538.917044ms before the next attempt
+WARN Retry attempt #0. Sleeping 396.832423ms before the next attempt
+WARN Retry attempt #0. Sleeping 501.598154ms before the next attempt
+WARN Retry attempt #0. Sleeping 356.50358ms before the next attempt
+WARN Retry attempt #0. Sleeping 324.637077ms before the next attempt
+WARN Retry attempt #0. Sleeping 28.129038ms before the next attempt
+WARN Retry attempt #0. Sleeping 30.272063ms before the next attempt
+WARN Retry attempt #0. Sleeping 644.51272ms before the next attempt
+WARN Retry attempt #0. Sleeping 126.234062ms before the next attempt
+WARN Retry attempt #0. Sleeping 414.704108ms before the next attempt
+WARN Retry attempt #0. Sleeping 325.91895ms before the next attempt
+WARN Retry attempt #0. Sleeping 487.274545ms before the next attempt
+WARN Retry attempt #0. Sleeping 212.018396ms before the next attempt
+WARN Retry attempt #0. Sleeping 100.438125ms before the next attempt
+WARN Retry attempt #0. Sleeping 757.688109ms before the next attempt
+WARN Retry attempt #0. Sleeping 697.379057ms before the next attempt
+WARN Retry attempt #0. Sleeping 521.627555ms before the next attempt
+WARN Retry attempt #0. Sleeping 307.587158ms before the next attempt
+WARN Retry attempt #0. Sleeping 732.324115ms before the next attempt
+WARN Retry attempt #0. Sleeping 205.725059ms before the next attempt
+WARN Retry attempt #0. Sleeping 368.31291ms before the next attempt
+WARN Retry attempt #0. Sleeping 236.633095ms before the next attempt
+WARN Retry attempt #0. Sleeping 959.316113ms before the next attempt
+WARN Retry attempt #0. Sleeping 825.158716ms before the next attempt
+WARN Retry attempt #1. Sleeping 1.311429896s before the next attempt
+WARN Retry attempt #1. Sleeping 1.562303832s before the next attempt
+WARN Retry attempt #1. Sleeping 1.15661651s before the next attempt
+WARN Retry attempt #1. Sleeping 360.015571ms before the next attempt
+WARN Retry attempt #1. Sleeping 179.89149ms before the next attempt
+WARN Retry attempt #1. Sleeping 1.270729125s before the next attempt
+WARN Retry attempt #1. Sleeping 437.91317ms before the next attempt
+WARN Retry attempt #1. Sleeping 1.197288184s before the next attempt
+WARN Retry attempt #1. Sleeping 611.209193ms before the next attempt
+WARN Retry attempt #1. Sleeping 873.224992ms before the next attempt
+WARN Retry attempt #2. Sleeping 1.202454948s before the next attempt
+WARN Retry attempt #1. Sleeping 1.168076602s before the next attempt
+WARN Retry attempt #1. Sleeping 880.462351ms before the next attempt
+WARN Retry attempt #1. Sleeping 379.718601ms before the next attempt
+WARN Retry attempt #1. Sleeping 1.138657822s before the next attempt
+WARN Retry attempt #1. Sleeping 1.126429969s before the next attempt
+WARN Retry attempt #1. Sleeping 225.882442ms before the next attempt
+WARN Retry attempt #1. Sleeping 337.250671ms before the next attempt
+WARN Retry attempt #1. Sleeping 1.004896697s before the next attempt
+WARN Retry attempt #1. Sleeping 1.314026485s before the next attempt
+WARN Retry attempt #1. Sleeping 1.496627258s before the next attempt
+WARN Retry attempt #2. Sleeping 3.465053477s before the next attempt
+WARN Retry attempt #1. Sleeping 704.541678ms before the next attempt
+WARN Retry attempt #1. Sleeping 359.000663ms before the next attempt
+WARN Retry attempt #1. Sleeping 1.081936314s before the next attempt
+WARN Retry attempt #1. Sleeping 127.889366ms before the next attempt
+WARN Retry attempt #1. Sleeping 41.93649ms before the next attempt
+WARN Retry attempt #1. Sleeping 254.22983ms before the next attempt
+WARN Retry attempt #1. Sleeping 126.75734ms before the next attempt
+WARN Retry attempt #1. Sleeping 1.352298694s before the next attempt
+WARN Retry attempt #2. Sleeping 2.037117954s before the next attempt
+error: Request failed after 3 retries
+  Caused by: Failed to fetch: `https://pypi.org/simple/asyncpg/`
+  Caused by: error sending request for url (https://pypi.org/simple/asyncpg/)
+  Caused by: client error (Connect)
+  Caused by: dns error
+  Caused by: failed to lookup address information: Temporary failure in name resolution

@@ -157,12 +157,19 @@ export function startRealtimeStream(options: RealtimeOptions): () => void {
         signal: controller.signal,
       })
 
-      if (response.status === 401 || response.status === 403) {
+      if (response.status === 401) {
         stopped = true
         options.onState?.('disconnected')
         window.dispatchEvent(new CustomEvent('scheduler-pro-realtime-unauthorized', {
           detail: { status: response.status },
         }))
+        return
+      }
+      if (response.status === 403) {
+        // A permission/2FA denial is not an expired session; stop this stream,
+        // without logging out the user or retrying a forbidden operation forever.
+        stopped = true
+        options.onState?.('disconnected')
         return
       }
       if (!response.ok || !response.body) throw new Error(`Realtime HTTP ${response.status}`)

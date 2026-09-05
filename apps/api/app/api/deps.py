@@ -1,3 +1,4 @@
+from contextlib import aclosing
 from collections.abc import AsyncIterator, Awaitable, Callable
 from typing import Any
 from urllib.parse import urlsplit
@@ -45,23 +46,26 @@ def resolve_request_hostname(request: Request) -> str:
 
 
 async def get_platform_session() -> AsyncIterator[AsyncSession]:
-    async for session in platform_session():
-        yield session
+    async with aclosing(platform_session()) as _session_scope_48:
+        async for session in _session_scope_48:
+            yield session
 
 
 async def get_tenant_context(request: Request) -> TenantContext:
     hostname = resolve_request_hostname(request)
-    async for session in platform_session():
-        resolver = TenantResolver(session)
-        return await resolver.resolve(hostname)
+    async with aclosing(platform_session()) as _session_scope_54:
+        async for session in _session_scope_54:
+            resolver = TenantResolver(session)
+            return await resolver.resolve(hostname)
     raise RuntimeError("platform session unavailable")
 
 
 async def get_tenant_session(
     context: TenantContext = Depends(get_tenant_context),
 ) -> AsyncIterator[AsyncSession]:
-    async for session in tenant_session(context):
-        yield session
+    async with aclosing(tenant_session(context)) as _session_scope_63:
+        async for session in _session_scope_63:
+            yield session
 
 
 def _token(credentials: HTTPAuthorizationCredentials | None) -> dict[str, Any]:

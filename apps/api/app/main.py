@@ -9,19 +9,28 @@ import structlog
 from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import ORJSONResponse
+from sqlalchemy.exc import SQLAlchemyError
 
 from app.api.public_appointment_actions import router as appointment_action_router
 from app.api.v1.router import api_router
+from app.core.background_tasks import BoundedTaskRunner
 from app.core.config import settings
 from app.core.errors import APIError, api_error_handler, unhandled_error_handler
 from app.core.logging import configure_logging
 from app.core.security import decode_access_token
-from app.db.session import PlatformSession, close_database_engines
+from app.core.transient_errors import is_transient_database_error
+from app.db.engine_registry import DatabaseCapacityError
+from app.db.session import PlatformSession, close_database_engines, reap_idle_tenant_engines
 from app.distribution_sync import run as run_distribution_sync
-from app.services.http_log_persistence import persist_http_operation
+from app.services.http_log_persistence import persist_http_operation, should_persist_http_operation
 from app.services.observability_service import ObservabilityService
 
-_log_tasks: set[asyncio.Task[None]] = set()
+_log_runner = BoundedTaskRunner(
+    maximum=settings.http_log_max_pending,
+    concurrency=settings.http_log_concurrency,
+    timeout=settings.http_log_timeout_seconds,
+)
+_reaper_task: asyncio.Task[None] | None = None
 _distribution_task: asyncio.Task[None] | None = None
 
 
@@ -34,7 +43,13 @@ def _distribution_sync_enabled() -> bool:
 
 @asynccontextmanager
 async def lifespan(_: FastAPI) -> AsyncIterator[None]:
-    global _distribution_task
+    global _distribution_task, _reaper_task, _log_runner
+    _log_runner = BoundedTaskRunner(
+        maximum=settings.http_log_max_pending,
+        concurrency=settings.http_log_concurrency,
+        timeout=settings.http_log_timeout_seconds,
+    )
+    _reaper_task = asyncio.create_task(reap_idle_tenant_engines(), name="tenant-pool-reaper")
     try:
         async with PlatformSession() as session:
             await ObservabilityService(session).ensure_platform_schema()
@@ -49,14 +64,25 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
             name="scheduler-pro-distribution-sync",
         )
 
-    yield
+    try:
+        yield
+    finally:
+        await _shutdown_runtime()
 
+
+async def _shutdown_runtime() -> None:
+    global _distribution_task, _reaper_task
     if _distribution_task is not None:
         _distribution_task.cancel()
         await asyncio.gather(_distribution_task, return_exceptions=True)
         _distribution_task = None
-    if _log_tasks:
-        await asyncio.gather(*list(_log_tasks), return_exceptions=True)
+    if _reaper_task is not None:
+        _reaper_task.cancel()
+        await asyncio.gather(_reaper_task, return_exceptions=True)
+        _reaper_task = None
+    from app.api.v1.routes.health import close_readiness_tasks
+    await close_readiness_tasks()
+    await _log_runner.close(grace=5)
     await close_database_engines()
 
 
@@ -84,8 +110,10 @@ def _queue_http_log(
     principal: dict[str, Any],
     error_type: str | None = None,
 ) -> None:
-    task = asyncio.create_task(
-        persist_http_operation(
+    if not should_persist_http_operation(request.url.path, status_code):
+        return
+    _log_runner.submit(
+        lambda: persist_http_operation(
             method=request.method,
             path=request.url.path,
             query=request.url.query or None,
@@ -100,8 +128,6 @@ def _queue_http_log(
             error_type=error_type,
         )
     )
-    _log_tasks.add(task)
-    task.add_done_callback(_log_tasks.discard)
 
 
 def create_app() -> FastAPI:
@@ -131,7 +157,10 @@ def create_app() -> FastAPI:
     )
 
     app.add_exception_handler(APIError, api_error_handler)
+    app.add_exception_handler(DatabaseCapacityError, unhandled_error_handler)
+    app.add_exception_handler(SQLAlchemyError, unhandled_error_handler)
     app.add_exception_handler(Exception, unhandled_error_handler)
+    app.state.inflight_requests = 0
 
     @app.middleware("http")
     async def correlation_middleware(
@@ -147,8 +176,29 @@ def create_app() -> FastAPI:
         principal = _request_principal(request)
         started = perf_counter()
         status_code = 500
+        response: Response
         try:
-            response = await call_next(request)
+            exempt = request.url.path in {
+                "/api/v1/health", "/api/v1/health/live", "/api/v1/health/ready", "/api/v1/version",
+            } or request.method == "OPTIONS"
+            if not exempt and app.state.inflight_requests >= settings.api_max_inflight_requests:
+                response = ORJSONResponse(
+                    status_code=503,
+                    headers={"Retry-After": "5", "Cache-Control": "no-store"},
+                    content={"error": {
+                        "code": "SERVICE_BUSY",
+                        "message": "Serviço temporariamente ocupado. Tente novamente em instantes.",
+                        "details": {"request_id": request.state.request_id, "retryable": True},
+                    }},
+                )
+            else:
+                if not exempt:
+                    app.state.inflight_requests += 1
+                try:
+                    response = await call_next(request)
+                finally:
+                    if not exempt:
+                        app.state.inflight_requests -= 1
             status_code = response.status_code
         except Exception as exc:
             duration_ms = round((perf_counter() - started) * 1000, 3)
@@ -164,7 +214,7 @@ def create_app() -> FastAPI:
             )
             _queue_http_log(
                 request,
-                status_code=500,
+                status_code=503 if is_transient_database_error(exc) else 500,
                 duration_ms=duration_ms,
                 principal=principal,
                 error_type=type(exc).__name__,

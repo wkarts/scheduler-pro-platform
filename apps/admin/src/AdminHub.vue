@@ -135,7 +135,7 @@ async function refreshAll():Promise<void>{
     function applyResult<T>(result:PromiseSettledResult<T>,apply:(value:T)=>void,label:string):void{
       if(result.status==='fulfilled'){apply(result.value);return}
       const apiError=result.reason as Partial<ApiError>
-      if(apiError?.status===401||apiError?.status===403){expired=true;return}
+      if(apiError?.status===401){expired=true;return}
       failures.push(`${label}: ${describeError(result.reason,'indisponível')}`)
     }
 
@@ -155,7 +155,7 @@ async function refreshAll():Promise<void>{
       if(activeModule.value==='settings')flags.value=await apiGet('/platform/feature-flags',token())
     }catch(error){
       const apiError=error as Partial<ApiError>
-      if(apiError?.status===401||apiError?.status===403){clearSession();return}
+      if(apiError?.status===401){clearSession();return}
       failures.push(describeError(error,`Falha ao carregar ${selectedModule.value.label}.`))
     }
 

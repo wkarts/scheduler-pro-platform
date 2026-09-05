@@ -1,0 +1,1876 @@
+{
+  "files": 784,
+  "python_modules": 129,
+  "routes": 267,
+  "route_inventory": [
+    {
+      "file": "apps/api/app/log_agent.py",
+      "line": 104,
+      "method": "get",
+      "function": "health",
+      "path": "/health"
+    },
+    {
+      "file": "apps/api/app/log_agent.py",
+      "line": 127,
+      "method": "get",
+      "function": "containers",
+      "path": "/containers"
+    },
+    {
+      "file": "apps/api/app/log_agent.py",
+      "line": 133,
+      "method": "get",
+      "function": "logs",
+      "path": "/logs"
+    },
+    {
+      "file": "apps/api/app/api/public_appointment_actions.py",
+      "line": 201,
+      "method": "get",
+      "function": "appointment_action_page",
+      "path": "/{token}"
+    },
+    {
+      "file": "apps/api/app/api/public_appointment_actions.py",
+      "line": 237,
+      "method": "post",
+      "function": "appointment_action_submit",
+      "path": "/{token}/{action}"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/platform.py",
+      "line": 75,
+      "method": "post",
+      "function": "create_tenant",
+      "path": "/tenants"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/platform.py",
+      "line": 107,
+      "method": "get",
+      "function": "tenants",
+      "path": "/tenants"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/platform.py",
+      "line": 137,
+      "method": "get",
+      "function": "provisioning",
+      "path": "/provisioning"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/platform.py",
+      "line": 180,
+      "method": "post",
+      "function": "retry_provisioning",
+      "path": "/provisioning/{job_id}/retry"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/platform.py",
+      "line": 245,
+      "method": "post",
+      "function": "suspend_tenant",
+      "path": "/tenants/{tenant_id}/suspend"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/platform.py",
+      "line": 255,
+      "method": "post",
+      "function": "restore_tenant",
+      "path": "/tenants/{tenant_id}/restore"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/platform.py",
+      "line": 265,
+      "method": "delete",
+      "function": "delete_tenant",
+      "path": "/tenants/{tenant_id}"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/platform.py",
+      "line": 275,
+      "method": "post",
+      "function": "purge_tenant",
+      "path": "/tenants/{tenant_id}/purge"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/platform.py",
+      "line": 293,
+      "method": "get",
+      "function": "domains",
+      "path": "/domains"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/platform.py",
+      "line": 318,
+      "method": "post",
+      "function": "temporary_domain",
+      "path": "/tenants/{tenant_id}/domains/temporary"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/platform.py",
+      "line": 328,
+      "method": "post",
+      "function": "custom_domain",
+      "path": "/tenants/{tenant_id}/domains/custom"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/platform.py",
+      "line": 357,
+      "method": "post",
+      "function": "check_domain",
+      "path": "/domains/{domain_id}/check"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/platform.py",
+      "line": 367,
+      "method": "post",
+      "function": "purge_domain_cache",
+      "path": "/domains/{domain_id}/purge-cache"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/platform.py",
+      "line": 377,
+      "method": "get",
+      "function": "integration_status",
+      "path": "/integrations/status"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/platform.py",
+      "line": 427,
+      "method": "get",
+      "function": "audit",
+      "path": "/audit"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/platform.py",
+      "line": 451,
+      "method": "get",
+      "function": "feature_flags",
+      "path": "/feature-flags"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/platform.py",
+      "line": 459,
+      "method": "put",
+      "function": "update_feature_flag",
+      "path": "/feature-flags/{key}"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/platform.py",
+      "line": 480,
+      "method": "get",
+      "function": "dashboard",
+      "path": "/dashboard"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/services.py",
+      "line": 42,
+      "method": "get",
+      "function": "list_services",
+      "path": ""
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/services.py",
+      "line": 48,
+      "method": "get",
+      "function": "get_service",
+      "path": "/{service_id}"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/services.py",
+      "line": 53,
+      "method": "post",
+      "function": "create_service",
+      "path": ""
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/services.py",
+      "line": 62,
+      "method": "patch",
+      "function": "update_service",
+      "path": "/{service_id}"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/services.py",
+      "line": 75,
+      "method": "delete",
+      "function": "delete_service",
+      "path": "/{service_id}"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/realtime.py",
+      "line": 51,
+      "method": "get",
+      "function": "event_stream",
+      "path": "/events"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/realtime.py",
+      "line": 96,
+      "method": "get",
+      "function": "push_public_key",
+      "path": "/push/public-key"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/realtime.py",
+      "line": 107,
+      "method": "post",
+      "function": "subscribe_push",
+      "path": "/push/subscriptions"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/realtime.py",
+      "line": 129,
+      "method": "delete",
+      "function": "unsubscribe_push",
+      "path": "/push/subscriptions"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/whatsapp.py",
+      "line": 232,
+      "method": "post",
+      "function": "connect",
+      "path": "/connect"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/whatsapp.py",
+      "line": 241,
+      "method": "post",
+      "function": "connect_qr",
+      "path": "/connect/qr"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/whatsapp.py",
+      "line": 250,
+      "method": "post",
+      "function": "connect_pairing",
+      "path": "/connect/pairing"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/whatsapp.py",
+      "line": 296,
+      "method": "get",
+      "function": "status",
+      "path": "/status"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/whatsapp.py",
+      "line": 398,
+      "method": "post",
+      "function": "reconnect",
+      "path": "/reconnect"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/whatsapp.py",
+      "line": 408,
+      "method": "post",
+      "function": "disconnect",
+      "path": "/disconnect"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/whatsapp.py",
+      "line": 438,
+      "method": "post",
+      "function": "send_text",
+      "path": "/send-text"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/whatsapp.py",
+      "line": 460,
+      "method": "post",
+      "function": "test_send",
+      "path": "/test"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/whatsapp.py",
+      "line": 483,
+      "method": "post",
+      "function": "webhook",
+      "path": "/webhook/{integration_key}"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/branding.py",
+      "line": 69,
+      "method": "get",
+      "function": "get_manifest",
+      "path": "/manifest"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/branding.py",
+      "line": 78,
+      "method": "get",
+      "function": "tenant_pwa_manifest",
+      "path": "/manifest.webmanifest"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/branding.py",
+      "line": 121,
+      "method": "get",
+      "function": "public_brand_asset",
+      "path": "/assets/{kind}"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/branding.py",
+      "line": 137,
+      "method": "post",
+      "function": "upload_brand_asset",
+      "path": "/assets/{kind}"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/branding.py",
+      "line": 188,
+      "method": "get",
+      "function": "tenant_distribution",
+      "path": "/distribution"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/branding.py",
+      "line": 252,
+      "method": "put",
+      "function": "save_profile",
+      "path": "/profile"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/branding.py",
+      "line": 265,
+      "method": "post",
+      "function": "publish_profile",
+      "path": "/publish"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/branding.py",
+      "line": 276,
+      "method": "post",
+      "function": "create_build_profile",
+      "path": "/build-profiles"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/experience.py",
+      "line": 83,
+      "method": "get",
+      "function": "summary",
+      "path": ""
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/experience.py",
+      "line": 91,
+      "method": "get",
+      "function": "page_document",
+      "path": "/pages/{surface}"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/experience.py",
+      "line": 104,
+      "method": "post",
+      "function": "save_draft",
+      "path": "/pages/{surface}/draft"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/experience.py",
+      "line": 115,
+      "method": "post",
+      "function": "publish",
+      "path": "/pages/{surface}/publish"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/experience.py",
+      "line": 126,
+      "method": "get",
+      "function": "versions",
+      "path": "/pages/{surface}/versions"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/experience.py",
+      "line": 135,
+      "method": "put",
+      "function": "enabled",
+      "path": "/pages/{surface}/enabled"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/experience.py",
+      "line": 146,
+      "method": "post",
+      "function": "upload_experience_asset",
+      "path": "/assets"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/experience.py",
+      "line": 180,
+      "method": "get",
+      "function": "experience_templates",
+      "path": "/templates"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/experience.py",
+      "line": 223,
+      "method": "post",
+      "function": "import_official_experience",
+      "path": "/import-official/{template_key}"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/experience.py",
+      "line": 259,
+      "method": "post",
+      "function": "import_experience",
+      "path": "/import"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/experience.py",
+      "line": 274,
+      "method": "put",
+      "function": "editor_policy",
+      "path": "/editor-policy"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/experience.py",
+      "line": 288,
+      "method": "put",
+      "function": "marketing",
+      "path": "/marketing"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/experience.py",
+      "line": 303,
+      "method": "put",
+      "function": "pwa_settings",
+      "path": "/pwa"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/experience.py",
+      "line": 318,
+      "method": "put",
+      "function": "theme_policy",
+      "path": "/theme-policy"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/settings.py",
+      "line": 58,
+      "method": "get",
+      "function": "tenant_settings",
+      "path": "/tenant"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/settings.py",
+      "line": 79,
+      "method": "get",
+      "function": "tenant_settings_compact",
+      "path": "/tenant/compact"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/settings.py",
+      "line": 106,
+      "method": "get",
+      "function": "tenant_setting_value",
+      "path": "/tenant/value/{key}"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/settings.py",
+      "line": 129,
+      "method": "get",
+      "function": "booking_parameters",
+      "path": "/booking"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/settings.py",
+      "line": 136,
+      "method": "put",
+      "function": "update_booking_parameters",
+      "path": "/booking"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/settings.py",
+      "line": 144,
+      "method": "get",
+      "function": "tenant_capabilities",
+      "path": "/capabilities"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/settings.py",
+      "line": 171,
+      "method": "put",
+      "function": "update_tenant_setting",
+      "path": "/tenant/{key}"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/appointment_operations.py",
+      "line": 142,
+      "method": "post",
+      "function": "create_recurring_appointments",
+      "path": "/recurring"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/appointment_operations.py",
+      "line": 215,
+      "method": "post",
+      "function": "swap_appointment_slots",
+      "path": "/swap"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/appointment_operations.py",
+      "line": 360,
+      "method": "post",
+      "function": "reuse_cancelled_slot",
+      "path": "/{appointment_id}/reuse"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/appointment_operations.py",
+      "line": 457,
+      "method": "delete",
+      "function": "permanently_delete_appointment",
+      "path": "/{appointment_id}/permanent"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/pwa_identity.py",
+      "line": 88,
+      "method": "get",
+      "function": "pwa_manifest",
+      "path": "/manifest.webmanifest"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/tenant_management.py",
+      "line": 112,
+      "method": "get",
+      "function": "tenant_management_snapshot",
+      "path": "/{tenant_id}"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/tenant_management.py",
+      "line": 122,
+      "method": "get",
+      "function": "tenant_management_logs",
+      "path": "/{tenant_id}/logs"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/tenant_management.py",
+      "line": 189,
+      "method": "put",
+      "function": "update_tenant_management",
+      "path": "/{tenant_id}"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/tenant_management.py",
+      "line": 208,
+      "method": "put",
+      "function": "update_tenant_principal_admin",
+      "path": "/{tenant_id}/principal-admin"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/tenant_management.py",
+      "line": 227,
+      "method": "post",
+      "function": "resend_tenant_principal_admin_access",
+      "path": "/{tenant_id}/principal-admin/resend-access"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/tenant_management.py",
+      "line": 247,
+      "method": "get",
+      "function": "tenant_experience_policy",
+      "path": "/{tenant_id}/experience-policy"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/tenant_management.py",
+      "line": 275,
+      "method": "put",
+      "function": "update_tenant_experience_policy",
+      "path": "/{tenant_id}/experience-policy"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/tenant_management.py",
+      "line": 315,
+      "method": "get",
+      "function": "tenant_experience_snapshot",
+      "path": "/{tenant_id}/experience"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/tenant_management.py",
+      "line": 331,
+      "method": "get",
+      "function": "tenant_experience_page",
+      "path": "/{tenant_id}/experience/pages/{surface}"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/tenant_management.py",
+      "line": 347,
+      "method": "post",
+      "function": "tenant_experience_save_draft",
+      "path": "/{tenant_id}/experience/pages/{surface}/draft"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/tenant_management.py",
+      "line": 366,
+      "method": "post",
+      "function": "tenant_experience_publish",
+      "path": "/{tenant_id}/experience/pages/{surface}/publish"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/tenant_management.py",
+      "line": 382,
+      "method": "put",
+      "function": "tenant_experience_branding",
+      "path": "/{tenant_id}/experience/branding"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/tenant_management.py",
+      "line": 398,
+      "method": "post",
+      "function": "tenant_experience_brand_asset",
+      "path": "/{tenant_id}/experience/branding/assets/{kind}"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/notifications.py",
+      "line": 17,
+      "method": "get",
+      "function": "notification_jobs",
+      "path": ""
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/notifications.py",
+      "line": 26,
+      "method": "get",
+      "function": "notification_templates",
+      "path": "/templates"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/notifications.py",
+      "line": 35,
+      "method": "put",
+      "function": "upsert_notification_template",
+      "path": "/templates/{template_key}"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/notifications.py",
+      "line": 65,
+      "method": "get",
+      "function": "smtp_settings",
+      "path": "/smtp"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/notifications.py",
+      "line": 72,
+      "method": "put",
+      "function": "configure_smtp",
+      "path": "/smtp"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/notifications.py",
+      "line": 80,
+      "method": "post",
+      "function": "test_smtp",
+      "path": "/smtp/test"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/notifications.py",
+      "line": 88,
+      "method": "post",
+      "function": "process_due_notifications",
+      "path": "/process-due"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/platform_html_templates.py",
+      "line": 79,
+      "method": "get",
+      "function": "html_template_contract",
+      "path": "/contract"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/platform_html_templates.py",
+      "line": 86,
+      "method": "post",
+      "function": "validate_html_template_package",
+      "path": "/validate-package"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/platform_html_templates.py",
+      "line": 94,
+      "method": "post",
+      "function": "import_html_template_package",
+      "path": "/import-package"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/platform_html_templates.py",
+      "line": 141,
+      "method": "post",
+      "function": "validate_html_template_pair",
+      "path": "/validate"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/platform_html_templates.py",
+      "line": 154,
+      "method": "post",
+      "function": "import_html_template_pair",
+      "path": "/import"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/platform_access.py",
+      "line": 46,
+      "method": "get",
+      "function": "permissions",
+      "path": "/permissions"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/platform_access.py",
+      "line": 54,
+      "method": "get",
+      "function": "roles",
+      "path": "/roles"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/platform_access.py",
+      "line": 62,
+      "method": "post",
+      "function": "create_role",
+      "path": "/roles"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/platform_access.py",
+      "line": 71,
+      "method": "put",
+      "function": "update_role",
+      "path": "/roles/{role_id}"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/platform_access.py",
+      "line": 81,
+      "method": "delete",
+      "function": "delete_role",
+      "path": "/roles/{role_id}"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/platform_access.py",
+      "line": 91,
+      "method": "get",
+      "function": "users",
+      "path": "/users"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/platform_access.py",
+      "line": 99,
+      "method": "post",
+      "function": "create_user",
+      "path": "/users"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/platform_access.py",
+      "line": 108,
+      "method": "put",
+      "function": "update_user",
+      "path": "/users/{user_id}"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/platform_access.py",
+      "line": 118,
+      "method": "post",
+      "function": "reset_password",
+      "path": "/users/{user_id}/reset-password"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/platform_access.py",
+      "line": 128,
+      "method": "delete",
+      "function": "delete_user",
+      "path": "/users/{user_id}"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/platform_access.py",
+      "line": 138,
+      "method": "get",
+      "function": "tenant_capabilities",
+      "path": "/tenants/{tenant_id}/capabilities"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/platform_access.py",
+      "line": 147,
+      "method": "put",
+      "function": "update_tenant_capability",
+      "path": "/tenants/{tenant_id}/capabilities/{key}"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/platform_access.py",
+      "line": 158,
+      "method": "get",
+      "function": "me",
+      "path": "/me"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/appointments.py",
+      "line": 97,
+      "method": "get",
+      "function": "list_appointments",
+      "path": ""
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/appointments.py",
+      "line": 118,
+      "method": "post",
+      "function": "create_appointment",
+      "path": ""
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/appointments.py",
+      "line": 286,
+      "method": "post",
+      "function": "create_quick_appointment",
+      "path": "/quick"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/appointments.py",
+      "line": 330,
+      "method": "get",
+      "function": "get_appointment",
+      "path": "/{appointment_id}"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/appointments.py",
+      "line": 338,
+      "method": "get",
+      "function": "appointment_history",
+      "path": "/{appointment_id}/history"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/appointments.py",
+      "line": 360,
+      "method": "get",
+      "function": "appointment_notes",
+      "path": "/{appointment_id}/notes"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/appointments.py",
+      "line": 382,
+      "method": "post",
+      "function": "add_appointment_note",
+      "path": "/{appointment_id}/notes"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/appointments.py",
+      "line": 405,
+      "method": "patch",
+      "function": "update_status",
+      "path": "/{appointment_id}/status"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/appointments.py",
+      "line": 432,
+      "method": "post",
+      "function": "reschedule_appointment",
+      "path": "/{appointment_id}/reschedule"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/appointments.py",
+      "line": 532,
+      "method": "post",
+      "function": "confirm_appointment",
+      "path": "/{appointment_id}/confirm"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/appointments.py",
+      "line": 547,
+      "method": "post",
+      "function": "check_in_appointment",
+      "path": "/{appointment_id}/check-in"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/appointments.py",
+      "line": 562,
+      "method": "post",
+      "function": "start_appointment",
+      "path": "/{appointment_id}/start"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/appointments.py",
+      "line": 577,
+      "method": "post",
+      "function": "complete_appointment",
+      "path": "/{appointment_id}/complete"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/appointments.py",
+      "line": 592,
+      "method": "post",
+      "function": "no_show_appointment",
+      "path": "/{appointment_id}/no-show"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/appointments.py",
+      "line": 607,
+      "method": "post",
+      "function": "cancel_appointment",
+      "path": "/{appointment_id}/cancel"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/availability.py",
+      "line": 16,
+      "method": "get",
+      "function": "availability",
+      "path": ""
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/landing_pages.py",
+      "line": 68,
+      "method": "get",
+      "function": "templates",
+      "path": "/templates"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/landing_pages.py",
+      "line": 82,
+      "method": "get",
+      "function": "template_families",
+      "path": "/template-families"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/landing_pages.py",
+      "line": 87,
+      "method": "get",
+      "function": "template_family_surface",
+      "path": "/template-families/{template_key}/{surface}"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/landing_pages.py",
+      "line": 153,
+      "method": "post",
+      "function": "apply_template_family_surface",
+      "path": "/template-families/{template_key}/{surface}/apply"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/landing_pages.py",
+      "line": 207,
+      "method": "get",
+      "function": "editor_document",
+      "path": "/{slug}/document"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/landing_pages.py",
+      "line": 215,
+      "method": "get",
+      "function": "editor_state",
+      "path": "/{slug}"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/landing_pages.py",
+      "line": 223,
+      "method": "get",
+      "function": "versions",
+      "path": "/{slug}/versions"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/landing_pages.py",
+      "line": 231,
+      "method": "post",
+      "function": "save_draft",
+      "path": "/{slug}/draft"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/landing_pages.py",
+      "line": 249,
+      "method": "post",
+      "function": "autosave",
+      "path": "/{slug}/autosave"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/landing_pages.py",
+      "line": 267,
+      "method": "post",
+      "function": "apply_template",
+      "path": "/{slug}/templates/{template_key}"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/landing_pages.py",
+      "line": 317,
+      "method": "post",
+      "function": "publish",
+      "path": "/{slug}/publish"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/landing_pages.py",
+      "line": 330,
+      "method": "post",
+      "function": "restore_version",
+      "path": "/{slug}/versions/{version_id}/restore"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/landing_pages.py",
+      "line": 345,
+      "method": "post",
+      "function": "emergency_rollback",
+      "path": "/{slug}/emergency-rollback"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/landing_pages.py",
+      "line": 358,
+      "method": "post",
+      "function": "emergency_blank",
+      "path": "/{slug}/emergency-blank"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/landing_pages.py",
+      "line": 371,
+      "method": "post",
+      "function": "duplicate_page",
+      "path": "/{slug}/duplicate"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/customers.py",
+      "line": 43,
+      "method": "get",
+      "function": "list_customers",
+      "path": ""
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/customers.py",
+      "line": 52,
+      "method": "get",
+      "function": "get_customer",
+      "path": "/{customer_id}"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/customers.py",
+      "line": 61,
+      "method": "post",
+      "function": "create_customer",
+      "path": ""
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/customers.py",
+      "line": 74,
+      "method": "patch",
+      "function": "update_customer",
+      "path": "/{customer_id}"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/customers.py",
+      "line": 92,
+      "method": "delete",
+      "function": "delete_customer",
+      "path": "/{customer_id}"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/tenant_telemetry.py",
+      "line": 53,
+      "method": "post",
+      "function": "ingest_tenant_frontend_event",
+      "path": "/events"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/appointment_confirmations.py",
+      "line": 303,
+      "method": "post",
+      "function": "confirmation_statuses",
+      "path": "/statuses"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/appointment_confirmations.py",
+      "line": 327,
+      "method": "get",
+      "function": "confirmation_link",
+      "path": "/{appointment_id}"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/appointment_confirmations.py",
+      "line": 348,
+      "method": "post",
+      "function": "send_confirmation_link",
+      "path": "/{appointment_id}/send"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/appointment_confirmations.py",
+      "line": 486,
+      "method": "post",
+      "function": "regenerate_confirmation_link",
+      "path": "/{appointment_id}/regenerate"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/checkin.py",
+      "line": 290,
+      "method": "get",
+      "function": "get_undo_state",
+      "path": "/{appointment_id}/undo-state"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/checkin.py",
+      "line": 312,
+      "method": "post",
+      "function": "confirm_from_checkin_center",
+      "path": "/{appointment_id}/confirm"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/checkin.py",
+      "line": 380,
+      "method": "post",
+      "function": "check_in",
+      "path": "/{appointment_id}"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/checkin.py",
+      "line": 456,
+      "method": "post",
+      "function": "undo_check_in_stage",
+      "path": "/{appointment_id}/undo"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/downloads.py",
+      "line": 48,
+      "method": "get",
+      "function": "universal_apps",
+      "path": "/apps"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/downloads.py",
+      "line": 71,
+      "method": "get",
+      "function": "download_universal_app",
+      "path": "/apps/{artifact_id}"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/tenant_support.py",
+      "line": 91,
+      "method": "get",
+      "function": "tenant_booking_parameters_support",
+      "path": "/{tenant_id}/booking-parameters"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/tenant_support.py",
+      "line": 105,
+      "method": "put",
+      "function": "update_tenant_booking_parameters_support",
+      "path": "/{tenant_id}/booking-parameters"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/tenant_support.py",
+      "line": 136,
+      "method": "get",
+      "function": "tenant_landing_support",
+      "path": "/{tenant_id}/landing/{slug}"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/tenant_support.py",
+      "line": 151,
+      "method": "post",
+      "function": "save_tenant_landing_support",
+      "path": "/{tenant_id}/landing/{slug}/draft"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/tenant_support.py",
+      "line": 175,
+      "method": "post",
+      "function": "publish_tenant_landing_support",
+      "path": "/{tenant_id}/landing/{slug}/publish"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/tenant_support.py",
+      "line": 196,
+      "method": "post",
+      "function": "apply_global_landing_template_support",
+      "path": "/{tenant_id}/landing/{slug}/apply-global-template"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/tenant_support.py",
+      "line": 238,
+      "method": "get",
+      "function": "tenant_booking_page_support",
+      "path": "/{tenant_id}/booking-page"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/tenant_support.py",
+      "line": 265,
+      "method": "put",
+      "function": "update_tenant_booking_page_support",
+      "path": "/{tenant_id}/booking-page"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/tenant_support.py",
+      "line": 294,
+      "method": "post",
+      "function": "apply_global_booking_template_support",
+      "path": "/{tenant_id}/booking-page/apply-global-template"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/tenant_support.py",
+      "line": 335,
+      "method": "get",
+      "function": "tenant_branding_support",
+      "path": "/{tenant_id}/branding"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/tenant_support.py",
+      "line": 346,
+      "method": "put",
+      "function": "update_tenant_branding_support",
+      "path": "/{tenant_id}/branding"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/professionals.py",
+      "line": 40,
+      "method": "get",
+      "function": "list_professionals",
+      "path": ""
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/professionals.py",
+      "line": 46,
+      "method": "get",
+      "function": "get_professional",
+      "path": "/{professional_id}"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/professionals.py",
+      "line": 51,
+      "method": "post",
+      "function": "create_professional",
+      "path": ""
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/professionals.py",
+      "line": 60,
+      "method": "patch",
+      "function": "update_professional",
+      "path": "/{professional_id}"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/professionals.py",
+      "line": 73,
+      "method": "delete",
+      "function": "delete_professional",
+      "path": "/{professional_id}"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/auth_two_factor.py",
+      "line": 97,
+      "method": "get",
+      "function": "platform_two_factor_state",
+      "path": "/platform/2fa/state"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/auth_two_factor.py",
+      "line": 109,
+      "method": "post",
+      "function": "platform_two_factor_setup",
+      "path": "/platform/2fa/setup"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/auth_two_factor.py",
+      "line": 132,
+      "method": "post",
+      "function": "platform_two_factor_confirm",
+      "path": "/platform/2fa/confirm"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/auth_two_factor.py",
+      "line": 155,
+      "method": "post",
+      "function": "platform_two_factor_verify",
+      "path": "/platform/2fa/verify"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/auth_two_factor.py",
+      "line": 178,
+      "method": "get",
+      "function": "tenant_two_factor_state",
+      "path": "/2fa/state"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/auth_two_factor.py",
+      "line": 190,
+      "method": "post",
+      "function": "tenant_two_factor_setup",
+      "path": "/2fa/setup"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/auth_two_factor.py",
+      "line": 213,
+      "method": "post",
+      "function": "tenant_two_factor_confirm",
+      "path": "/2fa/confirm"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/auth_two_factor.py",
+      "line": 236,
+      "method": "post",
+      "function": "tenant_two_factor_verify",
+      "path": "/2fa/verify"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/auth_two_factor.py",
+      "line": 259,
+      "method": "post",
+      "function": "tenant_two_factor_disable",
+      "path": "/2fa/disable"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/agenda.py",
+      "line": 312,
+      "method": "get",
+      "function": "agenda_parameters",
+      "path": "/parameters"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/agenda.py",
+      "line": 319,
+      "method": "post",
+      "function": "create_flexible_appointment",
+      "path": "/quick"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/agenda.py",
+      "line": 373,
+      "method": "get",
+      "function": "agenda_report_summary",
+      "path": "/reports/summary"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/agenda.py",
+      "line": 465,
+      "method": "get",
+      "function": "agenda_report_schedules",
+      "path": "/reports/schedules"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/agenda.py",
+      "line": 475,
+      "method": "put",
+      "function": "update_agenda_report_schedules",
+      "path": "/reports/schedules"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/health.py",
+      "line": 34,
+      "method": "get",
+      "function": "health",
+      "path": "/health"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/health.py",
+      "line": 39,
+      "method": "get",
+      "function": "live",
+      "path": "/health/live"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/health.py",
+      "line": 44,
+      "method": "get",
+      "function": "version",
+      "path": "/version"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/health.py",
+      "line": 209,
+      "method": "get",
+      "function": "ready",
+      "path": "/health/ready"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/observability.py",
+      "line": 62,
+      "method": "get",
+      "function": "platform_logs",
+      "path": "/logs"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/observability.py",
+      "line": 96,
+      "method": "get",
+      "function": "platform_log_summary",
+      "path": "/logs/summary"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/observability.py",
+      "line": 112,
+      "method": "get",
+      "function": "export_complete_diagnostics",
+      "path": "/logs/export"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/observability.py",
+      "line": 145,
+      "method": "post",
+      "function": "ingest_platform_log",
+      "path": "/logs/ingest"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/observability.py",
+      "line": 173,
+      "method": "get",
+      "function": "tenant_database_logs",
+      "path": "/tenant/{tenant_id}/logs"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/observability.py",
+      "line": 210,
+      "method": "get",
+      "function": "tenant_database_audit",
+      "path": "/tenant/{tenant_id}/audit"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/observability.py",
+      "line": 244,
+      "method": "get",
+      "function": "docker_console_health",
+      "path": "/docker/health"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/observability.py",
+      "line": 251,
+      "method": "get",
+      "function": "docker_containers",
+      "path": "/docker/containers"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/observability.py",
+      "line": 258,
+      "method": "get",
+      "function": "docker_logs",
+      "path": "/docker/logs"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/observability.py",
+      "line": 276,
+      "method": "get",
+      "function": "tenant_logs",
+      "path": "/logs"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/observability.py",
+      "line": 304,
+      "method": "get",
+      "function": "tenant_audit",
+      "path": "/audit"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/observability.py",
+      "line": 328,
+      "method": "get",
+      "function": "database_capacity",
+      "path": "/database"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/auth.py",
+      "line": 100,
+      "method": "post",
+      "function": "login",
+      "path": "/login"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/auth.py",
+      "line": 119,
+      "method": "post",
+      "function": "forgot_password",
+      "path": "/password/forgot"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/auth.py",
+      "line": 148,
+      "method": "post",
+      "function": "reset_password",
+      "path": "/password/reset"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/auth.py",
+      "line": 167,
+      "method": "post",
+      "function": "refresh",
+      "path": "/refresh"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/auth.py",
+      "line": 176,
+      "method": "post",
+      "function": "logout",
+      "path": "/logout"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/auth.py",
+      "line": 187,
+      "method": "post",
+      "function": "logout_all",
+      "path": "/logout-all"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/auth.py",
+      "line": 197,
+      "method": "post",
+      "function": "platform_login",
+      "path": "/platform/login"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/auth.py",
+      "line": 220,
+      "method": "post",
+      "function": "platform_forgot_password",
+      "path": "/platform/password/forgot"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/auth.py",
+      "line": 255,
+      "method": "post",
+      "function": "platform_reset_password",
+      "path": "/platform/password/reset"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/auth.py",
+      "line": 280,
+      "method": "get",
+      "function": "platform_mail_status",
+      "path": "/platform/mail/status"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/auth.py",
+      "line": 287,
+      "method": "post",
+      "function": "platform_mail_test",
+      "path": "/platform/mail/test"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/auth.py",
+      "line": 305,
+      "method": "post",
+      "function": "platform_refresh",
+      "path": "/platform/refresh"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/auth.py",
+      "line": 313,
+      "method": "post",
+      "function": "platform_logout",
+      "path": "/platform/logout"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/auth.py",
+      "line": 323,
+      "method": "post",
+      "function": "platform_logout_all",
+      "path": "/platform/logout-all"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/appointment_edit.py",
+      "line": 31,
+      "method": "get",
+      "function": "smart_appointment_lookups",
+      "path": "/smart/lookups"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/appointment_edit.py",
+      "line": 97,
+      "method": "patch",
+      "function": "edit_appointment",
+      "path": "/{appointment_id}/edit"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/files.py",
+      "line": 37,
+      "method": "get",
+      "function": "storage_quota",
+      "path": "/quota"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/files.py",
+      "line": 44,
+      "method": "post",
+      "function": "signed_url",
+      "path": "/signed-url"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/files.py",
+      "line": 73,
+      "method": "post",
+      "function": "upload_file",
+      "path": "/upload"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/files.py",
+      "line": 87,
+      "method": "get",
+      "function": "list_files",
+      "path": ""
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/files.py",
+      "line": 98,
+      "method": "get",
+      "function": "download_file",
+      "path": "/content/{key:path}"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/files.py",
+      "line": 115,
+      "method": "delete",
+      "function": "delete_file",
+      "path": "/{key:path}"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/platform_templates.py",
+      "line": 111,
+      "method": "get",
+      "function": "list_global_templates",
+      "path": ""
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/platform_templates.py",
+      "line": 125,
+      "method": "get",
+      "function": "template_contract",
+      "path": "/contract"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/platform_templates.py",
+      "line": 132,
+      "method": "post",
+      "function": "validate_template_bundle",
+      "path": "/import/validate"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/platform_templates.py",
+      "line": 140,
+      "method": "post",
+      "function": "import_template_bundle",
+      "path": "/import"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/platform_templates.py",
+      "line": 159,
+      "method": "get",
+      "function": "available_templates_for_tenant",
+      "path": "/available/{tenant_id}"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/platform_templates.py",
+      "line": 174,
+      "method": "post",
+      "function": "create_global_template",
+      "path": ""
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/platform_templates.py",
+      "line": 190,
+      "method": "get",
+      "function": "developer_kit",
+      "path": "/developer-kit"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/platform_templates.py",
+      "line": 210,
+      "method": "get",
+      "function": "download_developer_kit_artifact",
+      "path": "/developer-kit/artifacts/{artifact}"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/platform_templates.py",
+      "line": 222,
+      "method": "get",
+      "function": "global_template_detail",
+      "path": "/{template_id}"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/platform_templates.py",
+      "line": 231,
+      "method": "put",
+      "function": "update_global_template",
+      "path": "/{template_id}"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/platform_templates.py",
+      "line": 247,
+      "method": "post",
+      "function": "create_global_template_version",
+      "path": "/{template_id}/versions"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/platform_templates.py",
+      "line": 267,
+      "method": "post",
+      "function": "publish_global_template_version",
+      "path": "/{template_id}/versions/{version_number}/publish"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/platform_templates.py",
+      "line": 292,
+      "method": "get",
+      "function": "global_template_version_content",
+      "path": "/{template_id}/versions/{version_number}/content"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/platform_templates.py",
+      "line": 311,
+      "method": "post",
+      "function": "duplicate_global_template",
+      "path": "/{template_id}/duplicate"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/password_reset_pages.py",
+      "line": 45,
+      "method": "get",
+      "function": "tenant_reset_page",
+      "path": "/password/reset-page"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/password_reset_pages.py",
+      "line": 50,
+      "method": "get",
+      "function": "platform_reset_page",
+      "path": "/platform/password/reset-page"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/public.py",
+      "line": 135,
+      "method": "get",
+      "function": "public_experience_page",
+      "path": "/experience/{surface}"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/public.py",
+      "line": 198,
+      "method": "get",
+      "function": "public_landing_asset",
+      "path": "/assets/{key:path}"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/public.py",
+      "line": 229,
+      "method": "get",
+      "function": "public_agenda_report",
+      "path": "/agenda-report/{token}"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/public.py",
+      "line": 255,
+      "method": "get",
+      "function": "public_page_context",
+      "path": "/context"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/public.py",
+      "line": 269,
+      "method": "get",
+      "function": "public_login_page",
+      "path": "/login"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/public.py",
+      "line": 297,
+      "method": "get",
+      "function": "landing",
+      "path": "/landing"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/public.py",
+      "line": 343,
+      "method": "get",
+      "function": "public_booking_catalog",
+      "path": "/booking"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/public.py",
+      "line": 394,
+      "method": "get",
+      "function": "public_booking_availability",
+      "path": "/booking/availability"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/public.py",
+      "line": 417,
+      "method": "post",
+      "function": "create_public_booking",
+      "path": "/booking"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/schedule.py",
+      "line": 44,
+      "method": "get",
+      "function": "list_business_hours",
+      "path": "/business-hours"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/schedule.py",
+      "line": 62,
+      "method": "post",
+      "function": "create_business_hour",
+      "path": "/business-hours"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/schedule.py",
+      "line": 84,
+      "method": "put",
+      "function": "update_business_hour",
+      "path": "/business-hours/{business_hour_id}"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/schedule.py",
+      "line": 113,
+      "method": "delete",
+      "function": "delete_business_hour",
+      "path": "/business-hours/{business_hour_id}"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/schedule.py",
+      "line": 122,
+      "method": "get",
+      "function": "list_blocked_periods",
+      "path": "/blocked-periods"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/schedule.py",
+      "line": 141,
+      "method": "post",
+      "function": "create_blocked_period",
+      "path": "/blocked-periods"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/schedule.py",
+      "line": 166,
+      "method": "put",
+      "function": "update_blocked_period",
+      "path": "/blocked-periods/{blocked_period_id}"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/schedule.py",
+      "line": 199,
+      "method": "delete",
+      "function": "delete_blocked_period",
+      "path": "/blocked-periods/{blocked_period_id}"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/builds.py",
+      "line": 55,
+      "method": "get",
+      "function": "list_profiles",
+      "path": "/profiles"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/builds.py",
+      "line": 73,
+      "method": "post",
+      "function": "create_request",
+      "path": "/requests"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/builds.py",
+      "line": 94,
+      "method": "get",
+      "function": "list_jobs",
+      "path": "/jobs"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/builds.py",
+      "line": 114,
+      "method": "get",
+      "function": "get_job",
+      "path": "/jobs/{job_id}"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/builds.py",
+      "line": 124,
+      "method": "post",
+      "function": "refresh_job",
+      "path": "/jobs/{job_id}/refresh"
+    },
+    {
+      "file": "apps/api/app/api/v1/routes/builds.py",
+      "line": 134,
+      "method": "post",
+      "function": "register_artifact",
+      "path": "/jobs/{job_id}/artifacts"
+    }
+  ]
+}

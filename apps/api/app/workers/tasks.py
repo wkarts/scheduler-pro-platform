@@ -1,3 +1,4 @@
+from contextlib import aclosing
 import asyncio
 import os
 import re
@@ -5,11 +6,13 @@ from collections.abc import Awaitable
 from threading import Lock
 from typing import Any
 
-from celery.signals import worker_process_shutdown
+from celery.signals import worker_process_init, worker_process_shutdown
 from sqlalchemy import text
 
 from app.core.config import settings
-from app.db.session import close_database_engines, platform_session, tenant_session
+from app.db.session import (
+    close_database_engines, platform_session, reset_database_engines_after_fork, tenant_session,
+)
 from app.services.appointment_confirmation_service import AppointmentConfirmationService
 from app.services.appointment_service import AppointmentService
 from app.services.domain_provisioning_service import DomainProvisioningService
@@ -60,6 +63,7 @@ def _shutdown_worker_async_runtime(*_args: Any, **_kwargs: Any) -> None:
 
         asyncio.set_event_loop(loop)
         try:
+            loop.run_until_complete(loop.shutdown_asyncgens())
             loop.run_until_complete(close_database_engines())
         finally:
             loop.close()
@@ -68,13 +72,23 @@ def _shutdown_worker_async_runtime(*_args: Any, **_kwargs: Any) -> None:
             _worker_loop_pid = None
 
 
+def _initialize_worker_process(*_args: Any, **_kwargs: Any) -> None:
+    global _worker_loop, _worker_loop_pid, _worker_loop_guard
+    _worker_loop = None
+    _worker_loop_pid = None
+    _worker_loop_guard = Lock()
+    reset_database_engines_after_fork()
+
+
+worker_process_init.connect(_initialize_worker_process, weak=False)
 worker_process_shutdown.connect(_shutdown_worker_async_runtime, weak=False)
 
 
 async def _run_provisioning(job_id: str) -> dict[str, object]:
-    async for session in platform_session():
-        await ProvisioningRuntime(session).run_job(job_id)
-        return {"job_id": job_id, "processed": True}
+    async with aclosing(platform_session()) as _session_scope_87:
+        async for session in _session_scope_87:
+            await ProvisioningRuntime(session).run_job(job_id)
+            return {"job_id": job_id, "processed": True}
     return {"job_id": job_id, "processed": False}
 
 
@@ -99,43 +113,44 @@ async def _reconcile_managed_domains() -> dict[str, object]:
     active = 0
     failed = 0
 
-    async for session in platform_session():
-        domain_ids = list(
-            (
-                await session.execute(
-                    text(
-                        """
-                        select id::text
-                        from domains
-                        where is_temporary=true
-                           or lower(hostname)=:root
-                           or lower(hostname) like :suffix
-                        order by id asc
-                        """
-                    ),
-                    {"root": root, "suffix": suffix},
-                )
-            ).scalars()
-        )
-        service = DomainProvisioningService(session)
-        for domain_id in domain_ids:
-            checked += 1
-            try:
-                result = await service.check_domain(str(domain_id))
-                if str(result.get("status") or "").upper() == "ACTIVE":
-                    active += 1
-                else:
+    async with aclosing(platform_session()) as _session_scope_114:
+        async for session in _session_scope_114:
+            domain_ids = list(
+                (
+                    await session.execute(
+                        text(
+                            """
+                            select id::text
+                            from domains
+                            where is_temporary=true
+                               or lower(hostname)=:root
+                               or lower(hostname) like :suffix
+                            order by id asc
+                            """
+                        ),
+                        {"root": root, "suffix": suffix},
+                    )
+                ).scalars()
+            )
+            service = DomainProvisioningService(session)
+            for domain_id in domain_ids:
+                checked += 1
+                try:
+                    result = await service.check_domain(str(domain_id))
+                    if str(result.get("status") or "").upper() == "ACTIVE":
+                        active += 1
+                    else:
+                        failed += 1
+                except Exception:  # noqa: BLE001
+                    await session.rollback()
                     failed += 1
-            except Exception:  # noqa: BLE001
-                await session.rollback()
-                failed += 1
-        return {
-            "enabled": True,
-            "checked": checked,
-            "active": active,
-            "failed": failed,
-            "dns_proxied": settings.cloudflare_temporary_record_proxied,
-        }
+            return {
+                "enabled": True,
+                "checked": checked,
+                "active": active,
+                "failed": failed,
+                "dns_proxied": settings.cloudflare_temporary_record_proxied,
+            }
 
     return {"enabled": True, "checked": 0, "active": 0, "failed": 0}
 
@@ -176,18 +191,19 @@ def _phone_from_webhook(payload: dict[str, Any]) -> str:
 
 
 async def _capability_enabled(tenant_id: str, key: str) -> bool:
-    async for platform in platform_session():
-        enabled = await platform.scalar(
-            text(
-                """
-                select enabled from tenant_capabilities
-                where tenant_id=cast(:tenant_id as uuid) and capability_key=:key
-                limit 1
-                """
-            ),
-            {"tenant_id": tenant_id, "key": key},
-        )
-        return enabled is True
+    async with aclosing(platform_session()) as _session_scope_191:
+        async for platform in _session_scope_191:
+            enabled = await platform.scalar(
+                text(
+                    """
+                    select enabled from tenant_capabilities
+                    where tenant_id=cast(:tenant_id as uuid) and capability_key=:key
+                    limit 1
+                    """
+                ),
+                {"tenant_id": tenant_id, "key": key},
+            )
+            return enabled is True
     return False
 
 
@@ -195,111 +211,113 @@ async def _process_whatsapp_event(
     tenant_id: str,
     event_id: str,
 ) -> dict[str, object]:
-    async for platform in platform_session():
-        context = await TenantResolver(platform).resolve_by_id(
-            tenant_id,
-            require_active=True,
-        )
-        break
-    else:
-        return {"tenant_id": tenant_id, "event_id": event_id, "processed": False}
+    async with aclosing(platform_session()) as _session_scope_210:
+        async for platform in _session_scope_210:
+            context = await TenantResolver(platform).resolve_by_id(
+                tenant_id,
+                require_active=True,
+            )
+            break
+        else:
+            return {"tenant_id": tenant_id, "event_id": event_id, "processed": False}
 
-    async for session in tenant_session(context):
-        payload_value = await session.scalar(
-            text("select payload from whatsapp_events where id=cast(:id as uuid)"),
-            {"id": event_id},
-        )
-        payload: dict[str, Any] = (
-            payload_value if isinstance(payload_value, dict) else {}
-        )
-        command = _text_from_webhook(payload).strip().upper()
-        phone = _phone_from_webhook(payload)
-        action = "ignored"
-        appointment_id: str | None = None
-        realtime_type: str | None = None
+    async with aclosing(tenant_session(context)) as _session_scope_219:
+        async for session in _session_scope_219:
+            payload_value = await session.scalar(
+                text("select payload from whatsapp_events where id=cast(:id as uuid)"),
+                {"id": event_id},
+            )
+            payload: dict[str, Any] = (
+                payload_value if isinstance(payload_value, dict) else {}
+            )
+            command = _text_from_webhook(payload).strip().upper()
+            phone = _phone_from_webhook(payload)
+            action = "ignored"
+            appointment_id: str | None = None
+            realtime_type: str | None = None
 
-        if command in {
-            "CONFIRMAR",
-            "CONFIRMO",
-            "SIM CONFIRMAR",
-            "SIM, CONFIRMAR",
-        } and phone:
-            appointment_id = await session.scalar(
+            if command in {
+                "CONFIRMAR",
+                "CONFIRMO",
+                "SIM CONFIRMAR",
+                "SIM, CONFIRMAR",
+            } and phone:
+                appointment_id = await session.scalar(
+                    text(
+                        """
+                        select a.id::text
+                        from appointments a
+                        join customers c on c.id=a.customer_id
+                        where regexp_replace(coalesce(c.phone,''), '\\D', '', 'g') = :phone
+                          and a.status in ('PENDING','AWAITING_CONFIRMATION')
+                          and a.starts_at >= now() - interval '2 hours'
+                        order by a.starts_at asc
+                        limit 1
+                        """
+                    ),
+                    {"phone": phone},
+                )
+                if appointment_id:
+                    await AppointmentService(session).update_status(
+                        appointment_id,
+                        "CONFIRMED",
+                        "Confirmado via WhatsApp",
+                    )
+                    action = "confirmed"
+                    realtime_type = "appointment.customer_confirmed"
+            elif command in {"CANCELAR", "CANCELAR AGENDAMENTO"} and phone:
+                appointment_id = await session.scalar(
+                    text(
+                        """
+                        select a.id::text
+                        from appointments a
+                        join customers c on c.id=a.customer_id
+                        where regexp_replace(coalesce(c.phone,''), '\\D', '', 'g') = :phone
+                          and a.status in ('PENDING','AWAITING_CONFIRMATION','CONFIRMED')
+                          and a.starts_at >= now() - interval '2 hours'
+                        order by a.starts_at asc
+                        limit 1
+                        """
+                    ),
+                    {"phone": phone},
+                )
+                if appointment_id:
+                    await AppointmentService(session).cancel(
+                        appointment_id,
+                        "Cancelado via WhatsApp",
+                    )
+                    action = "cancelled"
+                    realtime_type = "appointment.customer_cancelled"
+
+            await session.execute(
                 text(
                     """
-                    select a.id::text
-                    from appointments a
-                    join customers c on c.id=a.customer_id
-                    where regexp_replace(coalesce(c.phone,''), '\\D', '', 'g') = :phone
-                      and a.status in ('PENDING','AWAITING_CONFIRMATION')
-                      and a.starts_at >= now() - interval '2 hours'
-                    order by a.starts_at asc
-                    limit 1
+                    update outbox_events
+                    set status='processed'
+                    where aggregate_id=:event_id
+                      and event_name='whatsapp.webhook.received'
                     """
                 ),
-                {"phone": phone},
+                {"event_id": event_id},
             )
-            if appointment_id:
-                await AppointmentService(session).update_status(
+            await session.commit()
+
+            if appointment_id and realtime_type:
+                realtime = await RealtimeEventService(session).emit_appointment(
                     appointment_id,
-                    "CONFIRMED",
-                    "Confirmado via WhatsApp",
+                    realtime_type,
+                    actor="customer-whatsapp",
                 )
-                action = "confirmed"
-                realtime_type = "appointment.customer_confirmed"
-        elif command in {"CANCELAR", "CANCELAR AGENDAMENTO"} and phone:
-            appointment_id = await session.scalar(
-                text(
-                    """
-                    select a.id::text
-                    from appointments a
-                    join customers c on c.id=a.customer_id
-                    where regexp_replace(coalesce(c.phone,''), '\\D', '', 'g') = :phone
-                      and a.status in ('PENDING','AWAITING_CONFIRMATION','CONFIRMED')
-                      and a.starts_at >= now() - interval '2 hours'
-                    order by a.starts_at asc
-                    limit 1
-                    """
-                ),
-                {"phone": phone},
-            )
-            if appointment_id:
-                await AppointmentService(session).cancel(
-                    appointment_id,
-                    "Cancelado via WhatsApp",
-                )
-                action = "cancelled"
-                realtime_type = "appointment.customer_cancelled"
+                if realtime and await _capability_enabled(tenant_id, "notifications"):
+                    await WebPushService(session).dispatch_event(realtime)
 
-        await session.execute(
-            text(
-                """
-                update outbox_events
-                set status='processed'
-                where aggregate_id=:event_id
-                  and event_name='whatsapp.webhook.received'
-                """
-            ),
-            {"event_id": event_id},
-        )
-        await session.commit()
-
-        if appointment_id and realtime_type:
-            realtime = await RealtimeEventService(session).emit_appointment(
-                appointment_id,
-                realtime_type,
-                actor="customer-whatsapp",
-            )
-            if realtime and await _capability_enabled(tenant_id, "notifications"):
-                await WebPushService(session).dispatch_event(realtime)
-
-        return {
-            "tenant_id": tenant_id,
-            "event_id": event_id,
-            "processed": True,
-            "action": action,
-            "appointment_id": appointment_id,
-        }
+            return {
+                "tenant_id": tenant_id,
+                "event_id": event_id,
+                "processed": True,
+                "action": action,
+                "appointment_id": appointment_id,
+            }
     return {"tenant_id": tenant_id, "event_id": event_id, "processed": False}
 
 
@@ -323,26 +341,28 @@ async def _dispatch_realtime_push(tenant_id: str, event_id: str) -> dict[str, ob
             "reason": "notifications capability disabled",
         }
 
-    async for platform in platform_session():
-        context = await TenantResolver(platform).resolve_by_id(
-            tenant_id,
-            require_active=True,
-        )
-        break
-    else:
-        return {"tenant_id": tenant_id, "event_id": event_id, "processed": False}
-
-    async for session in tenant_session(context):
-        event = await RealtimeEventService(session).get_event(event_id)
-        if event is None:
+    async with aclosing(platform_session()) as _session_scope_338:
+        async for platform in _session_scope_338:
+            context = await TenantResolver(platform).resolve_by_id(
+                tenant_id,
+                require_active=True,
+            )
+            break
+        else:
             return {"tenant_id": tenant_id, "event_id": event_id, "processed": False}
-        result = await WebPushService(session).dispatch_event(event)
-        return {
-            "tenant_id": tenant_id,
-            "event_id": event_id,
-            "processed": True,
-            **result,
-        }
+
+    async with aclosing(tenant_session(context)) as _session_scope_347:
+        async for session in _session_scope_347:
+            event = await RealtimeEventService(session).get_event(event_id)
+            if event is None:
+                return {"tenant_id": tenant_id, "event_id": event_id, "processed": False}
+            result = await WebPushService(session).dispatch_event(event)
+            return {
+                "tenant_id": tenant_id,
+                "event_id": event_id,
+                "processed": True,
+                **result,
+            }
     return {"tenant_id": tenant_id, "event_id": event_id, "processed": False}
 
 
@@ -352,18 +372,20 @@ def dispatch_realtime_push(tenant_id: str, event_id: str) -> dict[str, object]:
 
 
 async def _process_due_notifications(tenant_id: str) -> dict[str, object]:
-    async for platform in platform_session():
-        context = await TenantResolver(platform).resolve_by_id(
-            tenant_id,
-            require_active=True,
-        )
-        break
-    else:
-        return {"tenant_id": tenant_id, "processed": False}
+    async with aclosing(platform_session()) as _session_scope_367:
+        async for platform in _session_scope_367:
+            context = await TenantResolver(platform).resolve_by_id(
+                tenant_id,
+                require_active=True,
+            )
+            break
+        else:
+            return {"tenant_id": tenant_id, "processed": False}
 
-    async for session in tenant_session(context):
-        result = await TenantNotificationDispatcher(session).process_due(limit=100)
-        return {"tenant_id": tenant_id, "processed": True, **result}
+    async with aclosing(tenant_session(context)) as _session_scope_376:
+        async for session in _session_scope_376:
+            result = await TenantNotificationDispatcher(session).process_due(limit=100)
+            return {"tenant_id": tenant_id, "processed": True, **result}
     return {"tenant_id": tenant_id, "processed": False}
 
 
@@ -379,24 +401,25 @@ def process_due_notifications(
 
 async def _process_all_due_notifications() -> dict[str, object]:
     tenant_ids: list[str] = []
-    async for platform in platform_session():
-        tenant_ids = list(
-            (
-                await platform.execute(
-                    text(
-                        """
-                        select t.id::text
-                        from tenants t
-                        join tenant_capabilities tc on tc.tenant_id=t.id
-                        where t.status='ACTIVE'
-                          and tc.capability_key='notifications'
-                          and tc.enabled=true
-                        """
+    async with aclosing(platform_session()) as _session_scope_394:
+        async for platform in _session_scope_394:
+            tenant_ids = list(
+                (
+                    await platform.execute(
+                        text(
+                            """
+                            select t.id::text
+                            from tenants t
+                            join tenant_capabilities tc on tc.tenant_id=t.id
+                            where t.status='ACTIVE'
+                              and tc.capability_key='notifications'
+                              and tc.enabled=true
+                            """
+                        )
                     )
-                )
-            ).scalars()
-        )
-        break
+                ).scalars()
+            )
+            break
 
     tenant_count = 0
     sent_count = 0
@@ -429,63 +452,66 @@ def process_all_due_notifications() -> dict[str, object]:
 
 
 async def _expire_confirmation_requests(tenant_id: str) -> dict[str, object]:
-    async for platform in platform_session():
-        context = await TenantResolver(platform).resolve_by_id(
-            tenant_id,
-            require_active=True,
-        )
-        break
-    else:
-        return {"tenant_id": tenant_id, "processed": False}
-
-    async for session in tenant_session(context):
-        result = await AppointmentConfirmationService(session).expire_due(limit=300)
-        appointment_ids_value = result.get("appointment_ids", [])
-        appointment_ids = (
-            [str(value) for value in appointment_ids_value]
-            if isinstance(appointment_ids_value, list)
-            else []
-        )
-        push_enabled = await _capability_enabled(tenant_id, "notifications")
-        for appointment_id in appointment_ids:
-            realtime = await RealtimeEventService(session).emit_appointment(
-                appointment_id,
-                "appointment.confirmation_expired",
-                actor="scheduler",
+    async with aclosing(platform_session()) as _session_scope_444:
+        async for platform in _session_scope_444:
+            context = await TenantResolver(platform).resolve_by_id(
+                tenant_id,
+                require_active=True,
             )
-            if realtime and push_enabled:
-                await WebPushService(session).dispatch_event(realtime)
-        if appointment_ids and push_enabled:
-            await TenantNotificationDispatcher(session).process_due(limit=100)
-        return {
-            "tenant_id": tenant_id,
-            "processed": True,
-            "expired": result.get("expired", 0),
-            "failed": result.get("failed", 0),
-        }
+            break
+        else:
+            return {"tenant_id": tenant_id, "processed": False}
+
+    async with aclosing(tenant_session(context)) as _session_scope_453:
+        async for session in _session_scope_453:
+            result = await AppointmentConfirmationService(session).expire_due(limit=300)
+            appointment_ids_value = result.get("appointment_ids", [])
+            appointment_ids = (
+                [str(value) for value in appointment_ids_value]
+                if isinstance(appointment_ids_value, list)
+                else []
+            )
+            push_enabled = await _capability_enabled(tenant_id, "notifications")
+            for appointment_id in appointment_ids:
+                realtime = await RealtimeEventService(session).emit_appointment(
+                    appointment_id,
+                    "appointment.confirmation_expired",
+                    actor="scheduler",
+                )
+                if realtime and push_enabled:
+                    await WebPushService(session).dispatch_event(realtime)
+            if appointment_ids and push_enabled:
+                await TenantNotificationDispatcher(session).process_due(limit=100)
+            return {
+                "tenant_id": tenant_id,
+                "processed": True,
+                "expired": result.get("expired", 0),
+                "failed": result.get("failed", 0),
+            }
     return {"tenant_id": tenant_id, "processed": False}
 
 
 async def _expire_all_confirmation_requests() -> dict[str, object]:
     tenant_ids: list[str] = []
-    async for platform in platform_session():
-        tenant_ids = list(
-            (
-                await platform.execute(
-                    text(
-                        """
-                        select t.id::text
-                        from tenants t
-                        join tenant_capabilities tc on tc.tenant_id=t.id
-                        where t.status='ACTIVE'
-                          and tc.capability_key='appointments'
-                          and tc.enabled=true
-                        """
+    async with aclosing(platform_session()) as _session_scope_483:
+        async for platform in _session_scope_483:
+            tenant_ids = list(
+                (
+                    await platform.execute(
+                        text(
+                            """
+                            select t.id::text
+                            from tenants t
+                            join tenant_capabilities tc on tc.tenant_id=t.id
+                            where t.status='ACTIVE'
+                              and tc.capability_key='appointments'
+                              and tc.enabled=true
+                            """
+                        )
                     )
-                )
-            ).scalars()
-        )
-        break
+                ).scalars()
+            )
+            break
 
     expired = 0
     failed = 0

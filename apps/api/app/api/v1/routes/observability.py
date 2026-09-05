@@ -1,3 +1,4 @@
+from contextlib import aclosing
 from typing import Any
 
 from fastapi import APIRouter, Depends, Query, Response
@@ -14,7 +15,9 @@ from app.api.deps import (
 from app.core.errors import APIError
 from app.core.responses import success
 from app.core.security import AuthPrincipal
-from app.db.session import tenant_session
+from app.db.session import tenant_session, database_pool_metrics
+from app.db.connection_budget import CAPACITY_SQL, capacity_snapshot
+from app.core.config import settings
 from app.services.diagnostics_export_service import DiagnosticsExportService
 from app.services.docker_console_service import DockerConsoleService
 from app.services.observability_service import ObservabilityService
@@ -186,19 +189,20 @@ async def tenant_database_logs(
         tenant_id,
         require_active=False,
     )
-    async for tenant_db in tenant_session(context):
-        rows = await ObservabilityService(tenant_db).list_tenant_logs(
-            source=source,
-            service=service,
-            level=level,
-            integration=integration,
-            actor=actor,
-            correlation_id=correlation_id,
-            request_id=request_id,
-            search=search,
-            limit=limit,
-        )
-        return success(rows)
+    async with aclosing(tenant_session(context)) as _session_scope_189:
+        async for tenant_db in _session_scope_189:
+            rows = await ObservabilityService(tenant_db).list_tenant_logs(
+                source=source,
+                service=service,
+                level=level,
+                integration=integration,
+                actor=actor,
+                correlation_id=correlation_id,
+                request_id=request_id,
+                search=search,
+                limit=limit,
+            )
+            return success(rows)
     return success([])
 
 
@@ -214,24 +218,25 @@ async def tenant_database_audit(
         tenant_id,
         require_active=False,
     )
-    async for tenant_db in tenant_session(context):
-        rows = (
-            await tenant_db.execute(
-                text(
-                    """
-                    select a.id::text, a.user_id::text, u.email, a.action,
-                           a.result, a.ip_address, a.correlation_id,
-                           a.metadata, a.created_at
-                    from audit_logs a
-                    left join users u on u.id=a.user_id
-                    order by a.created_at desc
-                    limit :limit
-                    """
-                ),
-                {"limit": limit},
-            )
-        ).mappings().all()
-        return success([dict(row) for row in rows])
+    async with aclosing(tenant_session(context)) as _session_scope_217:
+        async for tenant_db in _session_scope_217:
+            rows = (
+                await tenant_db.execute(
+                    text(
+                        """
+                        select a.id::text, a.user_id::text, u.email, a.action,
+                               a.result, a.ip_address, a.correlation_id,
+                               a.metadata, a.created_at
+                        from audit_logs a
+                        left join users u on u.id=a.user_id
+                        order by a.created_at desc
+                        limit :limit
+                        """
+                    ),
+                    {"limit": limit},
+                )
+            ).mappings().all()
+            return success([dict(row) for row in rows])
     return success([])
 
 
@@ -317,3 +322,20 @@ async def tenant_audit(
         )
     ).mappings().all()
     return success([dict(row) for row in rows])
+
+
+@router.get("/database")
+async def database_capacity(
+    _: AuthPrincipal = Depends(require_platform_permission("observability.read")),
+    session: AsyncSession = Depends(get_platform_session),
+) -> dict[str, Any]:
+    row = (await session.execute(text(CAPACITY_SQL))).mappings().one()
+    from app.main import _log_runner
+    return success({
+        "capacity": capacity_snapshot(
+            row, warning=settings.db_capacity_warning_percent,
+            critical=settings.db_capacity_critical_percent,
+        ),
+        "process_pools": database_pool_metrics(),
+        "http_log_buffer": _log_runner.metrics(),
+    })

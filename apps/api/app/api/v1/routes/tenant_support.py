@@ -1,3 +1,4 @@
+from contextlib import aclosing
 import json
 from typing import Any
 
@@ -94,8 +95,9 @@ async def tenant_booking_parameters_support(
 ) -> dict[str, Any]:
     assert_platform_tenant_access(principal, tenant_id)
     context = await _context(platform, tenant_id)
-    async for database in tenant_session(context):
-        return success(await BookingParametersService(database).get())
+    async with aclosing(tenant_session(context)) as _session_scope_97:
+        async for database in _session_scope_97:
+            return success(await BookingParametersService(database).get())
     return success({})
 
 
@@ -108,24 +110,25 @@ async def update_tenant_booking_parameters_support(
 ) -> dict[str, Any]:
     assert_platform_tenant_access(principal, tenant_id)
     context = await _context(platform, tenant_id)
-    async for database in tenant_session(context):
-        result = await BookingParametersService(database).update(payload.model_dump())
-        await database.execute(
-            text(
-                """
-                insert into tenant_log_entries(source,service,event,message,actor,details)
-                values('admin','control-plane-support','booking_parameters_updated',
-                       'Parâmetros da Agenda atualizados pelo Control Plane.',
-                       :actor,cast(:details as jsonb))
-                """
-            ),
-            {
-                "actor": principal.email,
-                "details": json.dumps({"tenant_id": tenant_id}),
-            },
-        )
-        await database.commit()
-        return success(result)
+    async with aclosing(tenant_session(context)) as _session_scope_111:
+        async for database in _session_scope_111:
+            result = await BookingParametersService(database).update(payload.model_dump())
+            await database.execute(
+                text(
+                    """
+                    insert into tenant_log_entries(source,service,event,message,actor,details)
+                    values('admin','control-plane-support','booking_parameters_updated',
+                           'Parâmetros da Agenda atualizados pelo Control Plane.',
+                           :actor,cast(:details as jsonb))
+                    """
+                ),
+                {
+                    "actor": principal.email,
+                    "details": json.dumps({"tenant_id": tenant_id}),
+                },
+            )
+            await database.commit()
+            return success(result)
     return success({})
 
 
@@ -138,8 +141,9 @@ async def tenant_landing_support(
 ) -> dict[str, Any]:
     assert_platform_tenant_access(principal, tenant_id)
     context = await _context(platform, tenant_id)
-    async for database in tenant_session(context):
-        return success(await LandingPageService(database).editor_state(slug))
+    async with aclosing(tenant_session(context)) as _session_scope_141:
+        async for database in _session_scope_141:
+            return success(await LandingPageService(database).editor_state(slug))
     return success({})
 
 
@@ -154,15 +158,16 @@ async def save_tenant_landing_support(
     assert_platform_tenant_access(principal, tenant_id)
     _validate_template_content("LANDING", payload)
     context = await _context(platform, tenant_id)
-    async for database in tenant_session(context):
-        await _guard_html_editor_overwrite(database, slug, payload)
-        result = await LandingPageService(database).save_draft(
-            slug,
-            payload,
-            created_by=None,
-            label=f"Suporte Control Plane · {principal.email}",
-        )
-        return success(result)
+    async with aclosing(tenant_session(context)) as _session_scope_157:
+        async for database in _session_scope_157:
+            await _guard_html_editor_overwrite(database, slug, payload)
+            result = await LandingPageService(database).save_draft(
+                slug,
+                payload,
+                created_by=None,
+                label=f"Suporte Control Plane · {principal.email}",
+            )
+            return success(result)
     return success({})
 
 
@@ -176,13 +181,14 @@ async def publish_tenant_landing_support(
 ) -> dict[str, Any]:
     assert_platform_tenant_access(principal, tenant_id)
     context = await _context(platform, tenant_id)
-    async for database in tenant_session(context):
-        return success(
-            await LandingPageService(database).publish(
-                slug,
-                version_id=payload.version_id,
+    async with aclosing(tenant_session(context)) as _session_scope_179:
+        async for database in _session_scope_179:
+            return success(
+                await LandingPageService(database).publish(
+                    slug,
+                    version_id=payload.version_id,
+                )
             )
-        )
     return success({})
 
 
@@ -205,25 +211,26 @@ async def apply_global_landing_template_support(
     template_content = template["version"]["content"]
     _validate_template_content("LANDING", template_content)
     context = await _context(platform, tenant_id)
-    async for database in tenant_session(context):
-        service = LandingPageService(database)
-        draft = await service.save_draft(
-            slug,
-            template_content,
-            created_by=None,
-            label=f"Modelo global: {template['name']} v{template['version']['version_number']}",
-        )
-        await database.execute(
-            text("update landing_pages set template_key=:key where slug=:slug"),
-            {
-                "slug": slug,
-                "key": f"global:{template['key']}@{template['version']['version_number']}",
-            },
-        )
-        await database.commit()
-        if payload.publish:
-            await service.publish(slug, version_id=str(draft["version_id"]))
-        return success({**draft, "global_template": template["key"]})
+    async with aclosing(tenant_session(context)) as _session_scope_208:
+        async for database in _session_scope_208:
+            service = LandingPageService(database)
+            draft = await service.save_draft(
+                slug,
+                template_content,
+                created_by=None,
+                label=f"Modelo global: {template['name']} v{template['version']['version_number']}",
+            )
+            await database.execute(
+                text("update landing_pages set template_key=:key where slug=:slug"),
+                {
+                    "slug": slug,
+                    "key": f"global:{template['key']}@{template['version']['version_number']}",
+                },
+            )
+            await database.commit()
+            if payload.publish:
+                await service.publish(slug, version_id=str(draft["version_id"]))
+            return success({**draft, "global_template": template["key"]})
     return success({})
 
 
@@ -235,21 +242,22 @@ async def tenant_booking_page_support(
 ) -> dict[str, Any]:
     assert_platform_tenant_access(principal, tenant_id)
     context = await _context(platform, tenant_id)
-    async for database in tenant_session(context):
-        rows = (
-            await database.execute(
-                text(
-                    """
-                    select key,value
-                    from tenant_settings
-                    where key like 'public_booking_%'
-                       or key in ('booking_page_template_key','booking_page_template_version','booking_page_template_content')
-                    order by key
-                    """
+    async with aclosing(tenant_session(context)) as _session_scope_238:
+        async for database in _session_scope_238:
+            rows = (
+                await database.execute(
+                    text(
+                        """
+                        select key,value
+                        from tenant_settings
+                        where key like 'public_booking_%'
+                           or key in ('booking_page_template_key','booking_page_template_version','booking_page_template_content')
+                        order by key
+                        """
+                    )
                 )
-            )
-        ).mappings().all()
-        return success({str(row["key"]): row["value"] for row in rows})
+            ).mappings().all()
+            return success({str(row["key"]): row["value"] for row in rows})
     return success({})
 
 
@@ -262,22 +270,23 @@ async def update_tenant_booking_page_support(
 ) -> dict[str, Any]:
     assert_platform_tenant_access(principal, tenant_id)
     context = await _context(platform, tenant_id)
-    async for database in tenant_session(context):
-        for key, value in payload.values.items():
-            if not key.startswith("public_booking_"):
-                continue
-            await database.execute(
-                text(
-                    """
-                    insert into tenant_settings(key,value,updated_at)
-                    values(:key,cast(:value as jsonb),now())
-                    on conflict(key) do update set value=excluded.value,updated_at=now()
-                    """
-                ),
-                {"key": key, "value": json.dumps(value, ensure_ascii=False)},
-            )
-        await database.commit()
-        return success({"updated": True})
+    async with aclosing(tenant_session(context)) as _session_scope_265:
+        async for database in _session_scope_265:
+            for key, value in payload.values.items():
+                if not key.startswith("public_booking_"):
+                    continue
+                await database.execute(
+                    text(
+                        """
+                        insert into tenant_settings(key,value,updated_at)
+                        values(:key,cast(:value as jsonb),now())
+                        on conflict(key) do update set value=excluded.value,updated_at=now()
+                        """
+                    ),
+                    {"key": key, "value": json.dumps(value, ensure_ascii=False)},
+                )
+            await database.commit()
+            return success({"updated": True})
     return success({"updated": False})
 
 
@@ -299,25 +308,26 @@ async def apply_global_booking_template_support(
     template_content = template["version"]["content"]
     _validate_template_content("BOOKING", template_content)
     context = await _context(platform, tenant_id)
-    async for database in tenant_session(context):
-        values = {
-            "booking_page_template_key": template["key"],
-            "booking_page_template_version": int(template["version"]["version_number"]),
-            "booking_page_template_content": template_content,
-        }
-        for key, value in values.items():
-            await database.execute(
-                text(
-                    """
-                    insert into tenant_settings(key,value,updated_at)
-                    values(:key,cast(:value as jsonb),now())
-                    on conflict(key) do update set value=excluded.value,updated_at=now()
-                    """
-                ),
-                {"key": key, "value": json.dumps(value, ensure_ascii=False)},
-            )
-        await database.commit()
-        return success({"applied": True, "template": template["key"], "version": template["version"]["version_number"]})
+    async with aclosing(tenant_session(context)) as _session_scope_302:
+        async for database in _session_scope_302:
+            values = {
+                "booking_page_template_key": template["key"],
+                "booking_page_template_version": int(template["version"]["version_number"]),
+                "booking_page_template_content": template_content,
+            }
+            for key, value in values.items():
+                await database.execute(
+                    text(
+                        """
+                        insert into tenant_settings(key,value,updated_at)
+                        values(:key,cast(:value as jsonb),now())
+                        on conflict(key) do update set value=excluded.value,updated_at=now()
+                        """
+                    ),
+                    {"key": key, "value": json.dumps(value, ensure_ascii=False)},
+                )
+            await database.commit()
+            return success({"applied": True, "template": template["key"], "version": template["version"]["version_number"]})
     return success({"applied": False})
 
 

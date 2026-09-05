@@ -1,4 +1,5 @@
 from __future__ import annotations
+from contextlib import aclosing
 
 import asyncio
 import json
@@ -61,33 +62,43 @@ async def _write_tenant_copy(
         tenant_id,
         require_active=False,
     )
-    async for tenant_db in tenant_session(context):
-        await tenant_db.execute(
-            text(
-                """
-                insert into tenant_log_entries(
-                  source, service, level, event, message,
-                  correlation_id, request_id, actor, integration,
-                  error_code, details
-                ) values(
-                  'http', 'scheduler-api', :level, 'http_request', :message,
-                  :correlation_id, :request_id, :actor, null,
-                  :error_code, cast(:details as jsonb)
-                )
-                """
-            ),
-            {
-                "level": level,
-                "message": message,
-                "correlation_id": correlation_id,
-                "request_id": request_id,
-                "actor": actor,
-                "error_code": error_code,
-                "details": details_json,
-            },
-        )
-        await tenant_db.commit()
-        break
+    async with aclosing(tenant_session(context)) as _session_scope_64:
+        async for tenant_db in _session_scope_64:
+            await tenant_db.execute(
+                text(
+                    """
+                    insert into tenant_log_entries(
+                      source, service, level, event, message,
+                      correlation_id, request_id, actor, integration,
+                      error_code, details
+                    ) values(
+                      'http', 'scheduler-api', :level, 'http_request', :message,
+                      :correlation_id, :request_id, :actor, null,
+                      :error_code, cast(:details as jsonb)
+                    )
+                    """
+                ),
+                {
+                    "level": level,
+                    "message": message,
+                    "correlation_id": correlation_id,
+                    "request_id": request_id,
+                    "actor": actor,
+                    "error_code": error_code,
+                    "details": details_json,
+                },
+            )
+            await tenant_db.commit()
+            break
+
+
+def should_persist_http_operation(path: str, status_code: int) -> bool:
+    if path in _SKIP_SUCCESS_PATHS:
+        return False
+    if status_code < 400 and path in {"/api/v1/realtime/events", "/api/v1/version"}:
+        return False
+    # A degraded database must not be flooded by attempts to log its own outage.
+    return status_code != 503
 
 
 async def persist_http_operation(
@@ -112,9 +123,7 @@ async def persist_http_operation(
     the Control Plane can show an individual history even after Docker rotates.
     """
 
-    if status_code < 400 and path in _SKIP_SUCCESS_PATHS:
-        return
-    if status_code < 400 and path == "/api/v1/realtime/events":
+    if not should_persist_http_operation(path, status_code):
         return
 
     principal = principal or {}
@@ -197,5 +206,5 @@ async def persist_http_operation(
                     details_json=details_json,
                 )
     except Exception:
-        # Observability is fail-open: a logging outage must never take down the API.
-        return
+        # The bounded background runner records this failure without failing the request.
+        raise

@@ -1,0 +1,13 @@
+test_backup_manifest_and_atomic_completion_without_claiming_restore (test_operations.BackupTests.test_backup_manifest_and_atomic_completion_without_claiming_restore) ... ok
+test_failure_never_publishes_a_completed_backup (test_operations.BackupTests.test_failure_never_publishes_a_completed_backup) ... ok
+test_current_default_topology (test_operations.BudgetTests.test_current_default_topology) ... ok
+test_no_secret_is_echoed (test_operations.BudgetTests.test_no_secret_is_echoed) ... ok
+test_old_cache_setting_is_rejected (test_operations.BudgetTests.test_old_cache_setting_is_rejected) ... ok
+test_replicas_and_headroom_are_counted (test_operations.BudgetTests.test_replicas_and_headroom_are_counted) ... ok
+test_unbounded_overflow_is_rejected (test_operations.BudgetTests.test_unbounded_overflow_is_rejected) ... ok
+test_worker_concurrency_must_be_explicit (test_operations.BudgetTests.test_worker_concurrency_must_be_explicit) ... ok
+
+----------------------------------------------------------------------
+Ran 8 tests in 3.552s
+
+OK

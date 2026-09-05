@@ -257,6 +257,7 @@ class _BaseAuthService:
                 join {self.user_table} u on u.id=rt.user_id
                 where rt.token_hash=:token_hash
                 limit 1
+                for update of rt
                 """
             ),
             {"token_hash": token_hash},

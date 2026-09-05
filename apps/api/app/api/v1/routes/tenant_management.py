@@ -1,3 +1,4 @@
+from contextlib import aclosing
 from io import BytesIO
 from typing import Any, Literal
 
@@ -150,17 +151,18 @@ async def tenant_management_logs(
             tenant_id,
             require_active=False,
         )
-        async for tenant_db in tenant_session(context):
-            tenant_rows = await ObservabilityService(tenant_db).list_tenant_logs(
-                source=source,
-                service=service,
-                level=level,
-                integration=integration,
-                search=search,
-                limit=limit,
-            )
-            rows.extend({**row, "scope": "tenant"} for row in tenant_rows)
-            break
+        async with aclosing(tenant_session(context)) as _session_scope_153:
+            async for tenant_db in _session_scope_153:
+                tenant_rows = await ObservabilityService(tenant_db).list_tenant_logs(
+                    source=source,
+                    service=service,
+                    level=level,
+                    integration=integration,
+                    search=search,
+                    limit=limit,
+                )
+                rows.extend({**row, "scope": "tenant"} for row in tenant_rows)
+                break
     except Exception as exc:  # noqa: BLE001 - diagnostics must degrade gracefully
         rows.append(
             {
@@ -249,22 +251,23 @@ async def tenant_experience_policy(
 ) -> dict[str, Any]:
     assert_platform_tenant_access(principal, tenant_id)
     context = await TenantResolver(session).resolve_by_id(tenant_id, require_active=False)
-    async for tenant_db in tenant_session(context):
-        rows = (
-            await tenant_db.execute(
-                text(
-                    "select key,value from tenant_settings "
-                    "where key in ('experience_editor_level','experience_theme_apply_console')"
+    async with aclosing(tenant_session(context)) as _session_scope_252:
+        async for tenant_db in _session_scope_252:
+            rows = (
+                await tenant_db.execute(
+                    text(
+                        "select key,value from tenant_settings "
+                        "where key in ('experience_editor_level','experience_theme_apply_console')"
+                    )
                 )
+            ).mappings().all()
+            values = {str(row["key"]): row["value"] for row in rows}
+            return success(
+                {
+                    "level": str(values.get("experience_editor_level") or "basic"),
+                    "apply_theme_to_console": bool(values.get("experience_theme_apply_console") or False),
+                }
             )
-        ).mappings().all()
-        values = {str(row["key"]): row["value"] for row in rows}
-        return success(
-            {
-                "level": str(values.get("experience_editor_level") or "basic"),
-                "apply_theme_to_console": bool(values.get("experience_theme_apply_console") or False),
-            }
-        )
     return success({"level": "basic", "apply_theme_to_console": False})
 
 
@@ -277,33 +280,34 @@ async def update_tenant_experience_policy(
 ) -> dict[str, Any]:
     assert_platform_tenant_access(principal, tenant_id)
     context = await TenantResolver(session).resolve_by_id(tenant_id, require_active=False)
-    async for tenant_db in tenant_session(context):
-        import json
+    async with aclosing(tenant_session(context)) as _session_scope_280:
+        async for tenant_db in _session_scope_280:
+            import json
 
-        await tenant_db.execute(
-            text(
-                "insert into tenant_settings(key,value,updated_at) "
-                "values('experience_editor_level',cast(:level as jsonb),now()) "
-                "on conflict(key) do update set value=excluded.value,updated_at=now()"
-            ),
-            {"level": json.dumps(payload.level)},
-        )
-        if payload.apply_theme_to_console is not None:
             await tenant_db.execute(
                 text(
                     "insert into tenant_settings(key,value,updated_at) "
-                    "values('experience_theme_apply_console',cast(:value as jsonb),now()) "
+                    "values('experience_editor_level',cast(:level as jsonb),now()) "
                     "on conflict(key) do update set value=excluded.value,updated_at=now()"
                 ),
-                {"value": json.dumps(payload.apply_theme_to_console)},
+                {"level": json.dumps(payload.level)},
             )
-        await tenant_db.commit()
-        return success(
-            {
-                "level": payload.level,
-                "apply_theme_to_console": bool(payload.apply_theme_to_console),
-            }
-        )
+            if payload.apply_theme_to_console is not None:
+                await tenant_db.execute(
+                    text(
+                        "insert into tenant_settings(key,value,updated_at) "
+                        "values('experience_theme_apply_console',cast(:value as jsonb),now()) "
+                        "on conflict(key) do update set value=excluded.value,updated_at=now()"
+                    ),
+                    {"value": json.dumps(payload.apply_theme_to_console)},
+                )
+            await tenant_db.commit()
+            return success(
+                {
+                    "level": payload.level,
+                    "apply_theme_to_console": bool(payload.apply_theme_to_console),
+                }
+            )
     return success({"level": payload.level, "apply_theme_to_console": False})
 
 
@@ -316,9 +320,10 @@ async def tenant_experience_snapshot(
     assert_platform_tenant_access(principal, tenant_id)
     context = await TenantResolver(session).resolve_by_id(tenant_id, require_active=False)
     branding = await BrandingService(session).manifest_for_context(context)
-    async for tenant_db in tenant_session(context):
-        summary = await ExperienceService(tenant_db, context).summary()
-        return success({"experience": summary, "branding": branding})
+    async with aclosing(tenant_session(context)) as _session_scope_319:
+        async for tenant_db in _session_scope_319:
+            summary = await ExperienceService(tenant_db, context).summary()
+            return success({"experience": summary, "branding": branding})
     return success({"experience": {"pages": []}, "branding": branding})
 
 
@@ -331,9 +336,10 @@ async def tenant_experience_page(
 ) -> dict[str, Any]:
     assert_platform_tenant_access(principal, tenant_id)
     context = await TenantResolver(session).resolve_by_id(tenant_id, require_active=False)
-    async for tenant_db in tenant_session(context):
-        result = await ExperienceService(tenant_db, context).document(surface)
-        return success(result)
+    async with aclosing(tenant_session(context)) as _session_scope_334:
+        async for tenant_db in _session_scope_334:
+            result = await ExperienceService(tenant_db, context).document(surface)
+            return success(result)
     return success(None)
 
 
@@ -347,11 +353,12 @@ async def tenant_experience_save_draft(
 ) -> dict[str, Any]:
     assert_platform_tenant_access(principal, tenant_id)
     context = await TenantResolver(session).resolve_by_id(tenant_id, require_active=False)
-    async for tenant_db in tenant_session(context):
-        result = await ExperienceService(tenant_db, context).save_draft(
-            surface, **payload.model_dump(), actor=None
-        )
-        return success(result)
+    async with aclosing(tenant_session(context)) as _session_scope_350:
+        async for tenant_db in _session_scope_350:
+            result = await ExperienceService(tenant_db, context).save_draft(
+                surface, **payload.model_dump(), actor=None
+            )
+            return success(result)
     return success({})
 
 
@@ -365,8 +372,9 @@ async def tenant_experience_publish(
 ) -> dict[str, Any]:
     assert_platform_tenant_access(principal, tenant_id)
     context = await TenantResolver(session).resolve_by_id(tenant_id, require_active=False)
-    async for tenant_db in tenant_session(context):
-        return success(await ExperienceService(tenant_db, context).publish(surface, payload.version_id))
+    async with aclosing(tenant_session(context)) as _session_scope_368:
+        async for tenant_db in _session_scope_368:
+            return success(await ExperienceService(tenant_db, context).publish(surface, payload.version_id))
     return success({})
 
 
